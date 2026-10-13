@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Commission & Net Profit Guide · Devzard Sales Partnership</title>
+<style>
+:root{
+  --violet:#6D28D9; --violet-dark:#4C1D95; --pink:#EC4899; --cyan:#0891B2;
+  --ink:#120B2E; --slate:#4B5563; --line:#E5E1F5; --tint:#F5F3FF; --tint2:#FDF2F8;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:#FBF9FF; color:var(--ink);
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.hero{
+  position:relative; overflow:hidden; padding:64px 28px 52px;
+  background:linear-gradient(135deg,#3B0764 0%,#6D28D9 42%,#EC4899 100%);
+  color:#fff;
+}
+.hero:before,.hero:after{content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.10)}
+.hero:before{width:340px;height:340px;top:-140px;right:-80px}
+.hero:after{width:200px;height:200px;bottom:-110px;right:120px;background:rgba(255,255,255,.07)}
+.hero .wrap{position:relative;max-width:920px;margin:0 auto}
+.brand{font-weight:800;letter-spacing:.24em;font-size:12px;text-transform:uppercase;opacity:.92;margin:0 0 18px}
+.hero h1{margin:0;font-size:clamp(30px,5.2vw,50px);line-height:1.06;font-weight:800;letter-spacing:-.02em;max-width:20ch}
+.hero p.sub{margin:18px 0 0;font-size:17px;opacity:.95;max-width:60ch}
+.badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.badge{
+  background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28);
+  padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;backdrop-filter:blur(6px);
+}
+.badge.hot{background:#fff;color:var(--violet-dark);border-color:#fff}
+main{max-width:920px;margin:0 auto;padding:8px 28px 90px}
+.toc{
+  background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px 26px;
+  margin:-30px auto 40px;box-shadow:0 18px 40px -28px rgba(76,29,149,.45);position:relative;
+}
+.toc h2{margin:0 0 12px;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate);border:0;padding:0}
+.toc ol{margin:0;padding-left:20px;columns:2;column-gap:28px}
+@media(max-width:640px){.toc ol{columns:1}}
+.toc a{color:var(--violet-dark);text-decoration:none;font-weight:600;font-size:14.5px}
+.toc a:hover{color:var(--pink);text-decoration:underline}
+h2{
+  font-size:26px;line-height:1.22;margin:56px 0 16px;font-weight:800;letter-spacing:-.015em;
+  padding-bottom:12px;border-bottom:3px solid var(--pink);color:var(--violet-dark);
+}
+h3{font-size:19.5px;margin:36px 0 10px;font-weight:750;color:var(--violet)}
+h4{font-size:16px;margin:26px 0 8px;font-weight:750;color:var(--cyan);letter-spacing:.01em}
+h5,h6{font-size:15px;margin:22px 0 6px;color:var(--ink)}
+p{margin:0 0 14px}
+strong{color:var(--violet-dark);font-weight:700}
+em{color:var(--slate)}
+a{color:var(--violet);text-decoration:none;border-bottom:1px solid rgba(109,40,217,.35)}
+a:hover{color:var(--pink);border-color:var(--pink)}
+code{
+  background:var(--tint);color:var(--pink);padding:2px 6px;border-radius:6px;
+  font:13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace
+}
+pre{
+  background:#0F172A;color:#A5F3FC;padding:20px 22px;border-radius:14px;overflow-x:auto;
+  font:13.5px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:18px 0 22px;
+  box-shadow:0 18px 40px -30px rgba(15,23,42,.9)
+}
+pre code{background:none;color:inherit;padding:0}
+blockquote{
+  margin:20px 0;padding:18px 22px;background:var(--tint);border-left:5px solid var(--violet);
+  border-radius:0 14px 14px 0;color:var(--violet-dark)
+}
+blockquote p:last-child{margin-bottom:0}
+hr{border:0;border-top:1px solid var(--line);margin:38px 0}
+table{
+  width:100%;border-collapse:separate;border-spacing:0;margin:20px 0 26px;font-size:14.5px;
+  background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  box-shadow:0 16px 34px -30px rgba(76,29,149,.55)
+}
+thead th{
+  background:var(--violet-dark);color:#fff;text-align:left;font-weight:700;
+  padding:12px 14px;font-size:13.5px;letter-spacing:.01em
+}
+tbody td{padding:11px 14px;border-top:1px solid var(--line);vertical-align:top}
+tbody tr:nth-child(even) td{background:var(--tint)}
+tbody tr:hover td{background:var(--tint2)}
+ul,ol{margin:0 0 16px;padding-left:24px}
+li{margin:0 0 7px}
+li>ul,li>ol{margin-top:7px}
+footer{
+  background:var(--ink);color:#C7C3E8;padding:34px 28px;text-align:center;font-size:14px
+}
+footer strong{color:#fff}
+.doc-list{list-style:none;padding:0;margin:0}
+.doc-list li{margin-bottom:10px}
+.doc-list a{font-weight:650}
+@media print{
+  .hero{background:#4C1D95 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .toc{display:none} body{background:#fff}
+  h2{page-break-after:avoid} table,pre,blockquote{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <p class="brand">Devzard</p>
+    <h1>Commission & Net Profit Guide</h1>
+    <p class="sub">Every rupee explained — what counts as a project expense, what never does, eight worked examples, payout timing and how to verify any number we send you.</p>
+    <div class="badges">
+      <span class="badge hot">70 / 30 profit share</span>
+      <span class="badge">No coding required</span>
+      <span class="badge">30% to the sales partner</span>
+      <span class="badge">Money guide</span>
+    </div>
+  </div>
+</header>
+<main>
+
+<h2 id="sec-0">Commission &amp; Net Profit Guide</h2><p><em>How the 70 / 30 split is calculated, verified and paid — explained line by line.</em></p><hr><h3>1. The formula</h3><pre><code>        Gross Client Revenue  (contract value, excluding sales tax)
+      − Direct Project Expenses  (agreed, documented, project-specific)
+      ─────────────────────────────────────────────────────────────
+      = Net Profit
+      × 30%  =  Sales Partner Commission
+      × 70%  =  Devzard Share</code></pre><p>Two things follow from this formula, and they are the two things that matter most:</p><ol><li><strong>Your commission moves with profit, not with price.</strong> A big project with heavy third-party costs can pay less than a smaller project with light costs.</li><li><strong>Every rupee of unnecessary expense costs you 30 paisa.</strong> Every rupee of discount you invent costs you 30 paisa. Never spend money on a project, and never reduce a price, without written approval.</li></ol><hr><h3>2. Step by step</h3><table><thead><tr><th>Step</th><th>What happens</th><th>Who decides</th></tr></thead><tbody><tr><td>1</td><td>Client agrees to the proposal and pays</td><td>Devzard signs with the client</td></tr><tr><td>2</td><td>Gross client revenue is recorded</td><td>Contract value, excluding sales tax</td></tr><tr><td>3</td><td>Expenses are logged with receipts as they are incurred</td><td>Devzard, with receipts kept on file</td></tr><tr><td>4</td><td>Net profit is calculated</td><td>Closing revenue − documented direct expenses</td></tr><tr><td>5</td><td>Your 30% is calculated and shown on a statement</td><td>Commission statement, per project</td></tr><tr><td>6</td><td>Statement is shared with you</td><td>With every payout</td></tr><tr><td>7</td><td>You check it. Query window: 15 days</td><td>Raise anything unclear with the team</td></tr><tr><td>8</td><td>Payout is sent</td><td>Within 7 business days of client payment + milestone delivery</td></tr></tbody></table><hr><h3>3. What counts as a direct project expense</h3><p>Only costs that <strong>belong to that specific project</strong> and would not exist without it. Every line needs a receipt or an invoice on file.</p><h4>Deductible (reduces the profit pool)</h4><table><thead><tr><th>Expense</th><th>Notes</th></tr></thead><tbody><tr><td>Domain name and hosting for the project</td><td>Only the period charged to the project</td></tr><tr><td>Premium themes, plugins and licences</td><td>Bought for this client, licensed to this client</td></tr><tr><td>Stock images, video, fonts and assets</td><td>Where a licence fee is paid</td></tr><tr><td>Paid APIs and third-party services</td><td>Payment gateways, SMS, maps, AI credits used by the project</td></tr><tr><td>Outsourced / subcontracted delivery</td><td>Freelance developers, designers, copywriters, QA</td></tr><tr><td>Client-specific ad spend</td><td>Only where the client has not reimbursed it directly</td></tr><tr><td>Payment gateway and bank transfer fees</td><td>The real cost of collecting the client's money</td></tr><tr><td>Physical costs for the project</td><td>Printing, courier, hardware purchased for the project</td></tr></tbody></table><h4>Never deductible (Devzard absorbs these in its 70%)</h4><table><thead><tr><th>Expense</th><th>Why</th></tr></thead><tbody><tr><td>Devzard salaries and team time</td><td>Our cost of doing business</td></tr><tr><td>Office rent, utilities, internet</td><td>Overhead</td></tr><tr><td>Software subscriptions and internal tools</td><td>Overhead</td></tr><tr><td>General marketing and advertising of Devzard</td><td>Overhead</td></tr><tr><td>Rework caused by our own mistakes</td><td>Our problem, not yours</td></tr><tr><td>Penalties paid to a client because Devzard delivered late</td><td>Added back before your commission is calculated</td></tr><tr><td>Anything not agreed in advance, above the pre-approval threshold</td><td>See rule 4 below</td></tr></tbody></table><hr><h3>4. The four expense rules</h3><blockquote><p><strong>Rule 1 — Project-specific.</strong> If the cost would exist without this project, it is not deducted.</p><p><strong>Rule 2 — Documented.</strong> No receipt, no deduction. You may ask to see the receipts for any project.</p><p><strong>Rule 3 — The Big Expense Rule.</strong> Any single project expense above <strong>PKR 25,000</strong>, or any expense that changes the price of the project, must be approved by you in writing (WhatsApp counts) before it is committed. Silence is not approval — we will ask, and we will wait.</p><p><strong>Rule 4 — Shared costs are apportioned fairly.</strong> A tool used across three clients is charged one third to each. Apportionment is shown on the statement.</p></blockquote><hr><h3>5. Worked examples</h3><h4>Example 1 — Landing page <em>(the reference deal)</em></h4><table><thead><tr><th>Line</th><th>PKR</th></tr></thead><tbody><tr><td>Client revenue</td><td>20,000</td></tr><tr><td>Domain + hosting (1 year)</td><td>4,000</td></tr><tr><td>Premium template licence</td><td>1,000</td></tr><tr><td>Total direct expenses</td><td>5,000</td></tr><tr><td><strong>Net profit</strong></td><td><strong>15,000</strong></td></tr><tr><td>Devzard share (70%)</td><td><strong>10,500</strong></td></tr><tr><td><strong>Sales partner share (30%)</strong></td><td><strong>4,500</strong></td></tr></tbody></table><h4>Example 2 — Business website</h4><table><thead><tr><th>Line</th><th>PKR</th></tr></thead><tbody><tr><td>Client revenue</td><td>120,000</td></tr><tr><td>Domain + hosting (1 year)</td><td>12,000</td></tr><tr><td>Premium theme licence</td><td>18,000</td></tr><tr><td>Stock imagery</td><td>4,000</td></tr><tr><td>Bank / gateway fees</td><td>2,400</td></tr><tr><td>Total direct expenses</td><td>36,400</td></tr><tr><td><strong>Net profit</strong></td><td><strong>83,600</strong></td></tr><tr><td>Devzard share (70%)</td><td><strong>58,520</strong></td></tr><tr><td><strong>Sales partner share (30%)</strong></td><td><strong>25,080</strong></td></tr></tbody></table><h4>Example 3 — E-commerce store</h4><table><thead><tr><th>Line</th><th>PKR</th></tr></thead><tbody><tr><td>Client revenue</td><td>250,000</td></tr><tr><td>Hosting + SSL (1 year)</td><td>18,000</td></tr><tr><td>WooCommerce premium plugins</td><td>45,000</td></tr><tr><td>Payment gateway integration</td><td>8,000</td></tr><tr><td>Product photography</td><td>35,000</td></tr><tr><td>Outsourced development support</td><td>40,000</td></tr><tr><td>Gateway transaction fees</td><td>6,250</td></tr><tr><td>Total direct expenses</td><td>152,250</td></tr><tr><td><strong>Net profit</strong></td><td><strong>97,750</strong></td></tr><tr><td>Devzard share (70%)</td><td><strong>68,425</strong></td></tr><tr><td><strong>Sales partner share (30%)</strong></td><td><strong>29,325</strong></td></tr></tbody></table><h4>Example 4 — Custom web application</h4><table><thead><tr><th>Line</th><th>PKR</th></tr></thead><tbody><tr><td>Client revenue</td><td>650,000</td></tr><tr><td>Cloud hosting (12 months)</td><td>60,000</td></tr><tr><td>Senior subcontractor</td><td>220,000</td></tr><tr><td>Licences and paid APIs</td><td>35,000</td></tr><tr><td>Design assets</td><td>15,000</td></tr><tr><td>Total direct expenses</td><td>330,000</td></tr><tr><td><strong>Net profit</strong></td><td><strong>320,000</strong></td></tr><tr><td>Devzard share (70%)</td><td><strong>224,000</strong></td></tr><tr><td><strong>Sales partner share (30%)</strong></td><td><strong>96,000</strong></td></tr></tbody></table><h4>Example 5 — Recurring retainer <em>(the compounding one)</em></h4><table><thead><tr><th>Line</th><th>Per month (PKR)</th></tr></thead><tbody><tr><td>Client revenue</td><td>35,000</td></tr><tr><td>Hosting, backups and tool licences</td><td>5,000</td></tr><tr><td><strong>Net profit</strong></td><td><strong>30,000</strong></td></tr><tr><td><strong>Sales partner share (30%)</strong></td><td><strong>9,000</strong></td></tr></tbody></table><p><strong>PKR 9,000 per month, every month, while the partnership is active and the client stays.</strong> Three retainers of this size is PKR 27,000 a month before you close a single new project.</p><h4>Example 6 — Milestone-based project</h4><p>Client revenue 300,000, paid in three installments. Total expenses 100,000. Total partner commission: 300,000 − 100,000 = 200,000 net profit, of which <strong>PKR 60,000</strong> is yours. It is paid as the money and the work arrive:</p><table><thead><tr><th>Milestone</th><th>Client pays</th><th>Expenses to date</th><th>Net profit</th><th>Your 30%</th></tr></thead><tbody><tr><td>Advance (50%)</td><td>150,000</td><td>40,000</td><td>110,000</td><td><strong>33,000</strong></td></tr><tr><td>Mid-project (40%)</td><td>120,000</td><td>45,000</td><td>75,000</td><td><strong>22,500</strong></td></tr><tr><td>Final delivery (10%)</td><td>30,000</td><td>15,000</td><td>15,000</td><td><strong>4,500</strong></td></tr><tr><td><strong>Total</strong></td><td><strong>300,000</strong></td><td><strong>100,000</strong></td><td><strong>200,000</strong></td><td><strong>60,000</strong></td></tr></tbody></table><h4>Example 7 — The unapproved discount <em>(why the rule exists)</em></h4><table><thead><tr><th></th><th>With approval</th><th>Discounted 20% without asking</th></tr></thead><tbody><tr><td>Client revenue</td><td>150,000</td><td>120,000</td></tr><tr><td>Direct expenses</td><td>40,000</td><td>40,000</td></tr><tr><td>Net profit</td><td>110,000</td><td>80,000</td></tr><tr><td><strong>Your commission</strong></td><td><strong>33,000</strong></td><td><strong>24,000</strong></td></tr></tbody></table><p>A discount you invent costs you <strong>9,000</strong> — and it teaches the client to negotiate harder next time. If a client needs a lower number, ask us for a scoped-down version instead. Same result for the client, protected profit for both of us.</p><h4>Example 8 — A project with no profit</h4><table><thead><tr><th>Line</th><th>PKR</th></tr></thead><tbody><tr><td>Client revenue</td><td>100,000</td></tr><tr><td>Direct expenses</td><td>105,000</td></tr><tr><td>Net profit</td><td>−5,000</td></tr><tr><td>Your commission</td><td><strong>0</strong></td></tr></tbody></table><p>You owe nothing. You are never charged for a loss-making project. But read the expense lines before you accept it — an underpriced project is a pricing failure, not a partner failure, and we will tell you when we think a deal should be walked away from.</p><hr><h3>6. What reduces your commission — and what does not</h3><table><thead><tr><th>Reduces your commission</th><th>Does not reduce your commission</th></tr></thead><tbody><tr><td>Documented, approved direct project expenses</td><td>Devzard's salaries, overheads and software subscriptions</td></tr><tr><td>Discounts you offered without written approval</td><td>Rework caused by Devzard's own errors</td></tr><tr><td>Refunds or chargebacks from the client</td><td>Penalties we pay because we delivered late</td></tr><tr><td>Commission adjustments for a client's unpaid invoice</td><td>Your own travel, data, phone or marketing costs</td></tr><tr><td>Tax withheld from your payout where required by law</td><td>Sales tax, which is excluded from revenue from the start</td></tr></tbody></table><hr><h3>7. Payout timeline</h3><pre><code>Client pays Devzard ──► Payment clears ──► Milestone delivered ──► Statement issued ──► Payout within 7 business days</code></pre><ul><li>Commission on an invoice is payable only once that invoice is <strong>received and cleared</strong>.</li><li>Multi-milestone projects are paid milestone by milestone.</li><li>Payouts are made by bank transfer (IBFT / Raast) to the account named in your agreement, on the last day of a payout run, or sooner.</li><li><strong>Minimum payout: PKR 5,000.</strong> Smaller balances carry forward to the next payout.</li><li>A short statement accompanies every payment: project, client revenue, expenses, net profit and your share.</li></ul><hr><h3>8. Verification and disputes</h3><p>You should never have to take our word for a number.</p><ol><li><strong>Ask for the working.</strong> Any project, any time. You get the revenue figure, each expense line, and the resulting split.</li><li><strong>Ask for receipts.</strong> Available for every deducted expense without argument.</li><li><strong>Raise a query within 15 days</strong> of receiving a statement. Disputed amounts are held back and paid once resolved — the undisputed balance is paid on time regardless.</li><li><strong>Escalate.</strong> Unresolved after 15 more days? It goes to the founders, in writing, and the partnership agreement's dispute clause applies.</li></ol><hr><h3>9. Optional: performance bonus</h3><p><em>Not part of the base program. Switch it on if you want to reward your best partners — or delete this section entirely.</em></p><p>An optional add-on that pays over and above the standard 30%, on verified closed revenue:</p><table><thead><tr><th>Tier</th><th>Closed revenue in a rolling 12 months</th><th>Base</th><th>Bonus</th></tr></thead><tbody><tr><td>Tier 1</td><td>Up to PKR 1,000,000</td><td>30%</td><td>—</td></tr><tr><td>Tier 2</td><td>PKR 1,000,001 – 3,000,000</td><td>30%</td><td>+3% on net profit above tier 1</td></tr><tr><td>Tier 3</td><td>PKR 3,000,001 – 7,500,000</td><td>30%</td><td>+5% on net profit above tier 1</td></tr><tr><td>Tier 4</td><td>Above PKR 7,500,000</td><td>30%</td><td>+7% on net profit above tier 1</td></tr></tbody></table><p>The bonus is applied to the <strong>partner share only</strong> and is paid at the end of each rolling year. Keep it, or ignore it — the 70/30 split works exactly the same without it.</p><hr><h3>10. The calculator</h3><p><code>exports/Devzard-Commission-Calculator.xlsx</code> is a working spreadsheet, not a picture of one:</p><table><thead><tr><th>Sheet</th><th>What it does</th></tr></thead><tbody><tr><td><strong>How to use</strong></td><td>Two-minute setup guide and the published rates</td></tr><tr><td><strong>Calculator</strong></td><td>Enter client revenue and expense lines; it returns net profit, Devzard share and your 30% live</td></tr><tr><td><strong>Examples</strong></td><td>Every worked example above, with live formulas you can edit</td></tr><tr><td><strong>Payout Tracker</strong></td><td>Log closed deals, track statements, mark payments received, see your running total</td></tr><tr><td><strong>Rates &amp; Rules</strong></td><td>The deductible / non-deductible list and the four expense rules, on one page</td></tr></tbody></table><p>Open it in Excel, Google Sheets or LibreOffice. Every figure is a formula — change the split, the revenue or any expense line and the whole model updates.</p>
+<p style="margin-top:22px"><a href="../../index.html">← Back to the partnership kit</a></p>
+</main>
+<footer>
+  <strong>Devzard — Let's Build Together.</strong><br>
+  Sales Partnership Program · 70/30 profit sharing · Figures are illustrative and vary by project.
+</footer>
+</body>
+</html>
