@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Devzard Sales Partnership Program — Partner Kit</title>
+<style>
+:root{
+  --violet:#6D28D9; --violet-dark:#4C1D95; --pink:#EC4899; --cyan:#0891B2;
+  --ink:#120B2E; --slate:#4B5563; --line:#E5E1F5; --tint:#F5F3FF; --tint2:#FDF2F8;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:#FBF9FF; color:var(--ink);
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.hero{
+  position:relative; overflow:hidden; padding:64px 28px 52px;
+  background:linear-gradient(135deg,#3B0764 0%,#6D28D9 42%,#EC4899 100%);
+  color:#fff;
+}
+.hero:before,.hero:after{content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.10)}
+.hero:before{width:340px;height:340px;top:-140px;right:-80px}
+.hero:after{width:200px;height:200px;bottom:-110px;right:120px;background:rgba(255,255,255,.07)}
+.hero .wrap{position:relative;max-width:920px;margin:0 auto}
+.brand{font-weight:800;letter-spacing:.24em;font-size:12px;text-transform:uppercase;opacity:.92;margin:0 0 18px}
+.hero h1{margin:0;font-size:clamp(30px,5.2vw,50px);line-height:1.06;font-weight:800;letter-spacing:-.02em;max-width:20ch}
+.hero p.sub{margin:18px 0 0;font-size:17px;opacity:.95;max-width:60ch}
+.badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.badge{
+  background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28);
+  padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;backdrop-filter:blur(6px);
+}
+.badge.hot{background:#fff;color:var(--violet-dark);border-color:#fff}
+main{max-width:920px;margin:0 auto;padding:8px 28px 90px}
+.toc{
+  background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px 26px;
+  margin:-30px auto 40px;box-shadow:0 18px 40px -28px rgba(76,29,149,.45);position:relative;
+}
+.toc h2{margin:0 0 12px;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate);border:0;padding:0}
+.toc ol{margin:0;padding-left:20px;columns:2;column-gap:28px}
+@media(max-width:640px){.toc ol{columns:1}}
+.toc a{color:var(--violet-dark);text-decoration:none;font-weight:600;font-size:14.5px}
+.toc a:hover{color:var(--pink);text-decoration:underline}
+h2{
+  font-size:26px;line-height:1.22;margin:56px 0 16px;font-weight:800;letter-spacing:-.015em;
+  padding-bottom:12px;border-bottom:3px solid var(--pink);color:var(--violet-dark);
+}
+h3{font-size:19.5px;margin:36px 0 10px;font-weight:750;color:var(--violet)}
+h4{font-size:16px;margin:26px 0 8px;font-weight:750;color:var(--cyan);letter-spacing:.01em}
+h5,h6{font-size:15px;margin:22px 0 6px;color:var(--ink)}
+p{margin:0 0 14px}
+strong{color:var(--violet-dark);font-weight:700}
+em{color:var(--slate)}
+a{color:var(--violet);text-decoration:none;border-bottom:1px solid rgba(109,40,217,.35)}
+a:hover{color:var(--pink);border-color:var(--pink)}
+code{
+  background:var(--tint);color:var(--pink);padding:2px 6px;border-radius:6px;
+  font:13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace
+}
+pre{
+  background:#0F172A;color:#A5F3FC;padding:20px 22px;border-radius:14px;overflow-x:auto;
+  font:13.5px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:18px 0 22px;
+  box-shadow:0 18px 40px -30px rgba(15,23,42,.9)
+}
+pre code{background:none;color:inherit;padding:0}
+blockquote{
+  margin:20px 0;padding:18px 22px;background:var(--tint);border-left:5px solid var(--violet);
+  border-radius:0 14px 14px 0;color:var(--violet-dark)
+}
+blockquote p:last-child{margin-bottom:0}
+hr{border:0;border-top:1px solid var(--line);margin:38px 0}
+table{
+  width:100%;border-collapse:separate;border-spacing:0;margin:20px 0 26px;font-size:14.5px;
+  background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  box-shadow:0 16px 34px -30px rgba(76,29,149,.55)
+}
+thead th{
+  background:var(--violet-dark);color:#fff;text-align:left;font-weight:700;
+  padding:12px 14px;font-size:13.5px;letter-spacing:.01em
+}
+tbody td{padding:11px 14px;border-top:1px solid var(--line);vertical-align:top}
+tbody tr:nth-child(even) td{background:var(--tint)}
+tbody tr:hover td{background:var(--tint2)}
+ul,ol{margin:0 0 16px;padding-left:24px}
+li{margin:0 0 7px}
+li>ul,li>ol{margin-top:7px}
+footer{
+  background:var(--ink);color:#C7C3E8;padding:34px 28px;text-align:center;font-size:14px
+}
+footer strong{color:#fff}
+.doc-list{list-style:none;padding:0;margin:0}
+.doc-list li{margin-bottom:10px}
+.doc-list a{font-weight:650}
+@media print{
+  .hero{background:#4C1D95 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .toc{display:none} body{background:#fff}
+  h2{page-break-after:avoid} table,pre,blockquote{page-break-inside:avoid}
+}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:-30px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.card{
+  position:relative;background:#fff;border:1px solid var(--line);border-radius:20px;padding:26px 26px 22px;
+  box-shadow:0 22px 50px -36px rgba(76,29,149,.55);display:flex;flex-direction:column
+}
+.card.wide{grid-column:1/-1}
+.card .num{
+  position:absolute;top:18px;right:22px;font-weight:800;font-size:26px;color:var(--line);letter-spacing:-.02em
+}
+.card h3{margin:0 0 10px;font-size:20px;color:var(--violet-dark);font-weight:800}
+.card p{margin:0 0 18px;color:var(--slate);font-size:15px}
+.links{display:flex;gap:9px;flex-wrap:wrap;margin-top:auto}
+.btn{
+  border:1.5px solid var(--line);border-radius:10px;padding:9px 15px;font-size:14px;font-weight:650;
+  color:var(--violet-dark);border-bottom:1.5px solid var(--line)
+}
+.btn:hover{border-color:var(--pink);color:var(--pink)}
+.btn.primary{background:linear-gradient(135deg,#6D28D9,#EC4899);color:#fff;border-color:transparent}
+.btn.primary:hover{color:#fff;opacity:.92}
+.stat-row{display:flex;gap:14px;flex-wrap:wrap;margin:34px 0 44px}
+.stat{flex:1 1 170px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+.stat b{display:block;font-size:27px;color:var(--violet);font-weight:800;letter-spacing:-.02em}
+.stat span{font-size:13.5px;color:var(--slate)}
+.note{background:var(--tint);border-left:5px solid var(--violet);border-radius:0 14px 14px 0;padding:18px 22px;margin:34px 0;color:var(--violet-dark);font-size:15px}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <p class="brand">Devzard</p>
+    <h1>Sales Partnership Program</h1>
+    <p class="sub">Find clients. Introduce Devzard. Earn <strong style="color:#fff">30% of the net profit</strong>
+    on every deal you close — while our team handles all the technical work.</p>
+    <div class="badges">
+      <span class="badge hot">70 / 30 profit share</span>
+      <span class="badge">No coding required</span>
+      <span class="badge">60-day trial</span>
+      <span class="badge">Non-exclusive</span>
+      <span class="badge">No joining fee</span>
+    </div>
+  </div>
+</header>
+<main>
+  <div class="stat-row">
+    <div class="stat"><b>30%</b><span>to the sales partner on every successful project</span></div>
+    <div class="stat"><b>PKR 4,500</b><span>on the reference deal: PKR 15,000 net profit</span></div>
+    <div class="stat"><b>7 days</b><span>payout window after payment clears and delivery lands</span></div>
+    <div class="stat"><b>60 days</b><span>trial, with a written review at the end</span></div>
+  </div>
+  <div class="grid">
+    <article class="card">
+      <span class="num">01</span>
+      <h3>Sales Partnership Program</h3>
+      <p>The complete pitch: what the program is, what you do, what Devzard does, the 70/30 split, the 60-day trial and the answers to every question a prospective partner asks.</p>
+      <div class="links">
+        <a class="btn primary" href="Devzard-Sales-Partnership-Program-Overview.html">Read online</a>
+        <a class="btn" href="../pdf/Devzard-Sales-Partnership-Program-Overview.pdf">PDF</a>
+        <a class="btn" href="../docx/Devzard-Sales-Partnership-Program-Overview.docx">Word</a>
+      </div>
+    </article>
+
+    <article class="card">
+      <span class="num">02</span>
+      <h3>Sales Partnership Agreement</h3>
+      <p>A complete, editable partnership agreement with a plain-language summary, five schedules and a signature page. Reviewed clause by clause so a partner can see exactly what protects them.</p>
+      <div class="links">
+        <a class="btn primary" href="Devzard-Sales-Partnership-Agreement.html">Read online</a>
+        <a class="btn" href="../pdf/Devzard-Sales-Partnership-Agreement.pdf">PDF</a>
+        <a class="btn" href="../docx/Devzard-Sales-Partnership-Agreement.docx">Word</a>
+      </div>
+    </article>
+
+    <article class="card">
+      <span class="num">03</span>
+      <h3>Commission & Net Profit Guide</h3>
+      <p>The transparency document. Eight worked examples from a PKR 20,000 landing page to a PKR 650,000 web application, plus the four expense rules and the payout timeline.</p>
+      <div class="links">
+        <a class="btn primary" href="Devzard-Commission-and-Net-Profit-Guide.html">Read online</a>
+        <a class="btn" href="../pdf/Devzard-Commission-and-Net-Profit-Guide.pdf">PDF</a>
+        <a class="btn" href="../docx/Devzard-Commission-and-Net-Profit-Guide.docx">Word</a>
+      </div>
+    </article>
+
+    <article class="card">
+      <span class="num">04</span>
+      <h3>Outreach Playbook</h3>
+      <p>The practical weapon: 12 target segments, ready-to-send WhatsApp, LinkedIn and email templates, a five-stage follow-up sequence and answers to the ten objections you will hear.</p>
+      <div class="links">
+        <a class="btn primary" href="Devzard-Outreach-Playbook.html">Read online</a>
+        <a class="btn" href="../pdf/Devzard-Outreach-Playbook.pdf">PDF</a>
+        <a class="btn" href="../docx/Devzard-Outreach-Playbook.docx">Word</a>
+      </div>
+    </article>
+
+    <article class="card">
+      <span class="num">05</span>
+      <h3>Partner Onboarding Checklist</h3>
+      <p>Everything that must happen between yes and the first payout: the setup list, the onboarding agenda, week-one actions and the day-60 review sheet.</p>
+      <div class="links">
+        <a class="btn primary" href="Devzard-Partner-Onboarding-Checklist.html">Read online</a>
+        <a class="btn" href="../pdf/Devzard-Partner-Onboarding-Checklist.pdf">PDF</a>
+        <a class="btn" href="../docx/Devzard-Partner-Onboarding-Checklist.docx">Word</a>
+      </div>
+    </article>
+
+    <article class="card wide">
+      <span class="num">06</span>
+      <h3>Commission Calculator &amp; Payout Tracker</h3>
+      <p>A live Excel workbook: enter client revenue and expense lines to get net profit, Devzard's 70% and
+         your 30% instantly. Includes eight worked examples, a payout tracker with running totals and the
+         full rates-and-rules reference.</p>
+      <div class="links">
+        <a class="btn primary" href="../xlsx/Devzard-Commission-Calculator.xlsx">Download workbook</a>
+      </div>
+    </article>
+  </div>
+  <div class="note">
+    <strong>Partner kit contents.</strong> Five documents and one live workbook — the pitch, the contract, the
+    money rules, the outreach templates and the onboarding plan. Everything is editable: the DOCX files are
+    ready for legal review, the PDFs are ready to send, and the workbook calculates real deals.
+  </div>
+  <div class="note" style="border-left-color:var(--pink);background:var(--tint2)">
+    <strong>Illustrative figures.</strong> All amounts shown are examples based on the reference deal of
+    PKR 20,000 revenue and PKR 5,000 expenses. Actual profits vary with each project's price, scope and
+    expenses, and partner earnings depend entirely on successful deals brought in. Nothing here is a
+    guarantee of income.
+  </div>
+</main>
+<footer>
+  <strong>Devzard — Let's Build Together.</strong><br>
+  Sales Partnership Program · 70/30 profit sharing
+</footer>
+</body>
+</html>

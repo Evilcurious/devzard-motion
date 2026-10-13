@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Partner Onboarding Checklist · Devzard Sales Partnership</title>
+<style>
+:root{
+  --violet:#6D28D9; --violet-dark:#4C1D95; --pink:#EC4899; --cyan:#0891B2;
+  --ink:#120B2E; --slate:#4B5563; --line:#E5E1F5; --tint:#F5F3FF; --tint2:#FDF2F8;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:#FBF9FF; color:var(--ink);
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.hero{
+  position:relative; overflow:hidden; padding:64px 28px 52px;
+  background:linear-gradient(135deg,#3B0764 0%,#6D28D9 42%,#EC4899 100%);
+  color:#fff;
+}
+.hero:before,.hero:after{content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.10)}
+.hero:before{width:340px;height:340px;top:-140px;right:-80px}
+.hero:after{width:200px;height:200px;bottom:-110px;right:120px;background:rgba(255,255,255,.07)}
+.hero .wrap{position:relative;max-width:920px;margin:0 auto}
+.brand{font-weight:800;letter-spacing:.24em;font-size:12px;text-transform:uppercase;opacity:.92;margin:0 0 18px}
+.hero h1{margin:0;font-size:clamp(30px,5.2vw,50px);line-height:1.06;font-weight:800;letter-spacing:-.02em;max-width:20ch}
+.hero p.sub{margin:18px 0 0;font-size:17px;opacity:.95;max-width:60ch}
+.badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.badge{
+  background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28);
+  padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;backdrop-filter:blur(6px);
+}
+.badge.hot{background:#fff;color:var(--violet-dark);border-color:#fff}
+main{max-width:920px;margin:0 auto;padding:8px 28px 90px}
+.toc{
+  background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px 26px;
+  margin:-30px auto 40px;box-shadow:0 18px 40px -28px rgba(76,29,149,.45);position:relative;
+}
+.toc h2{margin:0 0 12px;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate);border:0;padding:0}
+.toc ol{margin:0;padding-left:20px;columns:2;column-gap:28px}
+@media(max-width:640px){.toc ol{columns:1}}
+.toc a{color:var(--violet-dark);text-decoration:none;font-weight:600;font-size:14.5px}
+.toc a:hover{color:var(--pink);text-decoration:underline}
+h2{
+  font-size:26px;line-height:1.22;margin:56px 0 16px;font-weight:800;letter-spacing:-.015em;
+  padding-bottom:12px;border-bottom:3px solid var(--pink);color:var(--violet-dark);
+}
+h3{font-size:19.5px;margin:36px 0 10px;font-weight:750;color:var(--violet)}
+h4{font-size:16px;margin:26px 0 8px;font-weight:750;color:var(--cyan);letter-spacing:.01em}
+h5,h6{font-size:15px;margin:22px 0 6px;color:var(--ink)}
+p{margin:0 0 14px}
+strong{color:var(--violet-dark);font-weight:700}
+em{color:var(--slate)}
+a{color:var(--violet);text-decoration:none;border-bottom:1px solid rgba(109,40,217,.35)}
+a:hover{color:var(--pink);border-color:var(--pink)}
+code{
+  background:var(--tint);color:var(--pink);padding:2px 6px;border-radius:6px;
+  font:13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace
+}
+pre{
+  background:#0F172A;color:#A5F3FC;padding:20px 22px;border-radius:14px;overflow-x:auto;
+  font:13.5px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:18px 0 22px;
+  box-shadow:0 18px 40px -30px rgba(15,23,42,.9)
+}
+pre code{background:none;color:inherit;padding:0}
+blockquote{
+  margin:20px 0;padding:18px 22px;background:var(--tint);border-left:5px solid var(--violet);
+  border-radius:0 14px 14px 0;color:var(--violet-dark)
+}
+blockquote p:last-child{margin-bottom:0}
+hr{border:0;border-top:1px solid var(--line);margin:38px 0}
+table{
+  width:100%;border-collapse:separate;border-spacing:0;margin:20px 0 26px;font-size:14.5px;
+  background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  box-shadow:0 16px 34px -30px rgba(76,29,149,.55)
+}
+thead th{
+  background:var(--violet-dark);color:#fff;text-align:left;font-weight:700;
+  padding:12px 14px;font-size:13.5px;letter-spacing:.01em
+}
+tbody td{padding:11px 14px;border-top:1px solid var(--line);vertical-align:top}
+tbody tr:nth-child(even) td{background:var(--tint)}
+tbody tr:hover td{background:var(--tint2)}
+ul,ol{margin:0 0 16px;padding-left:24px}
+li{margin:0 0 7px}
+li>ul,li>ol{margin-top:7px}
+footer{
+  background:var(--ink);color:#C7C3E8;padding:34px 28px;text-align:center;font-size:14px
+}
+footer strong{color:#fff}
+.doc-list{list-style:none;padding:0;margin:0}
+.doc-list li{margin-bottom:10px}
+.doc-list a{font-weight:650}
+@media print{
+  .hero{background:#4C1D95 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .toc{display:none} body{background:#fff}
+  h2{page-break-after:avoid} table,pre,blockquote{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <p class="brand">Devzard</p>
+    <h1>Partner Onboarding Checklist</h1>
+    <p class="sub">From signature to first commission — a day-by-day 60-day plan with owners, targets and a trial review that decides what happens next.</p>
+    <div class="badges">
+      <span class="badge hot">70 / 30 profit share</span>
+      <span class="badge">No coding required</span>
+      <span class="badge">30% to the sales partner</span>
+      <span class="badge">Get started</span>
+    </div>
+  </div>
+</header>
+<main>
+
+<h2 id="sec-0">Partner Onboarding Checklist</h2><p><em>Everything that has to happen between "yes" and "first commission".</em></p><hr><h3>Step 0 — Before you sign</h3><ul><li>[ ] Read the <strong>Program Overview</strong> (<code>01-program-overview.md</code>) and the <strong>Commission Guide</strong> (<code>03-commission-guide.md</code>)</li><li>[ ] Read the <strong>Partnership Agreement</strong> (<code>02-partner-agreement.md</code>) end to end, including the Schedules</li><li>[ ] Confirm the two numbers that matter most to you: <strong>30% of net profit</strong> and <strong>payout within 7 business days of payment + delivery</strong></li><li>[ ] Ask anything you do not understand. Undisclosed confusion becomes a dispute later</li></ul><hr><h3>Step 1 — Sign and set up (Day 0)</h3><table><thead><tr><th>#</th><th>Task</th><th>Owner</th></tr></thead><tbody><tr><td>1</td><td>Sign the partnership agreement (e-signature or scan is fine)</td><td>Partner + Devzard</td></tr><tr><td>2</td><td>Exchange contact details, bank account for payouts, CNIC / NTN where available</td><td>Partner</td></tr><tr><td>3</td><td>Receive the <strong>client exclusion list</strong> — existing Devzard clients and active leads</td><td>Devzard</td></tr><tr><td>4</td><td>Get added to the <strong>lead tracker</strong> and the partner <strong>WhatsApp group</strong></td><td>Devzard</td></tr><tr><td>5</td><td>Receive the <strong>service catalogue and pricing guide</strong></td><td>Devzard</td></tr><tr><td>6</td><td>Receive the <strong>pitch deck</strong>, portfolio links and one-pagers (English + Urdu)</td><td>Devzard</td></tr><tr><td>7</td><td>Book the 1-hour onboarding session</td><td>Both</td></tr></tbody></table><hr><h3>Step 2 — The onboarding session (Day 0–3, one hour)</h3><p><strong>Agenda:</strong></p><ol><li>How Devzard works — services, delivery process, what a typical project looks like from the inside (15 min)</li><li>Pricing, scope and margins — how to size a deal and what is realistic to promise (15 min)</li><li>The lead tracker — how to register a lead and why attribution discipline protects your 30% (10 min)</li><li>Pitching — how to introduce Devzard without sounding like an advertisement (15 min)</li><li>Open floor — your network, your industry, your first 10 targets (5 min)</li></ol><p><strong>You leave with:</strong> the pitch in your own words, the price bands in your head, and 10 named targets.</p><hr><h3>Step 3 — Week 1 (Days 1–7)</h3><ul><li>[ ] List 25 businesses or individuals in your network who could plausibly buy from Devzard</li><li>[ ] Register your <strong>first 10 target leads</strong> in the tracker — company, contact, contact details, source, why you think they need us</li><li>[ ] Review those 10 with the Devzard team; agree who to approach first and in what order</li><li>[ ] Write and rehearse your first-touch message (use the templates in <code>04-outreach-playbook.md</code>, then make it your own)</li><li>[ ] Send your first 5 first-touch messages</li><li>[ ] Book your first discovery call</li></ul><hr><h3>Step 4 — Days 8–30</h3><ul><li>[ ] Register 20 qualified leads in total</li><li>[ ] Contact every registered lead at least once</li><li>[ ] Book and hold 3–5 discovery calls (Devzard joins each one)</li><li>[ ] Watch at least one proposal as it is written so you know what is in it</li><li>[ ] Log every conversation and every next step in the tracker</li><li>[ ] Weekly 15-minute check-in with the team for the first month</li></ul><hr><h3>Step 5 — Days 31–60</h3><ul><li>[ ] Keep the pipeline moving — no lead left without a next action and a date</li><li>[ ] Follow up on every proposal at least three times (most deals are won on follow-up three, not call one)</li><li>[ ] Close your first project</li><li>[ ] Receive your first commission statement — check it against the Commission Guide line by line</li><li>[ ] Ask the client for a testimonial and one referral</li></ul><hr><h3>Day 60 — Trial review</h3><table><thead><tr><th>Metric</th><th>Default target</th><th>Result</th></tr></thead><tbody><tr><td>Qualified leads registered</td><td>20</td><td></td></tr><tr><td>Leads contacted</td><td>20</td><td></td></tr><tr><td>Discovery calls held</td><td>6</td><td></td></tr><tr><td>Proposals sent</td><td>4</td><td></td></tr><tr><td>Projects closed</td><td>1</td><td></td></tr><tr><td>Commission paid</td><td>—</td><td></td></tr></tbody></table><p><strong>Outcomes:</strong></p><ul><li><strong>Expand.</strong> Targets met or close to met → open-ended partnership, monthly review, priority on new leads.</li><li><strong>Extend.</strong> Strong outreach, deals still in the pipeline → extend the trial by 30 days and re-review.</li><li><strong>Adjust.</strong> Outreach is working but the target market is wrong → change segment, channel or message and run again.</li><li><strong>Part ways.</strong> No outreach, no activity, no pipeline → clean exit, no hard feelings, no obligations either side.</li></ul><hr><h3>Day 1 — what to do right now</h3><ol><li>Open the lead tracker and write down <strong>10 names</strong>. Not companies you have heard of — people who would actually take your call.</li><li>Pick the two strongest. Send the first-touch WhatsApp template from the outreach playbook.</li><li>Message the Devzard WhatsApp group with those two names so the team knows who is being approached and can prepare.</li></ol><p>That is it. Pipeline first, perfection later.</p><hr><h3>Reference</h3><table><thead><tr><th>Document</th><th>Use it for</th></tr></thead><tbody><tr><td><code>01-program-overview.md</code></td><td>Understanding the program, the pitch, the FAQ</td></tr><tr><td><code>02-partner-agreement.md</code></td><td>The binding terms — read before signing</td></tr><tr><td><code>03-commission-guide.md</code></td><td>Every number, every expense rule, every example</td></tr><tr><td><code>04-outreach-playbook.md</code></td><td>Who to contact, what to say, how to follow up</td></tr><tr><td><code>05-onboarding-checklist.md</code></td><td>This document — your first 60 days</td></tr><tr><td><code>exports/Devzard-Commission-Calculator.xlsx</code></td><td>Live commission calculator and payout tracker</td></tr></tbody></table>
+<p style="margin-top:22px"><a href="../../index.html">← Back to the partnership kit</a></p>
+</main>
+<footer>
+  <strong>Devzard — Let's Build Together.</strong><br>
+  Sales Partnership Program · 70/30 profit sharing · Figures are illustrative and vary by project.
+</footer>
+</body>
+</html>
