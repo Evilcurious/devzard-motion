@@ -200,6 +200,19 @@ Outgoing reply content is sent as a **new email**, not a threaded Gmail reply. S
 
 Open **Settings → Appearance**. Choose **Green & white, Black & white, Red & white, Blue & white, Yellow & white, or Gold & white**. The theme applies to the entire app immediately. It is stored with the workspace in PostgreSQL, or locally if no database is configured. All six are light themes with a white canvas, not dark mode.
 
+## Use laptop Ollama from Vercel through a secure tunnel
+
+See **[docs/OLLAMA-TUNNEL.md](docs/OLLAMA-TUNNEL.md)** for the Windows/macOS/Linux instructions. This project includes a loopback-only, Bearer-authenticated gateway so you can tunnel it instead of exposing Ollama directly:
+
+```sh
+npm run ollama:setup
+npm run ollama:gateway
+# In a separate terminal after installing cloudflared:
+cloudflared tunnel --url http://127.0.0.1:11435
+```
+
+Then point Vercel's OpenAI-compatible provider at the HTTPS tunnel's `/v1` endpoint, using the generated gateway token as `AI_API_KEY`. Keep your laptop awake and all three components running. Quick Tunnel URLs change across sessions. The gateway requires Node 22+, one configured model, and non-streaming requests; it never exposes Ollama's model-management API.
+
 ## Vercel and other hosting
 
 Import the repository into Vercel using the Next.js preset and the branch containing this code. Set:
