@@ -1,5 +1,6 @@
 'use client';
 import { databaseLabel } from '@/lib/database-label';
+import { GEMINI_BASE_URL, GEMINI_MODEL_EXAMPLE } from '@/lib/ai-presets';
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/client-api';
 export { api } from '@/lib/client-api';
@@ -210,6 +211,35 @@ export function Settings({
               </button>
             ))}
           </div>
+          <div className="info-callout gemini-preset">
+            <Globe2 size={19} />
+            <div>
+              <strong>Using a Google Gemini API key?</strong>
+              <p>
+                Gemini’s official endpoint is trusted by default. No AI_ALLOWED_ORIGINS change is
+                needed.
+              </p>
+              <button
+                className="button small"
+                type="button"
+                disabled={!!busy}
+                onClick={() => {
+                  setProvider('compatible');
+                  setBaseURL(GEMINI_BASE_URL);
+                  setModel(
+                    status.provider === 'compatible' &&
+                      status.baseURL?.replace(/\/$/, '') === GEMINI_BASE_URL
+                      ? status.model || GEMINI_MODEL_EXAMPLE
+                      : GEMINI_MODEL_EXAMPLE,
+                  );
+                  setKey('');
+                  setError('');
+                }}
+              >
+                Use Gemini settings
+              </button>
+            </div>
+          </div>
           <section className="settings-panel">
             <div className="panel-title">
               <KeyRound size={18} />
@@ -232,7 +262,11 @@ export function Settings({
                         : 'Your provider’s model ID'
                   }
                 />
-                <span>Use a model that supports tool calling for email and spreadsheet tasks.</span>
+                <span>
+                  {provider === 'compatible' && baseURL.replace(/\/$/, '') === GEMINI_BASE_URL
+                    ? 'Use a Gemini model ID available to your API key in Google AI Studio. The suggested name is an example; availability and quotas vary.'
+                    : 'Use a model that supports tool calling for email and spreadsheet tasks.'}
+                </span>
               </label>
               {provider !== 'openai' && (
                 <label>
@@ -244,8 +278,8 @@ export function Settings({
                     maxLength={500}
                   />
                   <span>
-                    Include /v1. For custom hosts, add the origin to AI_ALLOWED_ORIGINS in
-                    .env.local.
+                    Use your provider’s OpenAI-compatible base URL. Gemini uses /v1beta/openai, not
+                    /v1. Custom hosts need AI_ALLOWED_ORIGINS in .env.local.
                   </span>
                 </label>
               )}
@@ -256,7 +290,9 @@ export function Settings({
                     {status.keySaved && provider === status.provider
                       ? '(leave blank to keep existing)'
                       : provider === 'compatible'
-                        ? '(if required)'
+                        ? baseURL.replace(/\/$/, '') === GEMINI_BASE_URL
+                          ? '(Gemini key required)'
+                          : '(if required)'
                         : ''}
                   </span>
                   <input
@@ -297,8 +333,9 @@ export function Settings({
                   <div>
                     <strong>Bring your own endpoint</strong>
                     <p>
-                      Enter the endpoint above, including <code>/v1</code>. New endpoint origins
-                      must be explicitly allowed with AI_ALLOWED_ORIGINS on the server.
+                      Enter your provider’s OpenAI-compatible base URL above. Gemini uses{' '}
+                      <code>/v1beta/openai</code> and is trusted by default. Other custom origins
+                      must be allowed with AI_ALLOWED_ORIGINS on the server.
                     </p>
                   </div>
                 </div>

@@ -137,6 +137,35 @@ AI_API_KEY=your-api-key
 
 API usage may incur provider charges. A blank key field preserves the saved key for the same provider. **Use server defaults** removes the saved model connection and restores environment settings.
 
+### Google Gemini
+
+Gemini's official OpenAI-compatible endpoint is **allowed by default**. You no longer need an `AI_ALLOWED_ORIGINS` entry for Google Gemini.
+
+1. Open **Settings → AI model → Use Gemini settings**. This chooses Other API and fills the correct base URL.
+2. Enter a Gemini model ID available to your key in Google AI Studio. `gemini-2.5-flash` is a suggested example, not a guarantee of model availability.
+3. Enter your Gemini API key, choose **Save connection**, then **Test saved connection**.
+
+The base URL must be exactly:
+
+```text
+https://generativelanguage.googleapis.com/v1beta/openai
+```
+
+Do not add `/v1`, `/chat/completions`, a `generateContent` path, or `?key=...`; Relay supplies the request path and sends the key server-side in the authorization header.
+
+Environment-only setup is also supported:
+
+```dotenv
+AI_PROVIDER=compatible
+AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+AI_MODEL=gemini-2.5-flash
+AI_API_KEY=your-gemini-api-key
+```
+
+After editing environment settings, restart the local app or redeploy Vercel. Existing saved model settings override environment defaults; choose **Use server defaults** if you intend to use only the environment configuration.
+
+If you still see the old “origin is not allowed” error, stop the old process and start the **updated project folder**, not an older extracted ZIP. For production mode, rebuild with `npm run build` before `npm start`. On Vercel, deploy the latest commit on the project branch. Keep your existing `.env.local` and `SESSION_SECRET` when updating. Never paste the Gemini key in chat or commit it.
+
 ### Another OpenAI-compatible API
 
 Allow the endpoint's exact origin in `.env.local`, then restart:
@@ -151,7 +180,7 @@ In Settings select Other API and enter:
 - Model: your provider's model ID
 - API key: if required by that provider
 
-The endpoint must support `/chat/completions`, with function tools for Google actions. OpenAI, local Ollama and origins from `AI_BASE_URL`/`OLLAMA_BASE_URL` are already allowed. Origins are exact matches, not arbitrary URLs. URL credentials/query strings/fragments and redirects are rejected. Only trusted server administrators should edit the allowlist.
+The endpoint must support `/chat/completions`, with function tools for Google actions. OpenAI, Google Gemini, local Ollama and origins from `AI_BASE_URL`/`OLLAMA_BASE_URL` are already allowed. Origins are exact matches, not arbitrary URLs. URL credentials/query strings/fragments and redirects are rejected. Only trusted server administrators should edit the allowlist.
 
 Environment-only configuration is also available:
 

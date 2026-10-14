@@ -1,7 +1,14 @@
+import { GEMINI_ORIGIN, GEMINI_BASE_URL } from './ai-presets';
+
 // Editable endpoints are a privileged, single-owner feature, not an unrestricted proxy.
 // Allow exact origins via server configuration, including local Ollama.
 export function validateEndpoint(value: string) {
-  const url = new URL(value);
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    throw new Error('Enter a complete HTTP(S) API endpoint, not an API key or model name.');
+  }
   if (
     !['https:', 'http:'].includes(url.protocol) ||
     url.username ||
@@ -14,6 +21,7 @@ export function validateEndpoint(value: string) {
     );
   const allowed = [
     'https://api.openai.com',
+    GEMINI_ORIGIN,
     'http://localhost:11434',
     'http://127.0.0.1:11434',
     process.env.AI_BASE_URL,
@@ -32,5 +40,11 @@ export function validateEndpoint(value: string) {
     throw new Error(
       'This endpoint origin is not allowed. Add its origin to AI_ALLOWED_ORIGINS in .env.local, then restart Relay.',
     );
-  return value.replace(/\/$/, '');
+  const normalized = url.toString().replace(/\/$/, '');
+  if (url.origin === GEMINI_ORIGIN && normalized !== GEMINI_BASE_URL) {
+    throw new Error(
+      `For Gemini, use ${GEMINI_BASE_URL} with Other API. Do not add /v1, /chat/completions or a generateContent path.`,
+    );
+  }
+  return normalized;
 }
