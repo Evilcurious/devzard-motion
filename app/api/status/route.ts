@@ -18,6 +18,9 @@ export async function GET() {
       databaseConfigured: db.configured,
       databaseReady: db.ready,
       databaseError: db.error,
+      databaseProvider: db.provider,
+      databasePooled: db.pooled,
+      databaseTLS: db.tls,
       deployment: process.env.VERCEL ? 'vercel' : 'self-hosted',
     };
     if (db.configured && !db.ready) return Response.json(common);

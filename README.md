@@ -1,11 +1,11 @@
 # Relay — your personal AI workspace
 
-A self-hostable, **single-owner** AI agent built with Next.js 16, React 19, TypeScript and optional PostgreSQL. Run it on your laptop, a Node.js host, or Vercel. Connect Ollama, OpenAI or another OpenAI-compatible API.
+A self-hostable, **single-owner** AI agent built with Next.js 16, React 19, TypeScript and optional **Neon Postgres** (hosted PostgreSQL). Run it on your laptop, a Node.js host, or Vercel. Connect Ollama, OpenAI or another OpenAI-compatible API.
 
 ## What's included
 
 - Chat, searchable history, PDF/text uploads and reusable, manually triggered workflows.
-- **PostgreSQL persistence:** conversations, document text, workflows, activity and theme survive browser changes.
+- **Neon Postgres persistence:** conversations, document text, workflows, activity and theme survive browser changes.
 - **Encrypted connections:** AI API keys, Google OAuth client secrets and Google access/refresh tokens are encrypted at rest in PostgreSQL. Saved secrets are never returned by the settings API.
 - **AI settings:** provider, model, API key and editable endpoint; save, reset, and test the saved connection.
 - **Google APIs settings:** save a Google OAuth client ID/secret, then authorize Gmail and Google Sheets.
@@ -50,39 +50,42 @@ Keep the terminal open. Press Ctrl+C to stop. After changing `.env.local`, resta
 
 Run `npm run setup`, restart Relay, sign in and try saving again. Saving connections requires a stable `SESSION_SECRET` of at least 32 characters. If you already set a shorter secret manually, replace it with a generated strong value **before** using encrypted persistence. Never rotate a working encryption key without backing up/decrypting its saved credentials first.
 
-## PostgreSQL: make chats and API settings permanent
+## Neon Postgres: save chats and API settings without a local database server
 
-### 1. Create a database
+See **[docs/NEON-SETUP.md](docs/NEON-SETUP.md)** for the complete laptop setup. Neon hosts PostgreSQL; Relay and Ollama can continue running on your laptop. Existing standard PostgreSQL installations remain compatible.
 
-Install PostgreSQL locally (the Windows installer includes pgAdmin), or create a hosted PostgreSQL database. In pgAdmin, create a database named **`relay`**. Use a dedicated database/user for this app.
+### 1. Create/select a Neon project
+
+Open Neon Console, click **Connect**, choose an existing database and role, enable connection pooling, and copy the full PostgreSQL connection string. No local PostgreSQL installation is needed.
 
 ### 2. Configure the server
 
-Add your connection string to `.env.local`:
+Add the copied string to your private `.env.local`:
 
 ```dotenv
-DATABASE_URL=postgresql://postgres:YOUR_DATABASE_PASSWORD@localhost:5432/relay
+DATABASE_URL="paste-your-full-Neon-connection-string-here"
 APP_URL=http://localhost:3000
 ```
 
-Use the username/password you created during PostgreSQL setup. URL-encode special characters in the username or password. Hosted providers should supply a TLS-enabled connection string; use their recommended pooled URL for Vercel/serverless hosts. Certificate verification is not disabled by the app.
+The example is a placeholder, not a working account. Keep the actual database name from Neon (often `neondb`) and its SSL/channel-binding parameters. Do not change the name to `relay` unless you created that database. Copy plain text: no Markdown/mailto links and use `&`, not `&amp;`.
 
-Keep the generated `APP_PASSWORD` and `SESSION_SECRET`. Both are required in database mode because every authorized browser accesses the same owner workspace.
+Relay detects Neon pooled/direct endpoints, requires certificate-verified TLS, and enables channel-binding support. Keep your original `SESSION_SECRET` and your Relay `APP_PASSWORD`. Both are required in database mode; the Relay password is separate from your Neon database password. Never commit a connection string containing a real password.
 
 ### 3. Initialize tables and restart
 
 ```sh
 npm run db:migrate
+npm run db:check
 npm run dev
 ```
 
 For production mode, stop the old server, run `npm run build`, then `npm start`.
 
-The migration is safe to rerun; it doesn't delete existing data. It creates `relay_settings`, `relay_workspace`, and `relay_action_claims`.
+The migration is safe to rerun; it does not delete existing data or move data from a different database. It creates `relay_settings`, `relay_workspace`, and `relay_action_claims`.
 
 ### 4. Verify
 
-Open **Settings → Database → Check database connection**. The status should be Connected. After editing chats or themes, wait for **Saved to PostgreSQL** before closing the page.
+Open **Settings → Database → Check database connection**. The status should be Connected. After editing chats or themes, wait for **Saved to Neon Postgres** before closing the page.
 
 Important behavior:
 
@@ -218,7 +221,7 @@ Then point Vercel's OpenAI-compatible provider at the HTTPS tunnel's `/v1` endpo
 Import the repository into Vercel using the Next.js preset and the branch containing this code. Set:
 
 - `APP_PASSWORD`, stable `SESSION_SECRET`, and `APP_URL=https://your-domain`
-- `DATABASE_URL` for hosted PostgreSQL (optional, recommended)
+- `DATABASE_URL` from Neon → Connect, with pooling enabled (optional, recommended)
 - AI/environment settings and endpoint allowlist as needed
 
 Run `npm run db:migrate` against that database once from your machine or deployment tooling. Do not put migrations into every request. Set the matching HTTPS Google callback URI in Google Cloud. Use a pooled database URL with serverless hosting; each app instance uses up to three connections.
@@ -259,7 +262,8 @@ On another Node.js host, run `npm run build` then `npm start`. Use HTTPS, a fire
 ## Extend and test
 
 ```text
-lib/db.ts, db/schema.sql          PostgreSQL connection, schema and action claims
+lib/db.ts, lib/postgres-config.mjs  Neon/PostgreSQL configuration, TLS and safe diagnostics
+db/schema.sql                   Existing PostgreSQL schema and action claims
 lib/secrets.ts                   Purpose-bound at-rest credential encryption
 lib/connection-store.ts          Database or encrypted-cookie connection storage
 lib/ai.ts, lib/endpoint.ts       Model configuration and endpoint allowlist

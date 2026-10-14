@@ -74,7 +74,7 @@ export function useWorkspaceStorage(
         if (database) {
           const response = await fetch('/api/workspace', { cache: 'no-store' });
           const result = await response.json();
-          if (!response.ok) throw new Error(result.error || 'Could not load PostgreSQL history.');
+          if (!response.ok) throw new Error(result.error || 'Could not load database history.');
           if (disposed) return;
           revision.current = result.revision;
           if (result.data) {
@@ -145,7 +145,7 @@ export function useWorkspaceStorage(
           if (id !== generation.current) return;
           if (!response.ok)
             throw new Error(
-              result.error || 'PostgreSQL save failed. Your local draft is still available.',
+              result.error || 'Database save failed. Your local draft is still available.',
             );
           revision.current = result.revision;
           saved.current = json;

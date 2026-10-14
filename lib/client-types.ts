@@ -14,6 +14,9 @@ export type Status = {
   databaseConfigured?: boolean;
   databaseReady?: boolean;
   databaseError?: string;
+  databaseProvider?: string | null;
+  databasePooled?: boolean;
+  databaseTLS?: boolean;
   connectionError?: string;
   baseURL?: string;
   keySaved?: boolean;

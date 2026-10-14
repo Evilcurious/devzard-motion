@@ -1,4 +1,5 @@
 'use client';
+import { databaseLabel } from '@/lib/database-label';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity as ActivityIcon,
@@ -684,12 +685,12 @@ export default function Workspace() {
           >
             <span>
               {storage.syncState === 'saving'
-                ? 'Saving to PostgreSQL…'
+                ? `Saving to ${databaseLabel(status)}…`
                 : storage.syncState === 'error'
                   ? status?.databaseConfigured
-                    ? 'Not saved to PostgreSQL'
+                    ? `Not saved to ${databaseLabel(status)}`
                     : 'Browser history could not be saved'
-                  : 'Saved to PostgreSQL'}
+                  : `Saved to ${databaseLabel(status)}`}
             </span>
             {storage.syncError && (
               <>
@@ -1071,7 +1072,7 @@ export default function Workspace() {
                     <p>
                       Your OAuth tokens are encrypted{' '}
                       {status?.databaseConfigured
-                        ? 'in PostgreSQL'
+                        ? `in ${databaseLabel(status)}`
                         : 'in a secure HTTP-only cookie'}
                       . Disconnecting removes both app connections from this workspace. You can
                       revoke access entirely in your Google account.
@@ -1225,7 +1226,7 @@ export default function Workspace() {
               <div className="subtle-note">
                 <Monitor size={15} />
                 {status?.databaseConfigured
-                  ? 'Activity is saved to PostgreSQL with your workspace.'
+                  ? `Activity is saved to ${databaseLabel(status)} with your workspace.`
                   : 'Activity is stored only in this browser.'}{' '}
                 Up to 200 recent events are kept.
               </div>
@@ -1381,7 +1382,7 @@ export default function Workspace() {
           title="A fresh start?"
           subtitle={
             status?.databaseConfigured
-              ? 'This clears chats, document text, activity and custom workflows from the shared PostgreSQL workspace and this browser. Other devices will see the cleared history after reloading. API connections stay saved.'
+              ? `This clears chats, document text, activity and custom workflows from the shared ${databaseLabel(status)} workspace and this browser. Other devices will see the cleared history after reloading. API connections stay saved.`
               : 'This permanently clears this browser’s chats, document text, activity and custom workflows. Your AI and Google connections will stay connected.'
           }
           onClose={closeModal}
@@ -1403,7 +1404,7 @@ export default function Workspace() {
                 closeModal();
                 notify(
                   status?.databaseConfigured
-                    ? 'Workspace cleared locally. Wait for the PostgreSQL save confirmation above.'
+                    ? `Workspace cleared locally. Wait for the ${databaseLabel(status)} save confirmation above.`
                     : 'Your local workspace data has been cleared.',
                 );
               }}
@@ -1644,7 +1645,7 @@ function Login({
         <h1>{setupRequired ? 'One more thing to feel at home.' : 'Your workspace is waiting.'}</h1>
         <p>
           {setupRequired
-            ? 'Run npm run setup, then restart Relay. PostgreSQL and hosted workspaces require APP_PASSWORD and a SESSION_SECRET of at least 32 characters. This keeps your agent and accounts private.'
+            ? `Run npm run setup, then restart Relay. Database-backed and hosted workspaces require APP_PASSWORD and a SESSION_SECRET of at least 32 characters. This keeps your agent and accounts private.`
             : 'Enter your workspace password to pick up where you left off.'}
         </p>
         {!setupRequired && (

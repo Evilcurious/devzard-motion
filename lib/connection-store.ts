@@ -19,7 +19,7 @@ export async function saveConnection(name: string, value: unknown) {
     const encrypted = seal(value, 30 * 86400);
     if (encrypted.length > 3800)
       throw new Error(
-        'This connection is too large for cookie storage. Configure PostgreSQL to save it.',
+        'This connection is too large for cookie storage. Connect Neon Postgres to save it.',
       );
     jar.set(`relay_${name}`, encrypted, { ...cookieOptions, maxAge: 30 * 86400 });
   }

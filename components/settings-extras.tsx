@@ -1,4 +1,5 @@
 'use client';
+import { databaseLabel } from '@/lib/database-label';
 import { useEffect, useState } from 'react';
 import {
   Check,
@@ -17,10 +18,12 @@ export function AppearanceSettings({
   theme,
   onChange,
   database,
+  storageName,
 }: {
   theme: Theme;
   onChange: (theme: Theme) => void;
   database: boolean;
+  storageName: string;
 }) {
   return (
     <section>
@@ -62,8 +65,8 @@ export function AppearanceSettings({
       <div className="subtle-note">
         <Palette size={15} />
         {database
-          ? 'Your theme saves to PostgreSQL along with your workspace.'
-          : 'Your theme is remembered in this browser. Connect PostgreSQL to share it between devices.'}
+          ? `Your theme saves to ${storageName} along with your workspace.`
+          : 'Your theme is remembered in this browser. Connect Neon Postgres to share it between devices.'}
       </div>
     </section>
   );
@@ -85,13 +88,13 @@ export function StorageSettings({
         <h2>A permanent home for your workspace</h2>
         <p>
           Store conversations, workflows, activity, preferences and encrypted credentials in
-          PostgreSQL.
+          {databaseLabel(status)}. No local database server is required when using Neon.
         </p>
       </div>
       <section className="settings-panel">
         <div className="panel-title">
           <Database size={18} />
-          <h3>PostgreSQL</h3>
+          <h3>{databaseLabel(status)}</h3>
           <span className={`small-badge ${status.databaseReady ? 'green' : ''}`}>
             {status.databaseReady
               ? 'Connected'
@@ -101,6 +104,34 @@ export function StorageSettings({
           </span>
         </div>
         <div className="settings-form">
+          {status.databaseConfigured && (
+            <div className="database-facts">
+              <span>
+                Provider{' '}
+                <strong>
+                  {status.databaseProvider ? databaseLabel(status) : 'Check connection string'}
+                </strong>
+              </span>
+              <span>
+                Endpoint{' '}
+                <strong>
+                  {status.databaseProvider === 'neon'
+                    ? status.databasePooled
+                      ? 'Pooled'
+                      : 'Direct'
+                    : 'Standard PostgreSQL'}
+                </strong>
+              </span>
+              <span>
+                Security{' '}
+                <strong>
+                  {status.databaseProvider === 'neon' || status.databaseTLS
+                    ? 'Verified TLS required'
+                    : 'Your connection settings'}
+                </strong>
+              </span>
+            </div>
+          )}
           <div className="storage-features">
             <p>
               <Check size={15} />
@@ -137,7 +168,8 @@ export function StorageSettings({
                   'GET',
                 );
                 await refresh();
-                if (result.ready) notify('PostgreSQL is connected and all tables are ready.');
+                if (result.ready)
+                  notify(`${databaseLabel(status)} is connected and all tables are ready.`);
                 else
                   setError(
                     result.error ||
@@ -158,42 +190,51 @@ export function StorageSettings({
       <section className="settings-panel">
         <div className="panel-title">
           <ShieldCheck size={18} />
-          <h3>Set up once on your server</h3>
+          <h3>Connect Neon from your laptop or hosting</h3>
         </div>
         <div className="settings-form">
           <ol className="setup-list">
             <li>
-              Install PostgreSQL locally, or use a hosted PostgreSQL database. Create a dedicated
-              database named <code>relay</code>.
+              Create a project in{' '}
+              <a href="https://console.neon.tech" target="_blank" rel="noreferrer">
+                Neon Console
+              </a>
+              . Click <strong>Connect</strong>, choose your database and enable connection pooling.
+              Copy the complete PostgreSQL connection string.
             </li>
             <li>
               Run <code>npm run setup</code> to create missing security settings. Open{' '}
               <code>.env.local</code> to find your workspace password.
             </li>
             <li>
-              Add the database connection string to <code>.env.local</code>:
+              On your laptop, add the URL to <code>.env.local</code>. On Vercel, add it to
+              Environment Variables:
               <pre className="config-example">
-                DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/relay
+                DATABASE_URL="paste-your-full-Neon-connection-string"
               </pre>
+              Keep the actual database name from Neon (often <code>neondb</code>), not{' '}
+              <code>relay</code> unless you created it. Copy plain text, with <code>&amp;</code>{' '}
+              instead of HTML <code>&amp;amp;</code>.
             </li>
             <li>
-              Run <code>npm run db:migrate</code>, then restart Relay. For a hosted database, use
-              the provider’s TLS-enabled connection string.
+              Run <code>npm run db:migrate</code> and <code>npm run db:check</code>. Restart Relay
+              or redeploy Vercel. This creates Relay’s tables without deleting existing data.
             </li>
           </ol>
           <p className="muted-text">
             The first connection imports this browser’s history only if the database is empty.
-            Existing database history takes priority. Changes save automatically; wait for “Saved to
-            PostgreSQL” before closing the page. Reload other devices to fetch the latest history.
+            Existing database history takes priority. Changes save automatically; wait for “Saved to{' '}
+            {databaseLabel(status)}” before closing the page. Reload other devices to fetch the
+            latest history.
           </p>
           <div className="info-callout">
             <ShieldCheck size={18} />
             <div>
-              <strong>Keep your encryption key safe</strong>
+              <strong>Your app stays local. Your saved data lives in Neon.</strong>
               <p>
-                Back up SESSION_SECRET separately from your database. Changing it makes saved
-                credentials unreadable. Chats are stored as ordinary database records; use encrypted
-                disks/backups if needed.
+                Neon requires internet access. Keep your DATABASE_URL private and preserve your
+                existing SESSION_SECRET. Changing it makes saved credentials unreadable. Chats are
+                stored as ordinary database records; use encrypted disks/backups if needed.
               </p>
             </div>
           </div>
@@ -252,7 +293,7 @@ export function GoogleSettings({
       await refresh();
       notify(
         status.databaseConfigured
-          ? 'Google OAuth credentials encrypted and saved to PostgreSQL.'
+          ? `Google OAuth credentials encrypted and saved to ${databaseLabel(status)}.`
           : 'Google OAuth credentials saved in an encrypted browser session.',
       );
     } catch (e) {
@@ -363,8 +404,8 @@ export function GoogleSettings({
           <div className="subtle-note">
             <ShieldCheck size={14} />
             {status.databaseConfigured
-              ? 'Secrets and Google tokens are encrypted in PostgreSQL, not sent back to the browser.'
-              : 'Secrets are encrypted in HTTP-only cookies. Add PostgreSQL to keep them across browsers.'}
+              ? `Secrets and Google tokens are encrypted in ${databaseLabel(status)}, not sent back to the browser.`
+              : `Secrets are encrypted in HTTP-only cookies. Add ${databaseLabel(status)} to keep them across browsers.`}
           </div>
           <button
             type="button"

@@ -3488,3 +3488,23 @@ kbd {
     padding: 10px 20px;
   }
 }
+.database-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  padding: 0 0 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+}
+.database-facts span {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.database-facts strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}

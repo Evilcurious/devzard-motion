@@ -1,20 +1,20 @@
 import { Pool } from 'pg';
+import { postgresConfig, databaseErrorMessage } from './postgres-config.mjs';
 const globalDB = globalThis as unknown as { relayPool?: Pool };
 export function databaseConfigured() {
-  return !!process.env.DATABASE_URL;
+  return !!process.env.DATABASE_URL?.trim();
 }
 export function database() {
-  if (!databaseConfigured())
-    throw new Error('PostgreSQL is not configured. Set DATABASE_URL in .env.local.');
   if (!globalDB.relayPool) {
+    const { connectionString, enableChannelBinding, connectionTimeoutMillis } = postgresConfig();
     globalDB.relayPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
+      enableChannelBinding,
+      connectionTimeoutMillis,
       max: 3,
-      connectionTimeoutMillis: 8000,
       idleTimeoutMillis: 10000,
       statement_timeout: 10000,
     });
-    // Idle connection failures are handled by the next query; never leak a DSN to the client.
     globalDB.relayPool.on('error', () =>
       console.error('Relay: an idle database connection closed.'),
     );
@@ -24,22 +24,35 @@ export function database() {
 export async function dbQuery(text: string, values: unknown[] = []) {
   try {
     return await database().query(text, values);
-  } catch {
-    throw new Error(
-      'PostgreSQL is unavailable or not initialized. Check DATABASE_URL and run npm run db:migrate.',
-    );
+  } catch (error) {
+    throw new Error(databaseErrorMessage(error));
   }
 }
 export async function databaseHealth() {
-  if (!databaseConfigured()) return { configured: false, ready: false };
+  if (!databaseConfigured())
+    return { configured: false, ready: false, provider: null, pooled: false, tls: false };
+  let provider: string | null = null;
+  let pooled = false;
   try {
+    const config = postgresConfig();
+    provider = config.provider;
+    pooled = config.pooled;
     const result = await dbQuery(
       "SELECT to_regclass('relay_settings') AS settings, to_regclass('relay_workspace') AS workspace, to_regclass('relay_action_claims') AS claims",
     );
     if (!result.rows[0]?.settings || !result.rows[0]?.workspace || !result.rows[0]?.claims)
-      throw new Error('Tables missing. Run npm run db:migrate, then refresh.');
-    return { configured: true, ready: true };
+      throw new Error(
+        'Connected, but Relay tables are missing. Run npm run db:migrate, then refresh.',
+      );
+    return { configured: true, ready: true, provider, pooled, tls: config.verifyTLS };
   } catch (error) {
-    return { configured: true, ready: false, error: (error as Error).message };
+    return {
+      configured: true,
+      ready: false,
+      provider,
+      pooled,
+      tls: false,
+      error: (error as Error).message,
+    };
   }
 }

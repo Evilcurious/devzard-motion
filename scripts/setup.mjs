@@ -28,4 +28,6 @@ if (changed) {
 console.log(
   'Open .env.local to find APP_PASSWORD. Restart Relay and use that password to sign in.',
 );
-console.log('For PostgreSQL: set DATABASE_URL, then run npm run db:migrate.');
+console.log(
+  'For Neon Postgres: copy its Connect URL into DATABASE_URL, then run npm run db:migrate. No local database installation is needed.',
+);

@@ -1,4 +1,5 @@
 'use client';
+import { databaseLabel } from '@/lib/database-label';
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/client-api';
 export { api } from '@/lib/client-api';
@@ -52,7 +53,7 @@ export function Settings({
       await refresh();
       notify(
         status.databaseConfigured
-          ? 'API connection encrypted and saved to PostgreSQL.'
+          ? `API connection encrypted and saved to ${databaseLabel(status)}.`
           : 'API connection saved in an encrypted browser session.',
       );
     } catch (e) {
@@ -143,6 +144,7 @@ export function Settings({
           theme={theme}
           onChange={onThemeChange}
           database={!!status.databaseConfigured}
+          storageName={databaseLabel(status)}
         />
       )}
       {tab === 'google' && <GoogleSettings status={status} refresh={refresh} notify={notify} />}
@@ -271,8 +273,8 @@ export function Settings({
                   <span>
                     <LockKeyhole size={12} />{' '}
                     {status.databaseConfigured
-                      ? 'Encrypted in PostgreSQL. Saved keys are never returned to the browser.'
-                      : 'Encrypted in an HTTP-only cookie. Enable PostgreSQL for permanent storage.'}
+                      ? `Encrypted in ${databaseLabel(status)}. Saved keys are never returned to the browser.`
+                      : `Encrypted in an HTTP-only cookie. Enable ${databaseLabel(status)} for permanent storage.`}
                   </span>
                 </label>
               )}
@@ -379,13 +381,13 @@ export function Settings({
               <Privacy
                 title={
                   status.databaseConfigured
-                    ? 'PostgreSQL conversation history'
+                    ? `${databaseLabel(status)} conversation history`
                     : 'Local conversation history'
                 }
                 text={
                   status.databaseConfigured
-                    ? 'Chats, document text, activity, workflows and theme are saved in your shared PostgreSQL workspace. A browser backup is also kept. API credentials are encrypted separately.'
-                    : 'Chats, document text, activity and workflows are saved in this browser. Configure PostgreSQL in the Database tab to persist across browsers.'
+                    ? `Chats, document text, activity, workflows and theme are saved in your shared ${databaseLabel(status)} workspace. A browser backup is also kept. API credentials are encrypted separately.`
+                    : `Chats, document text, activity and workflows are saved in this browser. Configure ${databaseLabel(status)} in the Database tab to persist across browsers.`
                 }
               />
               <Privacy

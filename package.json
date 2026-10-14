@@ -14,7 +14,8 @@
     "setup": "node scripts/setup.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "ollama:setup": "node scripts/ollama-tunnel.mjs --setup",
-    "ollama:gateway": "node scripts/ollama-tunnel.mjs"
+    "ollama:gateway": "node scripts/ollama-tunnel.mjs",
+    "db:check": "node scripts/migrate.mjs --check"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
