@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       !equal(password, process.env.APP_PASSWORD)
     )
       return Response.json({ error: 'Incorrect workspace password.' }, { status: 401 });
+    attempts.delete(id);
     (await cookies()).set(
       'relay_auth',
       seal({ fingerprint: createHash('sha256').update(password).digest('hex') }, 7 * 86400),

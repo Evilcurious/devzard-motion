@@ -1,3 +1,4 @@
+import { googleClientConfig } from '@/lib/google-config';
 import { cookies } from 'next/headers';
 import { equal, guard } from '@/lib/security';
 import { saveGoogle } from '@/lib/google';
@@ -5,6 +6,7 @@ export async function GET(request: Request) {
   const base = process.env.APP_URL || new URL(request.url).origin;
   try {
     await guard();
+    const config = await googleClientConfig();
     const params = new URL(request.url).searchParams;
     const jar = await cookies();
     const expected = jar.get('relay_oauth_state')?.value;
@@ -16,8 +18,8 @@ export async function GET(request: Request) {
       method: 'POST',
       body: new URLSearchParams({
         code: params.get('code')!,
-        client_id: process.env.GOOGLE_CLIENT_ID!,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
         redirect_uri: `${base}/api/google/callback`,
         grant_type: 'authorization_code',
       }),

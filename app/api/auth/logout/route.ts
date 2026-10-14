@@ -7,6 +7,7 @@ export async function POST(request: Request) {
     jar.delete('relay_auth');
     jar.delete('relay_google');
     jar.delete('relay_model');
+    jar.delete('relay_google_client');
     return Response.json({ ok: true });
   } catch (error) {
     return errorResponse(error);

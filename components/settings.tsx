@@ -1,5 +1,9 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { api } from '@/lib/client-api';
+export { api } from '@/lib/client-api';
+import { AppearanceSettings, GoogleSettings, StorageSettings } from './settings-extras';
+import { type Theme } from '@/lib/themes';
 import {
   Check,
   CheckCircle2,
@@ -14,32 +18,28 @@ import {
 } from 'lucide-react';
 import type { Status } from '@/lib/client-types';
 import { AppIcon } from './ui';
-export async function api<T = Record<string, unknown>>(
-  url: string,
-  body?: unknown,
-  method = 'POST',
-): Promise<T> {
-  const response = await fetch(url, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Request failed. Please try again.');
-  return data;
-}
 export function Settings({
   status,
   refresh,
   notify,
+  theme,
+  onThemeChange,
 }: {
   status: Status;
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
   refresh: () => Promise<void>;
   notify: (text: string) => void;
 }) {
   const [provider, setProvider] = useState(status.provider || 'openai');
   const [model, setModel] = useState(status.model || 'gpt-4o-mini');
   const [key, setKey] = useState('');
+  const [baseURL, setBaseURL] = useState(status.baseURL || 'https://api.openai.com/v1');
+  useEffect(() => {
+    setProvider(status.provider || 'openai');
+    setModel(status.model || 'gpt-4o-mini');
+    setBaseURL(status.baseURL || 'https://api.openai.com/v1');
+  }, [status.provider, status.model, status.baseURL]);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [tab, setTab] = useState('model');
@@ -47,10 +47,14 @@ export function Settings({
     setBusy('save');
     setError('');
     try {
-      await api('/api/config', { provider, model, key });
+      await api('/api/config', { provider, model, key, baseURL });
       setKey('');
       await refresh();
-      notify('Model settings saved securely.');
+      notify(
+        status.databaseConfigured
+          ? 'API connection encrypted and saved to PostgreSQL.'
+          : 'API connection saved in an encrypted browser session.',
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -90,6 +94,24 @@ export function Settings({
         <h1>Settings</h1>
         <p>Your model. Your machine. Your way of working.</p>
       </div>
+      {!status.secureSettings && (
+        <div className="info-callout">
+          <ShieldCheck size={18} />
+          <div>
+            <strong>One-time setup needed to save API connections</strong>
+            <p>
+              In your project terminal, run <code>npm run setup</code>, then restart Relay. This
+              creates missing encryption and password settings in .env.local without overwriting
+              your existing values. Use APP_PASSWORD from that file to sign in.
+            </p>
+          </div>
+        </div>
+      )}
+      {status.connectionError && (
+        <div className="error-box" role="alert">
+          {status.connectionError}
+        </div>
+      )}
       <div className="tabs">
         <button className={tab === 'model' ? 'active' : ''} onClick={() => setTab('model')}>
           AI model
@@ -100,10 +122,31 @@ export function Settings({
         >
           Deployment & privacy
         </button>
+        <button className={tab === 'google' ? 'active' : ''} onClick={() => setTab('google')}>
+          Google APIs
+        </button>
+        <button className={tab === 'storage' ? 'active' : ''} onClick={() => setTab('storage')}>
+          Database
+        </button>
+        <button
+          className={tab === 'appearance' ? 'active' : ''}
+          onClick={() => setTab('appearance')}
+        >
+          Appearance
+        </button>
         <button className={tab === 'guide' ? 'active' : ''} onClick={() => setTab('guide')}>
           Setup guide
         </button>
       </div>
+      {tab === 'appearance' && (
+        <AppearanceSettings
+          theme={theme}
+          onChange={onThemeChange}
+          database={!!status.databaseConfigured}
+        />
+      )}
+      {tab === 'google' && <GoogleSettings status={status} refresh={refresh} notify={notify} />}
+      {tab === 'storage' && <StorageSettings status={status} refresh={refresh} notify={notify} />}
       {tab === 'model' && (
         <>
           <div className="section-intro">
@@ -135,6 +178,15 @@ export function Settings({
                 key={item.id}
                 onClick={() => {
                   setProvider(item.id);
+                  setBaseURL(
+                    item.id === status.provider
+                      ? status.baseURL || ''
+                      : item.id === 'ollama'
+                        ? 'http://localhost:11434/v1'
+                        : item.id === 'openai'
+                          ? 'https://api.openai.com/v1'
+                          : '',
+                  );
                   setKey('');
                   setModel(
                     item.id === status.provider
@@ -180,11 +232,26 @@ export function Settings({
                 />
                 <span>Use a model that supports tool calling for email and spreadsheet tasks.</span>
               </label>
+              {provider !== 'openai' && (
+                <label>
+                  API endpoint
+                  <input
+                    value={baseURL}
+                    onChange={(e) => setBaseURL(e.target.value)}
+                    placeholder="http://localhost:11434/v1"
+                    maxLength={500}
+                  />
+                  <span>
+                    Include /v1. For custom hosts, add the origin to AI_ALLOWED_ORIGINS in
+                    .env.local.
+                  </span>
+                </label>
+              )}
               {provider !== 'ollama' && (
                 <label>
                   API key{' '}
                   <span className="optional">
-                    {status.aiConfigured
+                    {status.keySaved && provider === status.provider
                       ? '(leave blank to keep existing)'
                       : provider === 'compatible'
                         ? '(if required)'
@@ -195,11 +262,17 @@ export function Settings({
                     autoComplete="off"
                     value={key}
                     onChange={(e) => setKey(e.target.value)}
-                    placeholder="Enter your API key"
+                    placeholder={
+                      status.keySaved && provider === status.provider
+                        ? 'API key saved securely — leave blank to keep it'
+                        : 'Enter your API key'
+                    }
                   />
                   <span>
-                    <LockKeyhole size={12} /> Encrypted in an HTTP-only cookie. Never stored in
-                    browser history.
+                    <LockKeyhole size={12} />{' '}
+                    {status.databaseConfigured
+                      ? 'Encrypted in PostgreSQL. Saved keys are never returned to the browser.'
+                      : 'Encrypted in an HTTP-only cookie. Enable PostgreSQL for permanent storage.'}
                   </span>
                 </label>
               )}
@@ -222,8 +295,8 @@ export function Settings({
                   <div>
                     <strong>Bring your own endpoint</strong>
                     <p>
-                      Set <code>AI_BASE_URL</code> in your server environment, including{' '}
-                      <code>/v1</code>. Endpoint URLs stay server-controlled for security.
+                      Enter the endpoint above, including <code>/v1</code>. New endpoint origins
+                      must be explicitly allowed with AI_ALLOWED_ORIGINS on the server.
                     </p>
                   </div>
                 </div>
@@ -304,8 +377,16 @@ export function Settings({
                 text="Emails and spreadsheet changes require your explicit approval. Reading connected emails does not."
               />
               <Privacy
-                title="Local conversation history"
-                text="Chats, extracted document text, activity and workflows are saved in this browser. They are not synced between devices. Clear them in Activity."
+                title={
+                  status.databaseConfigured
+                    ? 'PostgreSQL conversation history'
+                    : 'Local conversation history'
+                }
+                text={
+                  status.databaseConfigured
+                    ? 'Chats, document text, activity, workflows and theme are saved in your shared PostgreSQL workspace. A browser backup is also kept. API credentials are encrypted separately.'
+                    : 'Chats, document text, activity and workflows are saved in this browser. Configure PostgreSQL in the Database tab to persist across browsers.'
+                }
               />
               <Privacy
                 title="Your data, your provider"
@@ -333,7 +414,7 @@ export function Settings({
             <p>Install Node.js 20.9 or newer, open this project and run:</p>
             <Code
               text={
-                'npm install\ncp .env.example .env.local\n# Generate a secret and add it to SESSION_SECRET:\nopenssl rand -hex 32\nnpm run dev'
+                'npm install\nnpm run setup\n# Optional: set DATABASE_URL in .env.local, then:\nnpm run db:migrate\nnpm run dev'
               }
             />
             <p>

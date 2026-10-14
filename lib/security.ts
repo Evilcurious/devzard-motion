@@ -47,7 +47,7 @@ export const cookieOptions = {
   path: '/',
 };
 export async function authorized() {
-  if (process.env.VERCEL && !process.env.APP_PASSWORD) return false;
+  if ((process.env.VERCEL || process.env.DATABASE_URL) && !process.env.APP_PASSWORD) return false;
   if (process.env.APP_PASSWORD && (process.env.SESSION_SECRET?.length || 0) < 32) return false;
   if (!process.env.APP_PASSWORD) return true;
   const token = (await cookies()).get('relay_auth')?.value;

@@ -7,6 +7,7 @@ export async function POST(request: Request) {
     if (!config.configured) throw new Error('Configure a model before testing the connection.');
     const response = await fetch(`${config.baseURL}/chat/completions`, {
       method: 'POST',
+      redirect: 'error',
       headers: {
         'Content-Type': 'application/json',
         ...(config.key ? { Authorization: `Bearer ${config.key}` } : {}),

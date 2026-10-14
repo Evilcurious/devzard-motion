@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import './themes.css';
 export const metadata: Metadata = {
   title: 'Relay — Your personal AI workspace',
   description:

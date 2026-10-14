@@ -48,6 +48,7 @@ export async function POST(request: Request) {
       if (timeLeft < 1500) throw new Error('The model took too long. Try a shorter request.');
       const response = await fetch(`${config.baseURL}/chat/completions`, {
         method: 'POST',
+        redirect: 'error',
         headers: {
           'Content-Type': 'application/json',
           ...(config.key ? { Authorization: `Bearer ${config.key}` } : {}),

@@ -10,6 +10,13 @@ export type Status = {
   googleConfigured?: boolean;
   googleEmail?: string | null;
   deployment?: string;
+  secureSettings?: boolean;
+  databaseConfigured?: boolean;
+  databaseReady?: boolean;
+  databaseError?: string;
+  connectionError?: string;
+  baseURL?: string;
+  keySaved?: boolean;
 };
 export type Attachment = { name: string; text: string; pages?: number; truncated?: boolean };
 export type Proposal = WriteAction & {

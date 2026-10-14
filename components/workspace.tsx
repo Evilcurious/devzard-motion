@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity as ActivityIcon,
   ArrowRight,
@@ -49,6 +49,8 @@ import type {
 import { initialWorkflows } from '@/lib/client-types';
 import { AppIcon, EmptyState, Mark, Modal, Steps, WorkflowCard } from './ui';
 import { api, Settings } from './settings';
+import { useWorkspaceStorage, type WorkspaceData } from './use-workspace-storage';
+import { type Theme } from '@/lib/themes';
 
 const titles: Record<Page, string> = {
   chat: 'Agent chat',
@@ -74,7 +76,7 @@ export default function Workspace() {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>(initialWorkflows);
-  const [hydrated, setHydrated] = useState(false);
+  const [theme, setTheme] = useState<Theme>('green');
   const [text, setText] = useState('');
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -106,15 +108,6 @@ export default function Workspace() {
     }
   }, [notify]);
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('relay.workspace.v1') || '{}');
-      if (Array.isArray(saved.conversations)) setConversations(saved.conversations);
-      if (Array.isArray(saved.activities)) setActivities(saved.activities);
-      if (Array.isArray(saved.workflows)) setWorkflows(saved.workflows);
-    } catch {
-      notify('Could not load saved history. Your browser storage may be unavailable.');
-    }
-    setHydrated(true);
     refresh();
     const params = new URLSearchParams(window.location.search);
     if (params.has('connected')) {
@@ -136,27 +129,21 @@ export default function Workspace() {
     window.addEventListener('keydown', keyboard);
     return () => window.removeEventListener('keydown', keyboard);
   }, [refresh, notify]);
+  const snapshot = useMemo(
+    () => ({ conversations, activities, workflows, theme }),
+    [conversations, activities, workflows, theme],
+  );
+  const loadWorkspace = useCallback((data: WorkspaceData) => {
+    setConversations(data.conversations);
+    setActivities(data.activities);
+    setWorkflows(data.workflows);
+    setTheme(data.theme);
+  }, []);
+  const storage = useWorkspaceStorage(status, snapshot, loadWorkspace);
+  const hydrated = storage.hydrated;
   useEffect(() => {
-    if (!hydrated) return;
-    try {
-      // Approval capabilities are short-lived and deliberately not persisted.
-      const safe = conversations.map((c) => ({
-        ...c,
-        messages: c.messages.map((m) => ({
-          ...m,
-          proposals: m.proposals?.map((p) => ({ ...p, token: '' })),
-        })),
-      }));
-      localStorage.setItem(
-        'relay.workspace.v1',
-        JSON.stringify({ conversations: safe, activities, workflows }),
-      );
-    } catch {
-      notify(
-        'Browser storage is full or unavailable. New changes will only last for this session.',
-      );
-    }
-  }, [conversations, activities, workflows, hydrated, notify]);
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
   useEffect(() => {
     if (!toast) return;
     const timeout = setTimeout(() => setToast(''), 6500);
@@ -212,7 +199,7 @@ export default function Workspace() {
     );
   }
   async function send() {
-    if (busyRef.current || uploading || (!text.trim() && !attachment)) return;
+    if (!hydrated || busyRef.current || uploading || (!text.trim() && !attachment)) return;
     const content = text.trim() || 'Please summarize the attached document.';
     const message: Message = {
       id: uid(),
@@ -435,7 +422,7 @@ export default function Workspace() {
           aria-label="Message your agent"
           rows={2}
           maxLength={12000}
-          disabled={busy}
+          disabled={busy || !hydrated}
         />
         <div className="composer-toolbar">
           <div className="composer-tools">
@@ -469,7 +456,7 @@ export default function Workspace() {
               <button
                 className="send-button"
                 onClick={send}
-                disabled={uploading || (!text.trim() && !attachment)}
+                disabled={!hydrated || uploading || (!text.trim() && !attachment)}
                 aria-label="Send message"
               >
                 <ArrowUp size={20} />
@@ -494,6 +481,18 @@ export default function Workspace() {
 
   if (status && !status.authenticated)
     return <Login setupRequired={status.setupRequired} onLogin={refresh} />;
+  if (!status || (status.authenticated && !hydrated))
+    return (
+      <div className="workspace-loading">
+        <Mark />
+        <p>{toast || 'Loading your workspace…'}</p>
+        {toast && (
+          <button className="button" onClick={refresh}>
+            Retry connection
+          </button>
+        )}
+      </div>
+    );
   return (
     <div className="workspace">
       {sidebar && <div className="sidebar-overlay" onClick={() => setSidebar(false)} />}
@@ -678,6 +677,35 @@ export default function Workspace() {
             </button>
           </div>
         </header>
+        {(status?.databaseConfigured || storage.syncState === 'error') && (
+          <div
+            className={`sync-banner ${storage.syncState === 'error' ? 'has-error' : ''}`}
+            role="status"
+          >
+            <span>
+              {storage.syncState === 'saving'
+                ? 'Saving to PostgreSQL…'
+                : storage.syncState === 'error'
+                  ? status?.databaseConfigured
+                    ? 'Not saved to PostgreSQL'
+                    : 'Browser history could not be saved'
+                  : 'Saved to PostgreSQL'}
+            </span>
+            {storage.syncError && (
+              <>
+                <span>{storage.syncError}</span>
+                {status?.databaseConfigured && (
+                  <button className="text-button" onClick={storage.retry}>
+                    Retry save
+                  </button>
+                )}
+                <button className="text-button" onClick={storage.downloadBackup}>
+                  Download backup
+                </button>
+              </>
+            )}
+          </div>
+        )}
         <main
           className={`main-content ${page === 'chat' && messages.length ? 'conversation-page' : ''}`}
         >
@@ -1041,9 +1069,12 @@ export default function Workspace() {
                   <div>
                     <strong>One Google account, two helpful connections</strong>
                     <p>
-                      Your OAuth tokens are encrypted in a secure HTTP-only cookie. Disconnecting
-                      removes both app connections from this browser. You can revoke access entirely
-                      in your Google account.
+                      Your OAuth tokens are encrypted{' '}
+                      {status?.databaseConfigured
+                        ? 'in PostgreSQL'
+                        : 'in a secure HTTP-only cookie'}
+                      . Disconnecting removes both app connections from this workspace. You can
+                      revoke access entirely in your Google account.
                     </p>
                     <button
                       className="text-button danger-text"
@@ -1070,7 +1101,7 @@ export default function Workspace() {
                     <p>
                       {status?.googleConfigured
                         ? 'Connect either app to authorize Gmail and Google Sheets together. Access is limited to reading and sending email, and editing spreadsheets.'
-                        : 'First, add your Google OAuth credentials to the server. Then connect either app to authorize Gmail and Sheets together.'}
+                        : 'First, save your Google OAuth credentials in Settings → Google APIs. Then connect either app to authorize Gmail and Sheets together.'}
                     </p>
                     {!status?.googleConfigured && (
                       <button className="text-button" onClick={() => go('settings')}>
@@ -1106,7 +1137,7 @@ export default function Workspace() {
                 </div>
                 <button className="button" onClick={() => setModal('clear')}>
                   <Trash2 size={15} />
-                  Clear local data
+                  {status?.databaseConfigured ? 'Clear workspace data' : 'Clear local data'}
                 </button>
               </div>
               <div className="stats-grid">
@@ -1193,7 +1224,10 @@ export default function Workspace() {
               )}
               <div className="subtle-note">
                 <Monitor size={15} />
-                Activity is stored only in this browser. Up to 200 recent events are kept.
+                {status?.databaseConfigured
+                  ? 'Activity is saved to PostgreSQL with your workspace.'
+                  : 'Activity is stored only in this browser.'}{' '}
+                Up to 200 recent events are kept.
               </div>
             </div>
           )}
@@ -1201,6 +1235,8 @@ export default function Workspace() {
             <Settings
               key={`${status.provider}-${status.model}`}
               status={status}
+              theme={theme}
+              onThemeChange={setTheme}
               refresh={refresh}
               notify={notify}
             />
@@ -1343,7 +1379,11 @@ export default function Workspace() {
       {modal === 'clear' && (
         <Modal
           title="A fresh start?"
-          subtitle="This permanently clears this browser’s chats, document text, activity and custom workflows. Your AI and Google connections will stay connected."
+          subtitle={
+            status?.databaseConfigured
+              ? 'This clears chats, document text, activity and custom workflows from the shared PostgreSQL workspace and this browser. Other devices will see the cleared history after reloading. API connections stay saved.'
+              : 'This permanently clears this browser’s chats, document text, activity and custom workflows. Your AI and Google connections will stay connected.'
+          }
           onClose={closeModal}
         >
           <div className="modal-footer">
@@ -1361,10 +1401,14 @@ export default function Workspace() {
                 setAttachment(null);
                 setText('');
                 closeModal();
-                notify('Your local workspace data has been cleared.');
+                notify(
+                  status?.databaseConfigured
+                    ? 'Workspace cleared locally. Wait for the PostgreSQL save confirmation above.'
+                    : 'Your local workspace data has been cleared.',
+                );
               }}
             >
-              Clear local data
+              {status?.databaseConfigured ? 'Clear workspace data' : 'Clear local data'}
             </button>
           </div>
         </Modal>
@@ -1600,7 +1644,7 @@ function Login({
         <h1>{setupRequired ? 'One more thing to feel at home.' : 'Your workspace is waiting.'}</h1>
         <p>
           {setupRequired
-            ? 'Add APP_PASSWORD and a SESSION_SECRET of at least 32 characters in your server environment, then restart or redeploy. This keeps your agent and accounts private.'
+            ? 'Run npm run setup, then restart Relay. PostgreSQL and hosted workspaces require APP_PASSWORD and a SESSION_SECRET of at least 32 characters. This keeps your agent and accounts private.'
             : 'Enter your workspace password to pick up where you left off.'}
         </p>
         {!setupRequired && (

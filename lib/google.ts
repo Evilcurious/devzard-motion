@@ -1,5 +1,5 @@
-import { cookies } from 'next/headers';
-import { cookieOptions, seal, unseal } from './security';
+import { readConnection, saveConnection } from './connection-store';
+import { googleClientConfig } from './google-config';
 export type GoogleSession = {
   access_token: string;
   refresh_token?: string;
@@ -7,25 +7,22 @@ export type GoogleSession = {
   email: string;
 };
 export async function googleSession() {
-  const value = (await cookies()).get('relay_google')?.value;
-  return value ? unseal<GoogleSession>(value) : null;
+  return readConnection<GoogleSession>('google');
 }
 export async function saveGoogle(session: GoogleSession) {
-  (await cookies()).set('relay_google', seal(session, 30 * 86400), {
-    ...cookieOptions,
-    maxAge: 30 * 86400,
-  });
+  await saveConnection('google', session);
 }
 export async function googleFetch(path: string, init: RequestInit = {}) {
   let session = await googleSession();
   if (!session) throw new Error('Connect your Google account in Connections first.');
   if (session.expires_at < Date.now() + 60_000) {
     if (!session.refresh_token) throw new Error('Google session expired. Reconnect your account.');
+    const config = await googleClientConfig();
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       body: new URLSearchParams({
-        client_id: process.env.GOOGLE_CLIENT_ID!,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
         grant_type: 'refresh_token',
         refresh_token: session.refresh_token,
       }),

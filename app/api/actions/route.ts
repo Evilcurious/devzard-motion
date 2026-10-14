@@ -1,3 +1,4 @@
+import { databaseConfigured, dbQuery } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { executeAction, validateAction, type WriteAction } from '@/lib/tools';
 import { googleSession } from '@/lib/google';
@@ -20,6 +21,16 @@ export async function POST(request: Request) {
       throw new Error(
         'This action was already submitted. Check Gmail or Sheets before trying again.',
       );
+    if (databaseConfigured()) {
+      const claim = await dbQuery(
+        'INSERT INTO relay_action_claims (id, account) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING id',
+        [proposal.id, proposal.email],
+      );
+      if (!claim.rowCount)
+        throw new Error(
+          'This action was already submitted. Check Gmail or Sheets before trying again.',
+        );
+    }
     used.set(proposal.id, Date.now() + 20 * 60 * 1000);
     jar.set('relay_used_actions', seal([...previous.slice(-29), proposal.id], 3600), {
       ...cookieOptions,

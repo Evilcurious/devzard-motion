@@ -1,9 +1,9 @@
-import { cookies } from 'next/headers';
+import { removeConnection } from '@/lib/connection-store';
 import { guard, errorResponse } from '@/lib/security';
 export async function POST(request: Request) {
   try {
     await guard(request);
-    (await cookies()).delete('relay_google');
+    await removeConnection('google');
     return Response.json({ ok: true });
   } catch (error) {
     return errorResponse(error);
