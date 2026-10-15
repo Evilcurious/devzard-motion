@@ -142,8 +142,9 @@ API usage may incur provider charges. A blank key field preserves the saved key 
 Gemini's official OpenAI-compatible endpoint is **allowed by default**. You no longer need an `AI_ALLOWED_ORIGINS` entry for Google Gemini.
 
 1. Open **Settings → AI model → Use Gemini settings**. This chooses Other API and fills the correct base URL.
-2. Enter a Gemini model ID available to your key in Google AI Studio. `gemini-2.5-flash` is a suggested example, not a guarantee of model availability.
-3. Enter your Gemini API key, choose **Save connection**, then **Test saved connection**.
+2. Enter your Gemini API key (or leave it blank to use an already-saved Gemini key), then click **Load Gemini models**. This fetches Google's current generation-model catalog server-side; it does not generate content or save your settings.
+3. Choose a **text/chat** model from the dropdown. Image/audio-only models may also appear in the catalog; being listed does not guarantee compatibility, tool support or quota. You can also enter a current model ID manually from Google AI Studio. The preset leaves the model blank for new connections rather than guessing a model ID. `gemini-2.5-flash` in older releases and environment examples is only an example and may be unavailable.
+4. Choose **Save connection**, then **Test saved connection**. The test uses the same OpenAI-compatible chat route as Relay's chat. It generates a short reply and may use quota.
 
 The base URL must be exactly:
 
@@ -165,6 +166,12 @@ AI_API_KEY=your-gemini-api-key
 After editing environment settings, restart the local app or redeploy Vercel. Existing saved model settings override environment defaults; choose **Use server defaults** if you intend to use only the environment configuration.
 
 If you still see the old “origin is not allowed” error, stop the old process and start the **updated project folder**, not an older extracted ZIP. For production mode, rebuild with `npm run build` before `npm start`. On Vercel, deploy the latest commit on the project branch. Keep your existing `.env.local` and `SESSION_SECRET` when updating. Never paste the Gemini key in chat or commit it.
+
+#### Gemini returns 404 after saving
+
+A 404 means the requested model or API route was not found; it is not the usual quota error (429). Check that **Other API** and the exact base URL above are saved. In **Settings → AI model**, use **Load Gemini models**, select a current **text/chat** model, then **Save connection → Test saved connection**. Do not paste `models/` or a full API URL into Model name. A listed generation model is not necessarily supported by Google's OpenAI-compatible chat API; choose another text/chat model if the test returns 404. No key or raw upstream error body is returned to the browser.
+
+Saved Settings override `AI_MODEL` in `.env.local`. Editing the file alone will not replace the saved model. If the Load Gemini models button is missing, update the project and restart it from the updated folder (or rebuild/redeploy production). If you need help, share only the model ID, endpoint and error status—never your API key.
 
 ### Another OpenAI-compatible API
 

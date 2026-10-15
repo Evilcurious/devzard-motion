@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { aiConfig } from '@/lib/ai';
+import { providerError } from '@/lib/ai-errors';
 import { guard, errorResponse, readJson, seal } from '@/lib/security';
 import { googleSession } from '@/lib/google';
 import { tools, readTool, validateAction } from '@/lib/tools';
@@ -63,14 +64,7 @@ export async function POST(request: Request) {
         }),
         signal: AbortSignal.timeout(Math.min(45000, timeLeft)),
       });
-      if (!response.ok) {
-        // Do not relay upstream response bodies: these can contain credentials or infrastructure details.
-        throw new Error(
-          response.status === 401
-            ? 'Your AI API key was rejected. Check AI_API_KEY on the server.'
-            : `The AI provider returned ${response.status}. Check the model name, endpoint, tool support and quota in your server configuration.`,
-        );
-      }
+      if (!response.ok) throw new Error(providerError(response.status, config.baseURL));
       const data = await response.json();
       const answer: ModelMessage | undefined = data.choices?.[0]?.message;
       if (!answer) throw new Error('The model returned an empty response. Try another model.');

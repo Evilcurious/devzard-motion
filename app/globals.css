@@ -1476,6 +1476,7 @@ kbd {
   margin-bottom: 22px;
 }
 .settings-form label > input,
+.settings-form label > select,
 .workflow-form input,
 .workflow-form textarea,
 .workflow-form select,

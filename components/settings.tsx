@@ -1,6 +1,7 @@
 'use client';
 import { databaseLabel } from '@/lib/database-label';
-import { GEMINI_BASE_URL, GEMINI_MODEL_EXAMPLE } from '@/lib/ai-presets';
+import { GEMINI_BASE_URL } from '@/lib/ai-presets';
+import { isGeminiEndpoint } from '@/lib/ai-errors';
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/client-api';
 export { api } from '@/lib/client-api';
@@ -45,6 +46,24 @@ export function Settings({
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [tab, setTab] = useState('model');
+  const [geminiModels, setGeminiModels] = useState<string[]>([]);
+  const gemini = provider === 'compatible' && isGeminiEndpoint(baseURL);
+  useEffect(() => {
+    setGeminiModels([]);
+  }, [provider, baseURL, key]);
+  async function loadModels() {
+    setBusy('models');
+    setError('');
+    setGeminiModels([]);
+    try {
+      const data = await api<{ models: string[] }>('/api/model/models', { key });
+      setGeminiModels(data.models);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy('');
+    }
+  }
   async function save() {
     setBusy('save');
     setError('');
@@ -179,6 +198,7 @@ export function Settings({
             ].map((item) => (
               <button
                 key={item.id}
+                disabled={!!busy}
                 onClick={() => {
                   setProvider(item.id);
                   setBaseURL(
@@ -229,8 +249,8 @@ export function Settings({
                   setModel(
                     status.provider === 'compatible' &&
                       status.baseURL?.replace(/\/$/, '') === GEMINI_BASE_URL
-                      ? status.model || GEMINI_MODEL_EXAMPLE
-                      : GEMINI_MODEL_EXAMPLE,
+                      ? status.model || ''
+                      : '',
                   );
                   setKey('');
                   setError('');
@@ -253,6 +273,7 @@ export function Settings({
                 Model name
                 <input
                   value={model}
+                  disabled={!!busy}
                   onChange={(e) => setModel(e.target.value)}
                   placeholder={
                     provider === 'ollama'
@@ -264,7 +285,7 @@ export function Settings({
                 />
                 <span>
                   {provider === 'compatible' && baseURL.replace(/\/$/, '') === GEMINI_BASE_URL
-                    ? 'Use a Gemini model ID available to your API key in Google AI Studio. The suggested name is an example; availability and quotas vary.'
+                    ? 'Load Gemini models below to choose a current text/chat model, then save and test it. Model names and availability change over time.'
                     : 'Use a model that supports tool calling for email and spreadsheet tasks.'}
                 </span>
               </label>
@@ -273,6 +294,7 @@ export function Settings({
                   API endpoint
                   <input
                     value={baseURL}
+                    disabled={!!busy}
                     onChange={(e) => setBaseURL(e.target.value)}
                     placeholder="http://localhost:11434/v1"
                     maxLength={500}
@@ -299,6 +321,7 @@ export function Settings({
                     type="password"
                     autoComplete="off"
                     value={key}
+                    disabled={!!busy}
                     onChange={(e) => setKey(e.target.value)}
                     placeholder={
                       status.keySaved && provider === status.provider
@@ -313,6 +336,51 @@ export function Settings({
                       : `Encrypted in an HTTP-only cookie. Enable ${databaseLabel(status)} for permanent storage.`}
                   </span>
                 </label>
+              )}
+              {gemini && (
+                <div className="info-callout">
+                  <Globe2 size={19} />
+                  <div>
+                    <strong>Find a current Gemini model</strong>
+                    <p>
+                      Uses the key entered above, or your saved Gemini key. Loading the catalog does
+                      not save settings or generate a reply.
+                    </p>
+                    <button
+                      className="button small"
+                      type="button"
+                      disabled={!!busy}
+                      onClick={loadModels}
+                    >
+                      {busy === 'models' && <LoaderCircle className="spin" size={16} />}
+                      Load Gemini models
+                    </button>
+                    {geminiModels.length > 0 && (
+                      <label>
+                        Gemini generation models
+                        <select
+                          value={geminiModels.includes(model) ? model : ''}
+                          disabled={!!busy}
+                          onChange={(event) => setModel(event.target.value)}
+                        >
+                          <option value="" disabled>
+                            Choose a text/chat model
+                          </option>
+                          {geminiModels.map((id) => (
+                            <option key={id} value={id}>
+                              {id}
+                            </option>
+                          ))}
+                        </select>
+                        <span>
+                          Choose a text/chat model, not an image or audio-only model. Listing does
+                          not guarantee OpenAI-compatible chat, tool support or quota. Click Save
+                          connection, then Test saved connection to check it.
+                        </span>
+                      </label>
+                    )}
+                  </div>
+                </div>
               )}
               {provider === 'ollama' && (
                 <div className="info-callout">

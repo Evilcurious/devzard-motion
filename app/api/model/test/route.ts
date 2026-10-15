@@ -1,5 +1,6 @@
 import { guard, errorResponse } from '@/lib/security';
 import { aiConfig } from '@/lib/ai';
+import { providerError } from '@/lib/ai-errors';
 export async function POST(request: Request) {
   try {
     await guard(request);
@@ -19,10 +20,7 @@ export async function POST(request: Request) {
       }),
       signal: AbortSignal.timeout(25000),
     });
-    if (!response.ok)
-      throw new Error(
-        `Provider returned ${response.status}. Check your API key, model and endpoint.`,
-      );
+    if (!response.ok) throw new Error(providerError(response.status, config.baseURL));
     const body = await response.json();
     if (!body.choices?.[0]?.message)
       throw new Error('This endpoint did not return an OpenAI-compatible response.');
