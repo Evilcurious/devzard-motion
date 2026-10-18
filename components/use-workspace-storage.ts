@@ -3,17 +3,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Activity, Conversation, Status, Workflow } from '@/lib/client-types';
 import { initialWorkflows } from '@/lib/client-types';
 import { isTheme, type Theme } from '@/lib/themes';
+import { defaultAppearance, normalizeAppearance, type Appearance } from '@/lib/appearance';
 export type WorkspaceData = {
   conversations: Conversation[];
   activities: Activity[];
   workflows: Workflow[];
   theme: Theme;
+  appearance: Appearance;
 };
 const empty = (): WorkspaceData => ({
   conversations: [],
   activities: [],
   workflows: initialWorkflows,
   theme: 'green',
+  appearance: defaultAppearance,
 });
 function localData(): WorkspaceData {
   const saved = JSON.parse(localStorage.getItem('relay.workspace.v1') || '{}');
@@ -22,6 +25,7 @@ function localData(): WorkspaceData {
     activities: Array.isArray(saved.activities) ? saved.activities : [],
     workflows: Array.isArray(saved.workflows) ? saved.workflows : initialWorkflows,
     theme: isTheme(saved.theme) ? saved.theme : 'green',
+    appearance: normalizeAppearance(saved.appearance),
   };
 }
 function sanitized(value: WorkspaceData): WorkspaceData {

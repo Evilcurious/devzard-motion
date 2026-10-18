@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/client-api';
 import { themes, type Theme } from '@/lib/themes';
+import { fontOptions, type Appearance, type FontFormat } from '@/lib/appearance';
 import type { Status } from '@/lib/client-types';
 import { AppIcon } from './ui';
 export function AppearanceSettings({
@@ -19,12 +20,17 @@ export function AppearanceSettings({
   onChange,
   database,
   storageName,
+  appearance,
+  onAppearanceChange,
 }: {
   theme: Theme;
   onChange: (theme: Theme) => void;
   database: boolean;
   storageName: string;
+  appearance: Appearance;
+  onAppearanceChange: (appearance: Appearance) => void;
 }) {
+  const [fontError, setFontError] = useState('');
   return (
     <section>
       <div className="section-intro">
@@ -62,11 +68,131 @@ export function AppearanceSettings({
           </button>
         ))}
       </div>
+      <section className="appearance-controls" aria-label="Custom colors and typography">
+        <div className="section-heading">
+          <h2>Personalize your palette</h2>
+        </div>
+        <p className="muted-text">
+          Pick any accent color. It updates buttons, highlights and the chat details.
+        </p>
+        <div className="appearance-control-row">
+          <label className="color-picker-label" htmlFor="custom-accent-color">
+            Accent color
+            <input
+              id="custom-accent-color"
+              aria-label="Choose accent color"
+              type="color"
+              value={appearance.accentColor || themes.find((item) => item.id === theme)!.color}
+              onChange={(event) =>
+                onAppearanceChange({ ...appearance, accentColor: event.target.value })
+              }
+            />
+            <span>{appearance.accentColor || 'Match selected theme'}</span>
+          </label>
+          <button
+            className="button small"
+            type="button"
+            disabled={!appearance.accentColor}
+            onClick={() => onAppearanceChange({ ...appearance, accentColor: null })}
+          >
+            Reset to theme color
+          </button>
+        </div>
+        <label className="font-picker-label" htmlFor="relay-font">
+          Workspace font
+          <select
+            id="relay-font"
+            value={appearance.customFont ? 'custom' : appearance.fontId}
+            onChange={(event) => {
+              if (event.target.value !== 'custom')
+                onAppearanceChange({
+                  ...appearance,
+                  fontId: event.target.value as Appearance['fontId'],
+                });
+            }}
+          >
+            {fontOptions.map((font) => (
+              <option key={font.id} value={font.id}>
+                {font.label}
+              </option>
+            ))}
+            {appearance.customFont && (
+              <option value="custom">{appearance.customFont.name} (uploaded)</option>
+            )}
+          </select>
+        </label>
+        <label className="font-upload-label" htmlFor="custom-font-file">
+          Upload your own font
+          <input
+            id="custom-font-file"
+            aria-label="Upload a custom font"
+            type="file"
+            accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf"
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              if (!file) return;
+              setFontError('');
+              if (file.size > 1_000_000) {
+                setFontError('Choose a font file smaller than 1 MB.');
+                return;
+              }
+              const format = file.name.split('.').pop()?.toLowerCase() as FontFormat | undefined;
+              if (!format || !['woff2', 'woff', 'ttf', 'otf'].includes(format)) {
+                setFontError('Supported font formats: WOFF2, WOFF, TTF and OTF.');
+                return;
+              }
+              const bytes = new Uint8Array(await file.arrayBuffer());
+              const signature = String.fromCharCode(...bytes.slice(0, 4));
+              const valid =
+                format === 'woff2'
+                  ? signature === 'wOF2'
+                  : format === 'woff'
+                    ? signature === 'wOFF'
+                    : format === 'otf'
+                      ? signature === 'OTTO'
+                      : signature === '\u0000\u0001\u0000\u0000';
+              if (!valid) {
+                setFontError(
+                  'This file does not match its font extension. Choose a valid font file.',
+                );
+                return;
+              }
+              let binary = '';
+              for (let offset = 0; offset < bytes.length; offset += 0x8000)
+                binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+              onAppearanceChange({
+                ...appearance,
+                customFont: {
+                  name: file.name.replace(/\.[^.]+$/, '').slice(0, 100),
+                  format,
+                  data: btoa(binary),
+                },
+              });
+            }}
+          />
+          <span>WOFF2, WOFF, TTF or OTF · max 1 MB · stored with your workspace preferences</span>
+        </label>
+        {fontError && (
+          <div className="error-box" role="alert">
+            {fontError}
+          </div>
+        )}
+        {appearance.customFont && (
+          <button
+            className="text-button danger-text"
+            type="button"
+            onClick={() => onAppearanceChange({ ...appearance, customFont: null })}
+          >
+            Remove uploaded font <span aria-hidden="true">×</span>
+          </button>
+        )}
+      </section>
       <div className="subtle-note">
         <Palette size={15} />
         {database
-          ? `Your theme saves to ${storageName} along with your workspace.`
-          : 'Your theme is remembered in this browser. Connect Neon Postgres to share it between devices.'}
+          ? `Your theme, color and font settings save to ${storageName} with your workspace.`
+          : 'Your theme, chosen accent and font are remembered in this browser. Connect Neon Postgres to share them between devices.'}
       </div>
     </section>
   );

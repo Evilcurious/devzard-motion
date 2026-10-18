@@ -7,6 +7,7 @@ import { api } from '@/lib/client-api';
 export { api } from '@/lib/client-api';
 import { AppearanceSettings, GoogleSettings, StorageSettings } from './settings-extras';
 import { type Theme } from '@/lib/themes';
+import type { Appearance } from '@/lib/appearance';
 import {
   Check,
   CheckCircle2,
@@ -27,10 +28,14 @@ export function Settings({
   notify,
   theme,
   onThemeChange,
+  appearance,
+  onAppearanceChange,
 }: {
   status: Status;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
+  appearance: Appearance;
+  onAppearanceChange: (appearance: Appearance) => void;
   refresh: () => Promise<void>;
   notify: (text: string) => void;
 }) {
@@ -163,6 +168,8 @@ export function Settings({
         <AppearanceSettings
           theme={theme}
           onChange={onThemeChange}
+          appearance={appearance}
+          onAppearanceChange={onAppearanceChange}
           database={!!status.databaseConfigured}
           storageName={databaseLabel(status)}
         />

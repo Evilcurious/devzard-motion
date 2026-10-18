@@ -11,7 +11,8 @@ A self-hostable, **single-owner** AI agent built with Next.js 16, React 19, Type
 - **Google APIs settings:** save a Google OAuth client ID/secret, then authorize Gmail and Google Sheets.
 - **Gmail:** search/read messages and prepare outgoing emails. **Google Sheets:** append reviewed rows to an existing spreadsheet.
 - Approval is required for every email send and spreadsheet write. PostgreSQL prevents a submitted approval ID from being executed again by another server instance.
-- **Six themes:** green/white, black/white, red/white, blue/white, yellow/white and gold/white.
+- **Personalized appearance:** six light themes, a color picker, eight font families and custom WOFF2/WOFF/TTF/OTF font uploads.
+- **Heritage-inspired AI chat:** refined ivory-and-brass conversation styling; Relay answers creator questions with “Faizan made me.”
 - Database health checks, visible save status, conflict protection and a downloadable backup when syncing fails.
 
 Without `DATABASE_URL`, Relay still works with browser-local history and encrypted HTTP-only cookies for saved connections. There are no bundled AI keys, Google accounts or simulated successful actions.
@@ -235,9 +236,13 @@ Disconnect removes saved account tokens. Removing saved Google credentials also 
 
 Outgoing reply content is sent as a **new email**, not a threaded Gmail reply. Supply an existing spreadsheet URL/ID and tab; spreadsheet creation and Drive discovery aren't implemented.
 
-## Choose a theme
+## Personalize colors and fonts
 
-Open **Settings → Appearance**. Choose **Green & white, Black & white, Red & white, Blue & white, Yellow & white, or Gold & white**. The theme applies to the entire app immediately. It is stored with the workspace in PostgreSQL, or locally if no database is configured. All six are light themes with a white canvas, not dark mode.
+Open **Settings → Appearance**. Choose **Green & white, Black & white, Red & white, Blue & white, Yellow & white, or Gold & white**, then use **Accent color** to select any custom color. **Reset to theme color** clears the override. All six preset themes remain light with a white canvas.
+
+Choose one of eight built-in font families (Arial, Georgia, Palatino, Times New Roman, Trebuchet MS, Verdana, Tahoma or Courier New), or upload your own WOFF2, WOFF, TTF or OTF font up to 1 MB. Uploaded font data is stored inside your workspace preferences and browser backup; when Neon is configured, it syncs with the shared workspace. Only upload fonts you have permission to use. Your selected font and color apply across Relay immediately.
+
+The chat uses a restrained ivory-and-brass, heritage-inspired visual style. If asked who made or founded Relay, it answers **“Faizan made me.”**
 
 ## Use laptop Ollama from Vercel through a secure tunnel
 

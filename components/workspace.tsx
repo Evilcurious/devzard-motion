@@ -52,6 +52,12 @@ import { AppIcon, EmptyState, Mark, Modal, Steps, WorkflowCard } from './ui';
 import { api, Settings } from './settings';
 import { useWorkspaceStorage, type WorkspaceData } from './use-workspace-storage';
 import { type Theme } from '@/lib/themes';
+import {
+  defaultAppearance,
+  fontOptions,
+  normalizeAppearance,
+  type Appearance,
+} from '@/lib/appearance';
 
 const titles: Record<Page, string> = {
   chat: 'Agent chat',
@@ -78,6 +84,7 @@ export default function Workspace() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>(initialWorkflows);
   const [theme, setTheme] = useState<Theme>('green');
+  const [appearance, setAppearance] = useState<Appearance>(defaultAppearance);
   const [text, setText] = useState('');
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -131,20 +138,52 @@ export default function Workspace() {
     return () => window.removeEventListener('keydown', keyboard);
   }, [refresh, notify]);
   const snapshot = useMemo(
-    () => ({ conversations, activities, workflows, theme }),
-    [conversations, activities, workflows, theme],
+    () => ({ conversations, activities, workflows, theme, appearance }),
+    [conversations, activities, workflows, theme, appearance],
   );
   const loadWorkspace = useCallback((data: WorkspaceData) => {
     setConversations(data.conversations);
     setActivities(data.activities);
     setWorkflows(data.workflows);
     setTheme(data.theme);
+    setAppearance(normalizeAppearance(data.appearance));
   }, []);
   const storage = useWorkspaceStorage(status, snapshot, loadWorkspace);
   const hydrated = storage.hydrated;
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    if (appearance.accentColor) root.style.setProperty('--user-accent', appearance.accentColor);
+    else root.style.removeProperty('--user-accent');
+    const selected = fontOptions.find((font) => font.id === appearance.fontId) || fontOptions[0];
+    root.style.setProperty('--font', selected.stack);
+    const font = appearance.customFont;
+    if (!font) return;
+    let cancelled = false;
+    const face = new FontFace('Relay Custom', `url(data:font/${font.format};base64,${font.data})`, {
+      style: 'normal',
+      weight: '100 900',
+    });
+    face
+      .load()
+      .then((loaded) => {
+        if (cancelled) return;
+        document.fonts.add(loaded);
+        root.style.setProperty('--font', `'Relay Custom', ${selected.stack}`);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          root.style.setProperty('--font', selected.stack);
+          notify(
+            'Relay could not load that font file, so the selected built-in font is being used instead.',
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+      document.fonts.delete(face);
+    };
+  }, [theme, appearance, notify]);
   useEffect(() => {
     if (!toast) return;
     const timeout = setTimeout(() => setToast(''), 6500);
@@ -708,7 +747,7 @@ export default function Workspace() {
           </div>
         )}
         <main
-          className={`main-content ${page === 'chat' && messages.length ? 'conversation-page' : ''}`}
+          className={`main-content ${page === 'chat' && messages.length ? 'conversation-page' : ''} ${page === 'chat' ? 'legacy-chat' : ''}`}
         >
           {page === 'chat' &&
             (messages.length === 0 ? (
@@ -1238,6 +1277,8 @@ export default function Workspace() {
               status={status}
               theme={theme}
               onThemeChange={setTheme}
+              appearance={appearance}
+              onAppearanceChange={setAppearance}
               refresh={refresh}
               notify={notify}
             />

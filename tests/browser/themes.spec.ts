@@ -47,3 +47,40 @@ test('Google and database settings expose setup without claiming a connection', 
   await page.getByRole('button', { name: 'Appearance', exact: true }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 });
+
+test('custom accent, eight font choices and uploaded font preferences persist in this workspace', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Appearance', exact: true }).click();
+  const font = page.getByLabel('Workspace font');
+  await expect(font.locator('option')).toHaveCount(8);
+  await font.selectOption('georgia');
+  await page.getByLabel('Choose accent color').fill('#aabbcc');
+  await expect(page.locator('html')).toHaveAttribute('style', /--user-accent: #aabbcc/i);
+  await expect(page.locator('html')).toHaveAttribute('style', /--font: Georgia, serif/i);
+
+  await page.getByLabel('Upload a custom font').setInputFiles({
+    name: 'My Legacy Font.ttf',
+    mimeType: 'font/ttf',
+    buffer: Buffer.from([0, 1, 0, 0, 0, 0, 0, 0]),
+  });
+  await expect(font).toHaveValue('custom');
+  await expect(font.getByRole('option', { name: 'My Legacy Font (uploaded)' })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Remove uploaded font' })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Appearance', exact: true }).click();
+  await expect(page.getByLabel('Choose accent color')).toHaveValue('#aabbcc');
+  await expect(page.getByLabel('Workspace font')).toHaveValue('custom');
+});
+
+test('Relay answers its creator consistently without needing a configured model', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('textbox', { name: 'Message your agent' }).fill('Who made you?');
+  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.getByText('Faizan made me.', { exact: true })).toBeVisible();
+});

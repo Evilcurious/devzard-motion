@@ -1,4 +1,5 @@
 import { emailSchema, sheetSchema } from './tools';
+import { fontOptions } from './appearance';
 import { z } from 'zod';
 const short = z.string().max(200);
 const review = {
@@ -68,6 +69,27 @@ export const workspaceSchema = z.object({
     )
     .max(200),
   theme: z.enum(['green', 'black', 'red', 'blue', 'yellow', 'gold']).default('green'),
+  appearance: z
+    .object({
+      accentColor: z
+        .string()
+        .regex(/^#[0-9a-fA-F]{6}$/)
+        .nullable()
+        .default(null),
+      fontId: z.enum(fontOptions.map((font) => font.id) as [string, ...string[]]).default('arial'),
+      customFont: z
+        .object({
+          name: z.string().max(100),
+          format: z.enum(['woff2', 'woff', 'ttf', 'otf']),
+          data: z
+            .string()
+            .max(1_400_000)
+            .regex(/^[A-Za-z0-9+/]*={0,2}$/),
+        })
+        .nullable()
+        .default(null),
+    })
+    .default({ accentColor: null, fontId: 'arial', customFont: null }),
 });
 export const workspaceWriteSchema = z.object({
   revision: z.number().int().min(0),
