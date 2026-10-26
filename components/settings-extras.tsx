@@ -7,6 +7,7 @@ import {
   KeyRound,
   LoaderCircle,
   Palette,
+  Plus,
   ShieldCheck,
   Unplug,
 } from 'lucide-react';
@@ -311,6 +312,34 @@ export function StorageSettings({
             {busy ? <LoaderCircle size={15} className="spin" /> : <Database size={15} />}Check
             database connection
           </button>
+          {status.databaseConfigured && !status.databaseReady && (
+            <button
+              className="button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError('');
+                try {
+                  const result = await api<{ ready: boolean; error?: string }>(
+                    '/api/database',
+                    {},
+                    'POST',
+                  );
+                  await refresh();
+                  if (result.ready)
+                    notify(`${databaseLabel(status)} is connected and all tables are ready.`);
+                  else setError(result.error || 'The tables could not be created yet.');
+                } catch (e) {
+                  setError((e as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <Plus size={15} />
+              Create database tables
+            </button>
+          )}
         </div>
       </section>
       <section className="settings-panel">

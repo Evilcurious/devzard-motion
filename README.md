@@ -85,6 +85,8 @@ For production mode, stop the old server, run `npm run build`, then `npm start`.
 
 The migration is safe to rerun; it does not delete existing data or move data from a different database. It creates `relay_settings`, `relay_workspace`, and `relay_action_claims`.
 
+On a host where you cannot run the CLI (for example a Vercel deployment whose `DATABASE_URL` comes from the Neon integration), open **Settings → Database** and press **Create database tables**. It runs the same idempotent schema through a password-protected request, so nothing else has to change.
+
 ### 4. Verify
 
 Open **Settings → Database → Check database connection**. The status should be Connected. After editing chats or themes, wait for **Saved to Neon Postgres** before closing the page.
