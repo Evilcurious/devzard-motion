@@ -4,6 +4,7 @@ import {
   canonicalModelKey,
   getRouterProvider,
   rankRouterTargets,
+  selectRouterCandidates,
   routerModelIds,
   routerProviders,
 } from '../lib/model-router';
@@ -139,6 +140,20 @@ test('routing excludes reported zero quota and ranks only from provider or obser
   assert.deepEqual(
     rankRouterTargets(targets, 'fast', observed).map((target) => target.modelId),
     ['quota-large', 'quota-small', 'unknown-quota'],
+  );
+});
+
+test('an explicitly selected model is pinned while Auto-pick may use the ranked eligible list', () => {
+  const ranked = [
+    { providerId: 'openrouter' as const, modelId: 'first', availableTokens: 900 },
+    { providerId: 'kilo' as const, modelId: 'second', availableTokens: 500 },
+  ];
+  assert.deepEqual(selectRouterCandidates(ranked, ranked[1], false), [ranked[1]]);
+  assert.deepEqual(selectRouterCandidates(ranked, ranked[1], true), ranked);
+  assert.deepEqual(selectRouterCandidates(ranked, null, false), []);
+  assert.deepEqual(
+    selectRouterCandidates(ranked, { providerId: 'ovh', modelId: 'gone' }, false),
+    [],
   );
 });
 

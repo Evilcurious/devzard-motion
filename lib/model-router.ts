@@ -198,6 +198,18 @@ export type RouterSelection = RouterTarget & {
   fusionModels: RouterTarget[];
 };
 
+export function selectRouterCandidates<T extends RouterTarget>(
+  ranked: T[],
+  selected: RouterTarget | null,
+  autoPick: boolean,
+) {
+  if (autoPick) return ranked;
+  if (!selected) return [];
+  const key = `${selected.providerId}::${selected.modelId}`;
+  const pinned = ranked.find((target) => `${target.providerId}::${target.modelId}` === key);
+  return pinned ? [pinned] : [];
+}
+
 export function rankRouterTargets<T extends RouterTarget>(
   targets: T[],
   density: AIDensity,

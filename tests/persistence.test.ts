@@ -79,6 +79,21 @@ test('workspace persistence strips approval tokens and rejects malformed message
                 args: { to: 'alice@example.com', subject: 'Test', body: 'Test only' },
                 token: 'must-never-be-stored',
               },
+              {
+                id: 'github-action',
+                name: 'github_push_files',
+                repository: {
+                  id: 123,
+                  fullName: 'relay-owner/site',
+                  defaultBranch: 'main',
+                  htmlUrl: 'https://github.com/relay-owner/site',
+                },
+                args: {
+                  commitMessage: 'Add a website',
+                  files: [{ path: 'package.json', content: '{"name":"site"}' }],
+                },
+                token: 'github-token-must-not-be-stored',
+              },
             ],
           },
         ],
@@ -90,6 +105,12 @@ test('workspace persistence strips approval tokens and rejects malformed message
   };
   const result = workspaceSchema.parse(data);
   assert.equal(result.conversations[0].messages[0].proposals?.[0].token, '');
+  assert.equal(result.conversations[0].messages[0].proposals?.[1].token, '');
+  assert.equal(
+    (result.conversations[0].messages[0].proposals?.[1] as { args?: { files?: unknown[] } })?.args
+      ?.files?.length,
+    1,
+  );
   assert.equal(
     result.conversations[0].messages[0].media?.urls[0],
     'https://cdn.example.com/generated.png',

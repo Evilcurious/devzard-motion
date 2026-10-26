@@ -3,6 +3,8 @@ import { googleSession } from '@/lib/google';
 import { googleClientConfig } from '@/lib/google-config';
 import { aiConfig } from '@/lib/ai';
 import { databaseHealth } from '@/lib/db';
+import { getGitHubInstallation } from '@/lib/github';
+import { githubAppConfig } from '@/lib/github';
 export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
@@ -28,6 +30,8 @@ export async function GET() {
       const ai = await aiConfig();
       const google = await googleSession();
       const client = await googleClientConfig();
+      const github = await getGitHubInstallation();
+      const githubApp = githubAppConfig();
       return Response.json({
         ...common,
         provider: ai.provider,
@@ -42,6 +46,14 @@ export async function GET() {
           client.appURL
         ),
         googleEmail: google?.email || null,
+        githubConfigured: !!(
+          githubApp.appId &&
+          githubApp.slug &&
+          githubApp.privateKey &&
+          githubApp.appURL &&
+          common.secureSettings
+        ),
+        githubAccount: github?.account || null,
       });
     } catch (error) {
       return Response.json({ ...common, connectionError: (error as Error).message });

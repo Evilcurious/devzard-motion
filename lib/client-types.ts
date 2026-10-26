@@ -10,6 +10,8 @@ export type Status = {
   aiConfigured?: boolean;
   googleConfigured?: boolean;
   googleEmail?: string | null;
+  githubConfigured?: boolean;
+  githubAccount?: string | null;
   deployment?: string;
   secureSettings?: boolean;
   databaseConfigured?: boolean;
@@ -26,8 +28,15 @@ export type Attachment = { name: string; text: string; pages?: number; truncated
 export type Proposal = WriteAction & {
   id: string;
   token: string;
+  repository?: {
+    id: number;
+    fullName: string;
+    defaultBranch: string;
+    htmlUrl: string;
+  };
   state?: 'done' | 'cancelled' | 'failed';
   result?: string;
+  resultUrl?: string;
 };
 export type Message = {
   id: string;

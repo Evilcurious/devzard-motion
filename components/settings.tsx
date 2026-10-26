@@ -739,18 +739,16 @@ export function Settings({
           </GuideStep>
           <GuideStep number="03" title="Connect Google">
             <p>
-              In Google Cloud Console, enable the <strong>Gmail API</strong> and{' '}
-              <strong>Google Sheets API</strong>. Configure an OAuth consent screen and add yourself
-              as a test user. Create a <strong>Web application</strong> OAuth client.
+              Once the Relay deployment owner has configured the Google OAuth client and enabled the{' '}
+              <strong>Gmail API</strong> and <strong>Google Sheets API</strong>, you only click{' '}
+              <strong>Sign in with Google</strong>, choose your account, and approve access. You do
+              not enter Google credentials in Relay.
             </p>
-            <Code
-              text={
-                'APP_URL=http://localhost:3000\nGOOGLE_CLIENT_ID=your-client-id\nGOOGLE_CLIENT_SECRET=your-client-secret\n# Authorized redirect URI in Google Cloud:\nhttp://localhost:3000/api/google/callback'
-              }
-            />
             <p>
-              For hosting, replace localhost with your HTTPS domain in both places. Open Connections
-              to authorize your account. Testing-mode Google tokens may expire after seven days.
+              The owner configures <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>,
+              and <code>APP_URL</code> on the server, then registers{' '}
+              <code>/api/google/callback</code> as the OAuth redirect URI. Testing-mode Google
+              tokens may expire after seven days.
             </p>
           </GuideStep>
           <GuideStep number="04" title="Make your first task happen">

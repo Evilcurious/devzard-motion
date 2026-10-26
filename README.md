@@ -7,11 +7,11 @@ A self-hostable, **single-owner** AI agent built with Next.js 16, React 19, Type
 - Chat, searchable history, PDF/text uploads and reusable, manually triggered workflows.
 - **Neon Postgres persistence:** conversations, document text, workflows, activity and theme survive browser changes.
 - **Encrypted connections:** AI API keys, Google OAuth client secrets and Google access/refresh tokens are encrypted at rest in PostgreSQL. Saved secrets are never returned by the settings API.
-- **Multi-provider model router:** add provider credentials, discover API-eligible models with explicitly reported free/token availability, auto-select the next eligible model after provider errors, and optionally synthesize responses from multiple models.
+- **Multi-provider model router:** discover eligible models, pin an explicitly selected model to every reply, or auto-select and fail over only while Auto-pick is enabled.
 - **AI settings:** provider, model, API key and editable endpoint; save, reset, and test the saved connection.
-- **Google APIs settings:** save a Google OAuth client ID/secret, then authorize Gmail and Google Sheets.
+- **One-click Google OAuth:** sign in once to connect Gmail and Google Sheets; deployment-level OAuth configuration is handled by the Relay owner.
 - **Gmail:** search/read messages and prepare outgoing emails. **Google Sheets:** append reviewed rows to an existing spreadsheet.
-- Approval is required for every email send and spreadsheet write. PostgreSQL prevents a submitted approval ID from being executed again by another server instance.
+- Approval is required for every email send, spreadsheet write and GitHub code push. GitHub changes go to a new branch; Relay never changes the default branch directly.
 - **Personalized appearance:** pure-white Light and pure-black Dark modes, accent themes, a color picker, eight font families and custom WOFF2/WOFF/TTF/OTF font uploads.
 - **Chat-first workspace:** readable assistant/user layout, automatic model selection, image generation, Firecrawl web search with sources, and Relay answers creator questions with “Faizan made me.”
 - Database health checks, visible save status, conflict protection and a downloadable backup when syncing fails.
@@ -92,7 +92,7 @@ Open **Settings → Database → Check database connection**. The status should 
 Important behavior:
 
 - On the first connection, browser history is imported **only if the database workspace is empty**. Existing database data takes priority.
-- Existing cookie-only API/Google credentials are not automatically migrated. Re-save AI and Google client settings, then reconnect Google, after enabling PostgreSQL.
+- Existing cookie-only API/Google account credentials are not automatically migrated. Re-save AI keys as needed, configure the deployment-level Google OAuth environment once, then reconnect Google after enabling PostgreSQL.
 - Database history is loaded after sign-in. Another device can access it with the same workspace password and app URL; reload that device to see new changes. This is not real-time collaborative editing.
 - Every save uses a revision number. If two tabs edit the same workspace, a stale save is rejected rather than overwriting the newer data. Download your unsaved backup before reloading to resolve a conflict.
 - If the database is unavailable, the app shows an error; it does **not** pretend to save or silently fall back to cookie-based credentials. A browser copy of history is retained for recovery.
@@ -165,7 +165,7 @@ Open **Models & providers** from the sidebar or click the model control in chat.
 
 The catalog supports OpenRouter, Ollama Cloud, Kilo Gateway, OVH AI Endpoints, Agnes AI, Routeway, BazaarLink, Requesty, AI Horde, Electron Hub, xKiro, and Septor Labs. Select **Refresh models** to call each provider's model-list API; listings require a saved key where that provider requires one. Provider hosts and adapters are implementation templates and have not been live-validated against every account/region. AI Horde is volunteer-powered and can be slow; it does not support Relay's tool calls. Anonymous routes may be rate-limited.
 
-Choose **Auto select** or **Fusion** in Models & providers. Auto select uses only models listed by the connected provider API that are explicitly free, report remaining tokens, or (for OpenRouter) have positive account/key credits. A model pinned in the chat picker is tried first; otherwise Relay picks the best eligible model for the chat’s density. On provider errors such as HTTP 402, it automatically tries the next eligible model. Each assistant reply identifies the model that answered. Quota and access can change between catalog checks, so provider errors remain possible. Fusion requests independent answers and asks a model to synthesize them; it makes additional provider requests and disables Gmail/Sheets tools and approval actions for that response.
+Choose **Auto select** or **Fusion** in Models & providers. Auto select uses only models listed by the connected provider API that are explicitly free, report remaining tokens, or (for OpenRouter) have positive account/key credits. In chat, a manually selected model is pinned: only that model is tried, and an error is shown instead of silently switching. With Auto-pick enabled, Relay picks the best eligible model for the chat’s density and can try another eligible model if a provider rejects it. Each assistant reply identifies the model that answered. Quota and access can change between catalog checks, so provider errors remain possible. Fusion requests independent answers and asks a model to synthesize them; it makes additional provider requests and disables Gmail/Sheets tools and approval actions for that response.
 
 Models are grouped only when their IDs match case-insensitively. Context is a model context-window limit, not account quota. The catalog summary totals only provider-reported, per-model remaining-token values; it omits unknown quotas and account-wide credits, and shared account limits can make a sum overlap. Reliability, speed, intelligence and guardrail scores are not fabricated.
 
@@ -173,7 +173,7 @@ Firecrawl, Parallel and KeenAble are displayed separately as search-provider con
 
 ### Images, web search and video
 
-Choose **Image** in the chat composer to generate an image. Relay automatically uses a connected xKiro image model first, then tries Septor Labs for authentication, quota, or rate-limit errors. Image generation can consume a provider free allowance or account credits; xKiro image jobs are asynchronous and may take longer than chat replies. Generated results are saved in conversation history. **Video** is shown but disabled because the connected providers do not currently expose a video-generation endpoint verified by Relay. Relay does not fabricate video clips or combine unrelated text responses into a video.
+Choose **Image** in the chat composer—or directly ask Chat to create/draw/generate an image, and Relay switches to Image mode for clear creation requests. Relay automatically uses a connected xKiro image model first, then tries Septor Labs for authentication, quota, or rate-limit errors. Image generation can consume a provider free allowance or account credits; xKiro image jobs are asynchronous and may take longer than chat replies. Generated results are saved in conversation history. **Video** is shown but disabled because the connected providers do not currently expose a video-generation endpoint verified by Relay. Relay does not fabricate video clips or combine unrelated text responses into a video.
 
 ### Google Gemini
 
@@ -240,30 +240,21 @@ Saved Settings take precedence over environment defaults. For a separate Ollama 
 
 ## Gmail API and Google Sheets API
 
-**A Google API key alone cannot access your private inbox or spreadsheets.** These integrations use OAuth authorization.
+**A Google API key alone cannot access your private inbox or spreadsheets.** Relay uses Google's OAuth sign-in, so users never enter a Google password or client secret into the app.
 
-1. In Google Cloud, create a project and enable **Gmail API** and **Google Sheets API**.
-2. Configure the OAuth consent screen. For private testing, add your Google email as a test user.
-3. Create an OAuth client of type **Web application**.
-4. Register this redirect URI for local use:
-   ```text
-   http://localhost:3000/api/google/callback
-   ```
-5. In Relay, open **Settings → Google APIs**. Enter the client ID and client secret and choose **Save Google credentials**.
-6. Click **Connect Google account** and authorize your account. You can also connect from Connections.
+The deployment owner completes the Google setup once: enable **Gmail API** and **Google Sheets API**, configure the OAuth consent screen, create a **Web application** OAuth client, and register `https://YOUR-RELAY-DOMAIN/api/google/callback` as its redirect URI. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `APP_URL` in the server environment (for Vercel, the project Environment Variables). For local development, use the corresponding `http://localhost:3000` values.
 
-With PostgreSQL configured, both client credentials and tokens are encrypted in the database, so the account remains available after signing in from a different browser. Without PostgreSQL, they are kept in encrypted HTTP-only cookies for up to 30 days.
+After that, a user opens Connections or Settings → Google APIs, clicks **Sign in with Google**, chooses an account, and approves the requested access. One login enables both Gmail and Sheets. Requested scopes are `openid`, `email`, `gmail.readonly`, `gmail.send`, and `spreadsheets`. Email sends and sheet writes still require approval in chat. Gmail scopes may require verification for public distribution; Google's testing-mode refresh tokens may expire after seven days.
 
-Environment credentials are also supported:
+With PostgreSQL configured, Google account tokens are encrypted in the database; otherwise, they are kept in encrypted HTTP-only cookies for up to 30 days. Disconnect removes the saved account tokens. To revoke the grant completely, remove Relay in your Google account's third-party access settings.
 
-```dotenv
-GOOGLE_CLIENT_ID=your-client-id
-GOOGLE_CLIENT_SECRET=your-client-secret
-```
+## GitHub code generation and Vercel previews
 
-Requested scopes: `openid`, `email`, `gmail.readonly`, `gmail.send`, `spreadsheets`. Gmail scopes may require verification for public distribution; this starter is intended for one private owner/test account. Google's testing-mode refresh tokens may expire after seven days.
+Relay connects through a **GitHub App installation**, not a pasted personal access token. The deployment owner creates a GitHub App, sets its Setup URL to `https://YOUR-RELAY-DOMAIN/api/github/callback`, grants **Metadata: read** and **Contents: read/write**, and makes it available to the intended GitHub accounts. Configure `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY`, `APP_URL`, and a stable `SESSION_SECRET` on the server. In Vercel, put these in the project's Environment Variables; the private key may use escaped `\n` line breaks.
 
-Disconnect removes saved account tokens. Removing saved Google credentials also disconnects the account, with any environment credentials remaining available. To revoke the grant completely, remove Relay in your Google account's third-party access settings.
+Each user then chooses **Install & connect GitHub**, selects only the repositories to grant, and chooses one writable repository in Connections. In any chat, ask Relay to create or change a site/app. Relay prepares a structured multi-file proposal with a full content preview. After explicit approval, it creates a `relay/<id>` branch based on the repository's default branch. It does not write directly to the default branch, execute generated code, include secrets, or add GitHub Actions workflows.
+
+If the repository is already connected to a Vercel project, Vercel's normal Git integration may create a **Preview Deployment** for the new branch. Preview builds execute repository scripts, so keep production secrets out of preview environments. Relay does not yet create Vercel projects or change Vercel project settings/deployment configuration. Review and merge the branch in GitHub when ready; do not assume a preview is production-ready.
 
 ### Example tasks
 
@@ -318,6 +309,7 @@ The Analytics page records measured upstream model API requests, outcomes, respo
 | ---------------------------------------------------- | ---------------------------------------------------- | ----------------------------------- |
 | Chats, extracted text, workflows, activity, theme    | Database JSON workspace + browser backup             | Browser localStorage                |
 | AI keys, Google client secret, access/refresh tokens | AES-256-GCM encrypted database values, purpose-bound | Encrypted HTTP-only SameSite cookie |
+| GitHub App installation ID and selected repository   | AES-256-GCM encrypted database values                | Encrypted HTTP-only SameSite cookie |
 | Original document                                    | Request memory only                                  | Request memory only                 |
 | Pending approval token                               | Memory only; 15-minute expiry                        | Memory only; 15-minute expiry       |
 | Used approval ID                                     | Unique PostgreSQL claim, retained across restarts    | Process cache and signed cookie     |
@@ -328,7 +320,7 @@ The Analytics page records measured upstream model API requests, outcomes, respo
 - Chats themselves are not application-encrypted; use encrypted storage/backups and appropriate database access controls. Attached text and relevant email results go to the selected AI provider.
 - Treat documents/emails as untrusted. Prompt injection is still possible: read every proposed action carefully. Arbitrary shell commands, browsing and desktop control are not implemented.
 - Gmail headers reject newlines. Sheets writes use RAW values, so formulas aren't evaluated.
-- Approval claims are inserted atomically **before** calling Google. An uncertain failure remains claimed; there's no automatic retry of a side effect. Check Gmail/Sheets before preparing another action. Database idempotency prevents replay of the same ID, not a user creating a new duplicate proposal.
+- Approval claims are inserted atomically **before** calling Google or GitHub. An uncertain failure remains claimed; there's no automatic retry of a side effect. Check the destination before preparing another action. Database idempotency prevents replay of the same ID, not a user creating a new duplicate proposal.
 - Signing out clears auth and cookie-only connections, but leaves PostgreSQL connections/history and browser history. Clear browser data before using a shared computer.
 - Login throttling is process-local. For public use, add WAF/platform rate limits and monitoring.
 

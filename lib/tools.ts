@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { googleFetch } from './google';
+import { validateGitHubCommitMessage, validateGitHubFiles, type GitHubPushAction } from './github';
 
 const noNewline = z
   .string()
@@ -26,12 +27,39 @@ export const sheetSchema = z
   .strict();
 export type EmailArgs = z.infer<typeof emailSchema>;
 export type SheetArgs = z.infer<typeof sheetSchema>;
+const githubPushSchema = z
+  .object({
+    commitMessage: z.string(),
+    files: z.array(z.object({ path: z.string(), content: z.string() }).strict()),
+  })
+  .strict();
 export type WriteAction =
-  { name: 'send_email'; args: EmailArgs } | { name: 'append_to_sheet'; args: SheetArgs };
+  | { name: 'send_email'; args: EmailArgs }
+  | { name: 'append_to_sheet'; args: SheetArgs }
+  | GitHubPushAction;
 export function validateAction(name: string, args: unknown): WriteAction {
   if (name === 'send_email') return { name, args: emailSchema.parse(args) };
   if (name === 'append_to_sheet') return { name, args: sheetSchema.parse(args) };
+  if (name === 'github_push_files') {
+    const parsed = githubPushSchema.parse(args);
+    return {
+      name,
+      args: {
+        commitMessage: validateGitHubCommitMessage(parsed.commitMessage),
+        files: validateGitHubFiles(parsed.files),
+      },
+    };
+  }
   throw new Error('Unknown action.');
+}
+export function toolsForConnections(google: boolean, github: boolean) {
+  const googleNames = new Set(['search_emails', 'read_email', 'send_email', 'append_to_sheet']);
+  return tools.filter((tool) => {
+    const name = tool.function.name;
+    if (googleNames.has(name)) return google;
+    if (name === 'github_push_files') return github;
+    return false;
+  });
 }
 export const tools = [
   {
@@ -102,6 +130,37 @@ export const tools = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'github_push_files',
+      description:
+        'Prepare a complete, structured set of text files for the selected GitHub repository. This only creates a review proposal; never claim it was pushed before the user approves. For website/app requests, include a sensible project structure, package.json, source, styles, and setup documentation. Do not include secrets, dependency folders, build output, .git metadata, or GitHub workflow files.',
+      parameters: {
+        type: 'object',
+        properties: {
+          commitMessage: { type: 'string', description: 'A concise one-line commit message.' },
+          files: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                path: { type: 'string', description: 'A safe repository-relative file path.' },
+                content: {
+                  type: 'string',
+                  description: 'The full UTF-8 text content of the file.',
+                },
+              },
+              required: ['path', 'content'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['commitMessage', 'files'],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 function decode(s: string) {
   return Buffer.from(s, 'base64url').toString('utf8');
@@ -153,7 +212,9 @@ export async function readTool(name: string, args: Record<string, unknown>) {
   }
   throw new Error('Unknown read tool.');
 }
-export async function executeAction(action: WriteAction) {
+export async function executeAction(
+  action: Extract<WriteAction, { name: 'send_email' | 'append_to_sheet' }>,
+) {
   if (action.name === 'send_email') {
     const args = emailSchema.parse(action.args);
     const raw = [

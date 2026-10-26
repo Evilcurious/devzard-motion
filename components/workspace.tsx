@@ -17,6 +17,7 @@ import {
   FileSpreadsheet,
   FileText,
   Globe2,
+  Github,
   History,
   Image as ImageIcon,
   LayoutGrid,
@@ -44,6 +45,7 @@ import {
   Zap,
 } from 'lucide-react';
 import type { AIDensity, RouterModel, RouterTarget } from '@/lib/model-router';
+import { isImageGenerationPrompt } from '@/lib/media-intent';
 import type {
   Activity,
   Attachment,
@@ -144,7 +146,11 @@ export default function Workspace() {
     const params = new URLSearchParams(window.location.search);
     if (params.has('connected')) {
       setPage('connections');
-      notify('Google connected. Your agent has a few new superpowers.');
+      notify(
+        params.get('connected') === 'github'
+          ? 'GitHub connected. Choose a repository to use in chats.'
+          : 'Google connected. Gmail and Sheets are ready to use.',
+      );
     }
     if (params.has('connection_error')) {
       setPage('connections');
@@ -337,7 +343,7 @@ export default function Workspace() {
       setModelPickerOpen(false);
       await refresh();
       notify(
-        `${model.name} · ${provider.name} selected. Relay will automatically move to the next eligible model if it becomes unavailable.`,
+        `${model.name} · ${provider.name} selected. Relay will use only this model; switch to Auto-pick if you want it to choose another when unavailable.`,
       );
     } catch (error) {
       setModelPickerError((error as Error).message);
@@ -390,6 +396,10 @@ export default function Workspace() {
   async function send() {
     if (!hydrated || busyRef.current || uploading || (!text.trim() && !attachment)) return;
     const content = text.trim() || 'Please summarize the attached document.';
+    const inferredImageRequest =
+      mediaMode === 'chat' && !webSearch && !attachment && isImageGenerationPrompt(content);
+    const mode = inferredImageRequest ? 'image' : mediaMode;
+    if (inferredImageRequest) setMediaMode('image');
     const message: Message = {
       id: uid(),
       role: 'user',
@@ -416,7 +426,6 @@ export default function Workspace() {
     busyRef.current = true;
     abortRef.current = new AbortController();
     try {
-      const mode = mediaMode;
       const response = await fetch(mode === 'chat' ? '/api/chat' : '/api/router/media', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -542,7 +551,9 @@ export default function Workspace() {
     setApproving(proposal.id);
     const id = currentId;
     try {
-      const result = await api<{ message: string }>('/api/actions', { token: proposal.token });
+      const result = await api<{ message: string; branchUrl?: string }>('/api/actions', {
+        token: proposal.token,
+      });
       updateMessages(id, (list) =>
         list.map((m) =>
           m.id === messageId
@@ -550,7 +561,13 @@ export default function Workspace() {
                 ...m,
                 proposals: m.proposals?.map((p) =>
                   p.id === proposal.id
-                    ? { ...p, state: 'done', result: result.message, token: '' }
+                    ? {
+                        ...p,
+                        state: 'done',
+                        result: result.message,
+                        resultUrl: result.branchUrl,
+                        token: '',
+                      }
                     : p,
                 ),
               }
@@ -558,9 +575,17 @@ export default function Workspace() {
         ),
       );
       addActivity(
-        proposal.name === 'send_email' ? 'Email sent' : 'Spreadsheet updated',
+        proposal.name === 'github_push_files'
+          ? 'GitHub branch created'
+          : proposal.name === 'send_email'
+            ? 'Email sent'
+            : 'Spreadsheet updated',
         result.message,
-        proposal.name === 'send_email' ? 'email' : 'sheet',
+        proposal.name === 'send_email'
+          ? 'email'
+          : proposal.name === 'append_to_sheet'
+            ? 'sheet'
+            : 'file',
       );
       notify(result.message);
     } catch (error) {
@@ -1351,8 +1376,16 @@ export default function Workspace() {
               </div>
               <div className="connections-summary">
                 <span>
-                  <span className={`status-dot ${status?.googleEmail ? '' : 'muted'}`} />
-                  {status?.googleEmail ? '2 apps connected' : 'No apps connected yet'}
+                  <span
+                    className={`status-dot ${status?.googleEmail || status?.githubAccount ? '' : 'muted'}`}
+                  />
+                  {status?.googleEmail && status?.githubAccount
+                    ? 'Google and GitHub connected'
+                    : status?.googleEmail
+                      ? 'Gmail and Sheets connected'
+                      : status?.githubAccount
+                        ? 'GitHub connected'
+                        : 'No apps connected yet'}
                 </span>
                 <span>
                   <ShieldCheck size={15} />
@@ -1412,14 +1445,19 @@ export default function Workspace() {
                         {status.googleEmail}
                       </div>
                     ) : (
-                      <button className="button" onClick={connect}>
-                        Connect {item.name}
+                      <button
+                        className="button"
+                        onClick={connect}
+                        disabled={!status?.googleConfigured}
+                      >
+                        Sign in with Google
                         <ArrowUpRight size={15} />
                       </button>
                     )}
                   </section>
                 ))}
               </div>
+              <GitHubConnectionCard status={status} refresh={refresh} notify={notify} />
               {status?.googleEmail ? (
                 <div className="info-callout">
                   <ShieldCheck size={19} />
@@ -1457,12 +1495,12 @@ export default function Workspace() {
                     <strong>Private by design. Connected by choice.</strong>
                     <p>
                       {status?.googleConfigured
-                        ? 'Connect either app to authorize Gmail and Google Sheets together. Access is limited to reading and sending email, and editing spreadsheets.'
-                        : 'First, save your Google OAuth credentials in Settings → Google APIs. Then connect either app to authorize Gmail and Sheets together.'}
+                        ? 'One Google sign-in authorizes Gmail and Sheets together. You choose the account in Google’s permission screen; writes still wait for your approval.'
+                        : 'Google sign-in is not configured for this Relay deployment yet. The deployment owner must complete the one-time Google OAuth setup; you will only need to sign in and approve access afterward.'}
                     </p>
                     {!status?.googleConfigured && (
                       <button className="text-button" onClick={() => go('settings')}>
-                        View setup instructions
+                        View connection setup
                         <ArrowRight size={13} />
                       </button>
                     )}
@@ -1623,8 +1661,9 @@ export default function Workspace() {
       )}
       {modelPickerOpen && (
         <Modal
+          wide
           title="Choose an available model"
-          subtitle="Only models allowed by the connected API and reported free, with tokens, or (for OpenRouter) with account credits are listed."
+          subtitle="Choose one model to pin every reply to it, or leave Relay on Auto-pick to use the best eligible model."
           onClose={() => setModelPickerOpen(false)}
         >
           {modelPickerError && (
@@ -1639,10 +1678,10 @@ export default function Workspace() {
           >
             <Zap size={16} />
             <span>
-              <strong>Auto-pick best for density</strong>
+              <strong>Automatically choose a model</strong>
               <small>
-                At each request, choose the top eligible model using {density} density, then
-                auto-switch on provider errors.
+                Relay picks the best eligible model for each request and can try another if a
+                provider rejects it.
               </small>
             </span>
             {routerAutoPick && <Check size={16} />}
@@ -1880,12 +1919,23 @@ function ApprovalCard({
   onCancel: () => void;
 }) {
   const email = proposal.name === 'send_email';
+  const github = proposal.name === 'github_push_files';
   return (
     <div className={`approval-card ${proposal.state || ''}`}>
       <div className="approval-heading">
         <span>
-          {email ? <Mail size={17} /> : <FileSpreadsheet size={17} />}{' '}
-          {email ? 'An email, ready for your review' : 'Your spreadsheet update'}
+          {github ? (
+            <Github size={17} />
+          ) : email ? (
+            <Mail size={17} />
+          ) : (
+            <FileSpreadsheet size={17} />
+          )}{' '}
+          {github
+            ? 'Review generated repository files'
+            : email
+              ? 'An email, ready for your review'
+              : 'Your spreadsheet update'}
         </span>
         <span className={`small-badge ${proposal.state === 'done' ? 'green' : ''}`}>
           {proposal.state === 'done'
@@ -1908,6 +1958,43 @@ function ApprovalCard({
             {proposal.args.subject}
           </div>
           <p>{proposal.args.body}</p>
+        </div>
+      ) : github && proposal.name === 'github_push_files' ? (
+        <div className="github-proposal-preview">
+          <p>
+            <strong>Repository</strong>
+            <a href={proposal.repository?.htmlUrl} target="_blank" rel="noreferrer">
+              {proposal.repository?.fullName || 'Selected repository'}
+              <ExternalLink size={12} />
+            </a>
+          </p>
+          <p>
+            <strong>Target</strong>
+            New <code>relay/…</code> branch · based on{' '}
+            <code>{proposal.repository?.defaultBranch || 'default branch'}</code>
+          </p>
+          <p>
+            <strong>Commit</strong>
+            {proposal.args.commitMessage}
+          </p>
+          <strong className="github-file-count">
+            {proposal.args.files.length} file(s) to add or update
+          </strong>
+          <div className="github-file-list">
+            {proposal.args.files.map((file) => (
+              <details key={file.path}>
+                <summary>
+                  <code>{file.path}</code>
+                  <span>{file.content.length.toLocaleString()} chars</span>
+                </summary>
+                <pre>{file.content}</pre>
+              </details>
+            ))}
+          </div>
+          <small>
+            The default branch will not be changed. Review the files, then approve to push this new
+            branch.
+          </small>
         </div>
       ) : (
         <div className="sheet-preview">
@@ -1949,6 +2036,11 @@ function ApprovalCard({
       {proposal.result && (
         <div className={proposal.state === 'failed' ? 'error-box' : 'action-result'}>
           {proposal.state === 'done' && <CheckCircle2 size={16} />} {proposal.result}
+          {proposal.resultUrl && (
+            <a href={proposal.resultUrl} target="_blank" rel="noreferrer">
+              View GitHub branch <ExternalLink size={12} />
+            </a>
+          )}
         </div>
       )}
       {!proposal.state && (
@@ -1969,12 +2061,196 @@ function ApprovalCard({
               onClick={onApprove}
             >
               {working ? <LoaderCircle size={14} className="spin" /> : <Check size={14} />}{' '}
-              {email ? 'Approve & send' : 'Approve & add rows'}
+              {github ? 'Approve & push branch' : email ? 'Approve & send' : 'Approve & add rows'}
             </button>
           </div>
         </div>
       )}
     </div>
+  );
+}
+type GitHubRepositoryOption = {
+  id: number;
+  fullName: string;
+  name: string;
+  owner: string;
+  private: boolean;
+  defaultBranch: string;
+  htmlUrl: string;
+};
+function GitHubConnectionCard({
+  status,
+  refresh,
+  notify,
+}: {
+  status: Status | null;
+  refresh: () => Promise<void>;
+  notify: (message: string) => void;
+}) {
+  const [repositories, setRepositories] = useState<GitHubRepositoryOption[]>([]);
+  const [selection, setSelection] = useState<GitHubRepositoryOption | null>(null);
+  const [account, setAccount] = useState<string | null>(status?.githubAccount || null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await api<{
+        connected: boolean;
+        account: string | null;
+        repositories: GitHubRepositoryOption[];
+        selection: GitHubRepositoryOption | null;
+      }>('/api/github/repositories', undefined, 'GET');
+      setAccount(data.account);
+      setRepositories(data.repositories);
+      setSelection(data.selection);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load, status?.githubAccount]);
+  async function connectGitHub() {
+    setBusy(true);
+    setError('');
+    try {
+      const { url } = await api<{ url: string }>('/api/github/connect');
+      window.location.assign(url);
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+  async function selectRepository(event: React.ChangeEvent<HTMLSelectElement>) {
+    const repositoryId = Number(event.target.value);
+    if (!repositoryId) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await api<{ selection: GitHubRepositoryOption }>('/api/github/repositories', {
+        repositoryId,
+      });
+      setSelection(result.selection);
+      notify(`Connected ${result.selection.fullName} to chat code proposals.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function disconnectGitHub() {
+    if (
+      !window.confirm(
+        'Disconnect Relay and uninstall its GitHub App installation for this account?',
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      await api('/api/github/disconnect', {});
+      setAccount(null);
+      setRepositories([]);
+      setSelection(null);
+      await refresh();
+      notify('GitHub disconnected from Relay.');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="integration-card github-integration-card">
+      <div className="card-top">
+        <Github size={28} aria-hidden="true" />
+        <span className={`small-badge ${account ? 'green' : ''}`}>
+          {account ? 'Connected' : 'Not connected'}
+        </span>
+      </div>
+      <h2>GitHub</h2>
+      <h3>Turn a chat into a reviewed code change.</h3>
+      <p>
+        Select a repository once. In any chat, ask Relay to create or update a site or app; it will
+        prepare a structured file set and wait for your approval before pushing a new branch.
+      </p>
+      {account ? (
+        <>
+          <div className="connected-account">
+            <span className="status-dot" />
+            Connected as {account}
+          </div>
+          <label className="github-repository-select">
+            <span>Repository Relay can use</span>
+            <select
+              value={selection?.id || ''}
+              onChange={(event) => void selectRepository(event)}
+              disabled={loading || busy || !repositories.length}
+            >
+              <option value="">{loading ? 'Loading repositories…' : 'Choose a repository'}</option>
+              {repositories.map((repository) => (
+                <option key={repository.id} value={repository.id}>
+                  {repository.fullName}
+                  {repository.private ? ' · Private' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selection && (
+            <div className="github-branch-note">
+              New code is proposed on a separate <code>relay/…</code> branch from{' '}
+              <code>{selection.defaultBranch}</code>; the default branch is never changed directly.
+              If this repository is already linked to a Vercel project, Vercel may build a Preview
+              Deployment. Preview builds can execute repository scripts, so keep production secrets
+              out of preview environments.
+            </div>
+          )}
+          <button
+            className="text-button danger-text"
+            onClick={() => void disconnectGitHub()}
+            disabled={busy}
+          >
+            <Unplug size={13} /> Disconnect GitHub
+          </button>
+        </>
+      ) : (
+        <>
+          <ul>
+            <li>
+              <CheckCircle2 size={14} /> Choose only repositories granted to the GitHub App
+            </li>
+            <li>
+              <CheckCircle2 size={14} /> Review every generated file before it is pushed
+            </li>
+          </ul>
+          <button
+            className="button"
+            onClick={() => void connectGitHub()}
+            disabled={!status?.githubConfigured || busy}
+          >
+            {busy ? <LoaderCircle size={15} className="spin" /> : <Github size={15} />}
+            Install & connect GitHub
+            <ArrowUpRight size={15} />
+          </button>
+        </>
+      )}
+      {error && (
+        <div className="error-box" role="alert">
+          {error}
+        </div>
+      )}
+      {!status?.githubConfigured && (
+        <div className="github-setup-hint">
+          One-time server setup is required: a GitHub App with <code>Contents: read/write</code> and{' '}
+          <code>Metadata: read</code>. After that, connect by installing it from GitHub; never paste
+          a token here.
+        </div>
+      )}
+    </section>
   );
 }
 function Stat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {

@@ -2,9 +2,9 @@
 import { databaseLabel } from '@/lib/database-label';
 import { useEffect, useState } from 'react';
 import {
+  ArrowUpRight,
   Check,
   Database,
-  KeyRound,
   LoaderCircle,
   Palette,
   ShieldCheck,
@@ -417,208 +417,126 @@ export function GoogleSettings({
   refresh: () => Promise<void>;
   notify: (text: string) => void;
 }) {
-  const [clientId, setClientId] = useState('');
-  const [secret, setSecret] = useState('');
-  const [secretSaved, setSecretSaved] = useState(false);
   const [redirect, setRedirect] = useState('');
-  const [busy, setBusy] = useState('load');
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
     let cancelled = false;
-    api<{ clientId: string; secretSaved: boolean; redirectURI: string }>(
-      '/api/google/config',
-      undefined,
-      'GET',
-    )
+    api<{ redirectURI: string }>('/api/google/config', undefined, 'GET')
       .then((data) => {
-        if (!cancelled) {
-          setClientId(data.clientId);
-          setSecretSaved(data.secretSaved);
-          setRedirect(data.redirectURI);
-        }
+        if (!cancelled) setRedirect(data.redirectURI);
       })
       .catch((e) => {
-        if (!cancelled) setError(e.message);
-      })
-      .finally(() => {
-        if (!cancelled) setBusy('');
+        if (!cancelled) setError((e as Error).message);
       });
     return () => {
       cancelled = true;
     };
   }, []);
-  async function save(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy('save');
-    setError('');
-    try {
-      await api('/api/google/config', { clientId, clientSecret: secret });
-      setSecret('');
-      setSecretSaved(true);
-      await refresh();
-      notify(
-        status.databaseConfigured
-          ? `Google OAuth credentials encrypted and saved to ${databaseLabel(status)}.`
-          : 'Google OAuth credentials saved in an encrypted browser session.',
-      );
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy('');
-    }
-  }
   async function connect() {
-    setBusy('connect');
+    setBusy(true);
     setError('');
     try {
       const result = await api<{ url: string }>('/api/google/connect');
       window.location.assign(result.url);
     } catch (e) {
       setError((e as Error).message);
-      setBusy('');
+      setBusy(false);
+    }
+  }
+  async function disconnect() {
+    if (!window.confirm('Disconnect Gmail and Google Sheets from this Relay workspace?')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/google/disconnect', {});
+      await refresh();
+      notify('Google disconnected from Relay. You can reconnect any time.');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
     }
   }
   return (
     <>
       <div className="section-intro">
-        <h2>Gmail & Google Sheets APIs</h2>
-        <p>One Google OAuth connection gives your agent access to both services.</p>
+        <h2>Connect Google once</h2>
+        <p>One Google sign-in securely connects both Gmail and Google Sheets.</p>
       </div>
       <div className="google-api-summary">
         <AppIcon type="email" />
-        <span>Gmail API</span>
+        <span>Gmail</span>
         <span className="small-badge">Read & send</span>
         <AppIcon type="sheet" />
-        <span>Sheets API</span>
+        <span>Google Sheets</span>
         <span className="small-badge">Append rows</span>
       </div>
       <section className="settings-panel">
         <div className="panel-title">
-          <KeyRound size={18} />
-          <h3>Google OAuth client</h3>
+          <ShieldCheck size={18} />
+          <h3>Your Google account</h3>
           <span className={`small-badge ${status.googleEmail ? 'green' : ''}`}>
             {status.googleEmail
-              ? 'Account connected'
-              : secretSaved
-                ? 'Credentials saved'
-                : 'Not configured'}
+              ? 'Connected'
+              : status.googleConfigured
+                ? 'Ready to connect'
+                : 'Setup needed'}
           </span>
         </div>
-        <form className="settings-form" onSubmit={save}>
-          <label>
-            Client ID
-            <input
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="Your client ID ending in .apps.googleusercontent.com"
-              required
-              maxLength={300}
-            />
-          </label>
-          <label>
-            Client secret{' '}
-            <span className="optional">
-              {secretSaved ? '(leave blank to keep saved secret)' : ''}
-            </span>
-            <input
-              type="password"
-              autoComplete="off"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder={secretSaved ? 'Secret is saved securely' : 'Your OAuth client secret'}
-              maxLength={500}
-            />
-          </label>
-          <label>
-            Authorized redirect URI
-            <input
-              readOnly
-              value={redirect}
-              placeholder="Set APP_URL in .env.local, then restart Relay"
-            />
-            <span>
-              Copy this exact URI into your Google Cloud OAuth client’s authorized redirect URIs.
-            </span>
-          </label>
-          {error && (
-            <div className="error-box" role="alert">
-              {error}
-            </div>
-          )}
-          <div className="form-actions">
-            <button className="button primary" disabled={!!busy || !clientId.trim()}>
-              {busy === 'save' ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}
-              Save Google credentials
-            </button>
-            <button
-              type="button"
-              className="button"
-              disabled={!!busy || !status.googleConfigured}
-              onClick={connect}
-            >
-              {busy === 'connect' && <LoaderCircle className="spin" size={15} />}{' '}
-              {status.googleEmail ? 'Reconnect Google account' : 'Connect Google account'}
-            </button>
+        <p className="settings-help">
+          Click once, choose your Google account, and approve the requested Gmail and Sheets access.
+          Relay never needs your Google password. Email sends and spreadsheet changes still require
+          your approval in chat.
+        </p>
+        {status.googleEmail && (
+          <div className="connected-account">
+            <Check size={14} /> Connected as {status.googleEmail}
           </div>
-          {status.googleEmail && (
-            <div className="connected-account">
-              <Check size={14} />
-              {status.googleEmail}
-            </div>
-          )}
-          <div className="subtle-note">
-            <ShieldCheck size={14} />
-            {status.databaseConfigured
-              ? `Secrets and Google tokens are encrypted in ${databaseLabel(status)}, not sent back to the browser.`
-              : `Secrets are encrypted in HTTP-only cookies. Add ${databaseLabel(status)} to keep them across browsers.`}
+        )}
+        {error && (
+          <div className="error-box" role="alert">
+            {error}
           </div>
+        )}
+        <div className="form-actions">
           <button
-            type="button"
-            className="text-button danger-text"
-            disabled={!!busy}
-            onClick={async () => {
-              if (
-                !window.confirm(
-                  'Remove saved Google credentials and disconnect this account? Environment credentials, if any, will remain available.',
-                )
-              )
-                return;
-              setBusy('remove');
-              try {
-                await api('/api/google/config', undefined, 'DELETE');
-                await refresh();
-                const config = await api<{ clientId: string; secretSaved: boolean }>(
-                  '/api/google/config',
-                  undefined,
-                  'GET',
-                );
-                setClientId(config.clientId);
-                setSecretSaved(config.secretSaved);
-                notify('Saved Google credentials removed; account disconnected.');
-              } catch (e) {
-                setError((e as Error).message);
-              } finally {
-                setBusy('');
-              }
-            }}
+            className="button primary"
+            onClick={() => void connect()}
+            disabled={busy || !status.googleConfigured}
           >
-            <Unplug size={13} />
-            Remove saved Google credentials
+            {busy ? <LoaderCircle size={15} className="spin" /> : <ArrowUpRight size={15} />}
+            {status.googleEmail ? 'Reconnect with Google' : 'Sign in with Google'}
           </button>
-        </form>
-      </section>
-      <div className="info-callout">
-        <ShieldCheck size={19} />
-        <div>
-          <strong>A Google API key alone cannot access your private inbox</strong>
-          <p>
-            In Google Cloud, enable Gmail API and Google Sheets API. Configure the OAuth consent
-            screen, add your Google account as a test user, and create a Web application OAuth
-            client. Save its credentials here, then sign in with Google. Email sends and spreadsheet
-            writes still require your approval.
-          </p>
+          {status.googleEmail && (
+            <button className="button" onClick={() => void disconnect()} disabled={busy}>
+              <Unplug size={15} /> Disconnect
+            </button>
+          )}
         </div>
-      </div>
+        <div className="subtle-note">
+          <ShieldCheck size={14} />
+          {status.databaseConfigured
+            ? `Google access tokens are encrypted in ${databaseLabel(status)} and never returned to your browser.`
+            : 'Google access tokens are stored in a secure, encrypted, HTTP-only session cookie.'}
+        </div>
+      </section>
+      {!status.googleConfigured && (
+        <div className="info-callout">
+          <ShieldCheck size={19} />
+          <div>
+            <strong>One-time setup for the Relay deployment owner</strong>
+            <p>
+              The app owner must configure a Google OAuth client and enable Gmail and Google Sheets
+              APIs once. After that, users only sign in and grant access here—no client ID or secret
+              entry is needed in Relay.
+            </p>
+            {redirect && (
+              <code className="oauth-redirect-uri">Authorized redirect URI: {redirect}</code>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -10,10 +10,53 @@ const review = {
     .transform(() => ''),
   state: z.enum(['done', 'cancelled', 'failed']).optional(),
   result: z.string().max(20000).optional(),
+  resultUrl: z
+    .string()
+    .url()
+    .max(2000)
+    .refine((value) => new URL(value).hostname === 'github.com')
+    .optional(),
 };
+const githubProposal = z
+  .object({
+    ...review,
+    name: z.literal('github_push_files'),
+    repository: z
+      .object({
+        id: z.number().int().positive(),
+        fullName: z.string().min(3).max(200),
+        defaultBranch: z.string().min(1).max(200),
+        htmlUrl: z
+          .string()
+          .url()
+          .max(2000)
+          .refine((value) => new URL(value).hostname === 'github.com'),
+      })
+      .optional(),
+    args: z
+      .object({
+        commitMessage: z.string().min(1).max(120),
+        files: z
+          .array(z.object({ path: z.string().min(1).max(240), content: z.string().max(100_000) }))
+          .min(1)
+          .max(30),
+      })
+      .superRefine((args, context) => {
+        if (
+          args.files.reduce((sum, file) => sum + Buffer.byteLength(file.content, 'utf8'), 0) >
+          500_000
+        )
+          context.addIssue({
+            code: 'custom',
+            message: 'GitHub proposal exceeds the file-size limit.',
+          });
+      }),
+  })
+  .strict();
 const proposal = z.discriminatedUnion('name', [
   z.object({ ...review, name: z.literal('send_email'), args: emailSchema }),
   z.object({ ...review, name: z.literal('append_to_sheet'), args: sheetSchema }),
+  githubProposal,
 ]);
 export const workspaceSchema = z.object({
   conversations: z
