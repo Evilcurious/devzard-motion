@@ -9,7 +9,9 @@ export async function readConnection<T>(name: string): Promise<T | null> {
 export async function saveConnection(name: string, value: unknown) {
   if ((process.env.SESSION_SECRET?.length || 0) < 32)
     throw new Error(
-      'Run npm run setup, then restart Relay before saving credentials. This creates SESSION_SECRET and a workspace password without changing your existing settings.',
+      process.env.VERCEL
+        ? 'Set a stable SESSION_SECRET of at least 32 characters in Vercel → Project Settings → Environment Variables, then redeploy. Preserve the existing value so saved credentials remain readable.'
+        : 'Run npm run setup, then restart Relay before saving credentials. This creates SESSION_SECRET and a workspace password without changing your existing settings.',
     );
   const jar = await cookies();
   if (databaseConfigured()) {

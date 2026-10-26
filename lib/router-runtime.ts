@@ -7,6 +7,7 @@ type ProviderCredential = { apiKey: string };
 export type RouterTarget = { providerId: RouterProviderId; modelId: string };
 export type ResolvedTarget = {
   providerId: RouterProviderId;
+  analyticsProviderId?: string;
   model: string;
   baseURL: string;
   key: string;
@@ -30,6 +31,7 @@ export async function resolveRouterTarget(target: RouterTarget): Promise<Resolve
   }
   return {
     providerId: provider.id,
+    analyticsProviderId: provider.id,
     model: target.modelId,
     baseURL: provider.baseURL.replace(/\/$/, ''),
     key: apiKey || (provider.id === 'aihorde' ? '0000000000' : ''),

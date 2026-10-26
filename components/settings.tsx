@@ -33,6 +33,8 @@ export function Settings({
   notify,
   theme,
   onThemeChange,
+  initialTab = 'model',
+  onOpenModelHub,
   appearance,
   onAppearanceChange,
 }: {
@@ -43,6 +45,8 @@ export function Settings({
   onAppearanceChange: (appearance: Appearance) => void;
   refresh: () => Promise<void>;
   notify: (text: string) => void;
+  initialTab?: string;
+  onOpenModelHub: () => void;
 }) {
   const [provider, setProvider] = useState(status.provider || 'openai');
   const [model, setModel] = useState(status.model || 'gpt-4o-mini');
@@ -55,7 +59,7 @@ export function Settings({
   }, [status.provider, status.model, status.baseURL]);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [tab, setTab] = useState('model');
+  const [tab, setTab] = useState(initialTab);
   const [geminiModels, setGeminiModels] = useState<string[]>([]);
   const [localModels, setLocalModels] = useState<string[]>([]);
   const gemini = provider === 'compatible' && isGeminiEndpoint(baseURL);
@@ -148,9 +152,9 @@ export function Settings({
           <div>
             <strong>One-time setup needed to save API connections</strong>
             <p>
-              In your project terminal, run <code>npm run setup</code>, then restart Relay. This
-              creates missing encryption and password settings in .env.local without overwriting
-              your existing values. Use APP_PASSWORD from that file to sign in.
+              {status.deployment === 'vercel'
+                ? 'In Vercel project Settings → Environment Variables, set APP_PASSWORD and a stable SESSION_SECRET (at least 32 characters), then redeploy. Do not run local setup commands. Preserve your current SESSION_SECRET so saved credentials remain readable.'
+                : 'In your project terminal, run npm run setup, then restart Relay. This creates missing encryption and password settings in .env.local without overwriting existing values. Use APP_PASSWORD from that file to sign in.'}
             </p>
           </div>
         </div>
@@ -204,6 +208,18 @@ export function Settings({
             <h2>A brain for your agent</h2>
             <p>Connect an API or keep everything local with Ollama.</p>
           </div>
+          <section className="provider-hub-callout">
+            <div>
+              <strong>Want to add a named provider?</strong>
+              <p>
+                Choose a provider first, then enter only its API key. Existing OpenRouter settings
+                stay connected.
+              </p>
+            </div>
+            <button className="button" type="button" onClick={onOpenModelHub}>
+              Browse providers
+            </button>
+          </section>
           <div className="provider-options">
             {[
               {
@@ -684,17 +700,32 @@ export function Settings({
       {tab === 'guide' && (
         <div className="setup-guide">
           <GuideStep number="01" title="Start your workspace">
-            <p>Install Node.js 20.9 or newer, open this project and run:</p>
-            <Code
-              text={
-                'npm install\nnpm run setup\n# Optional: set DATABASE_URL in .env.local, then:\nnpm run db:migrate\nnpm run dev'
-              }
-            />
-            <p>
-              Set <code>APP_PASSWORD</code> for any public deployment. Add a stable{' '}
-              <code>SESSION_SECRET</code> before connecting accounts. Restart after changing
-              environment variables.
-            </p>
+            {status.deployment === 'vercel' ? (
+              <>
+                <p>
+                  Relay is already running on Vercel. Manage secrets and database URLs in Vercel
+                  project Settings → Environment Variables, then redeploy after changes.
+                </p>
+                <p>
+                  For missing tables, use Relay Settings → Database → Initialize or repair Relay
+                  tables. No laptop commands or database reset are needed.
+                </p>
+              </>
+            ) : (
+              <>
+                <p>Install Node.js 20.9 or newer, open this project and run:</p>
+                <Code
+                  text={
+                    'npm install\nnpm run setup\n# Optional: set DATABASE_URL in .env.local, then:\nnpm run db:migrate\nnpm run dev'
+                  }
+                />
+                <p>
+                  Set <code>APP_PASSWORD</code> for any public deployment. Add a stable{' '}
+                  <code>SESSION_SECRET</code> before connecting accounts. Restart after changing
+                  environment variables.
+                </p>
+              </>
+            )}
           </GuideStep>
           <GuideStep number="02" title="Choose your intelligence">
             <p>Enter an API key in the AI model tab, or configure your server directly:</p>

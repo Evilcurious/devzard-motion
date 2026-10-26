@@ -24,12 +24,17 @@ try {
   const label = provider === 'neon' ? 'Neon Postgres' : 'PostgreSQL';
   if (process.argv.includes('--check')) {
     const result = await pool.query(
-      "SELECT to_regclass('relay_workspace') AS workspace, to_regclass('relay_settings') AS settings, to_regclass('relay_action_claims') AS claims",
+      "SELECT to_regclass('relay_workspace') AS workspace, to_regclass('relay_settings') AS settings, to_regclass('relay_action_claims') AS claims, to_regclass('relay_analytics') AS analytics",
     );
     console.log(
       `${label} connection successful. ${pooled ? 'Pooled endpoint. ' : ''}${verifyTLS ? 'Certificate-verified TLS is enabled.' : 'TLS follows your PostgreSQL connection settings.'}`,
     );
-    if (result.rows[0].workspace && result.rows[0].settings && result.rows[0].claims)
+    if (
+      result.rows[0].workspace &&
+      result.rows[0].settings &&
+      result.rows[0].claims &&
+      result.rows[0].analytics
+    )
       console.log('All Relay tables are ready.');
     else {
       console.error('Connection works, but tables are missing. Run npm run db:migrate.');

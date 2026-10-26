@@ -10,7 +10,10 @@ export async function GET() {
     const result = await dbQuery(
       "SELECT data, revision, updated_at FROM relay_workspace WHERE id='owner'",
     );
-    if (!result.rows[0]) throw new Error('Workspace is not initialized. Run npm run db:migrate.');
+    if (!result.rows[0])
+      throw new Error(
+        'Relay’s workspace row is missing. Open Settings → Database and choose “Initialize or repair Relay tables”. Existing database rows will be preserved.',
+      );
     return Response.json({ storage: 'postgresql', ...result.rows[0] });
   } catch (error) {
     return errorResponse(error);

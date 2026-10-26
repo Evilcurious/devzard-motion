@@ -2,11 +2,17 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { aiConfig } from '@/lib/ai';
 import { resolveRouterTarget, type ResolvedTarget, type RouterTarget } from '@/lib/router-runtime';
-import { providerError } from '@/lib/ai-errors';
+import {
+  isFreeLLMAPIEndpoint,
+  isGeminiEndpoint,
+  isOpenRouterEndpoint,
+  providerError,
+} from '@/lib/ai-errors';
 import { guard, errorResponse, readJson, seal } from '@/lib/security';
 import { googleSession } from '@/lib/google';
 import { tools, readTool, validateAction } from '@/lib/tools';
 import { isRelayIdentityQuestion } from '@/lib/identity';
+import { recordAnalyticsEvent } from '@/lib/analytics';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 const schema = z.object({
@@ -28,28 +34,61 @@ async function completion(
   enableTools: boolean,
   timeoutMs: number,
 ) {
-  const response = await fetch(`${config.baseURL}/chat/completions`, {
-    method: 'POST',
-    redirect: 'error',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(config.key ? { Authorization: `Bearer ${config.key}` } : {}),
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      ...(enableTools && config.supportsTools !== false ? { tools, tool_choice: 'auto' } : {}),
-      temperature: 0.4,
-      max_tokens: 3000,
-      stream: false,
-    }),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) throw new Error(providerError(response.status, config.baseURL));
-  const data = await response.json();
-  const answer: ModelMessage | undefined = data.choices?.[0]?.message;
-  if (!answer) throw new Error('The model returned an empty response. Try another model.');
-  return answer;
+  const startedAt = Date.now();
+  let statusCode: number | null = null;
+  let success = false;
+  let inputTokens: number | null = null;
+  let outputTokens: number | null = null;
+  try {
+    const response = await fetch(`${config.baseURL}/chat/completions`, {
+      method: 'POST',
+      redirect: 'error',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(config.key ? { Authorization: `Bearer ${config.key}` } : {}),
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages,
+        ...(enableTools && config.supportsTools !== false ? { tools, tool_choice: 'auto' } : {}),
+        temperature: 0.4,
+        max_tokens: 3000,
+        stream: false,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    statusCode = response.status;
+    if (!response.ok) throw new Error(providerError(response.status, config.baseURL));
+    const data = await response.json();
+    const answer: ModelMessage | undefined = data.choices?.[0]?.message;
+    if (!answer) throw new Error('The model returned an empty response. Try another model.');
+    const usage = data.usage;
+    inputTokens =
+      typeof usage?.prompt_tokens === 'number'
+        ? usage.prompt_tokens
+        : typeof usage?.input_tokens === 'number'
+          ? usage.input_tokens
+          : null;
+    outputTokens =
+      typeof usage?.completion_tokens === 'number'
+        ? usage.completion_tokens
+        : typeof usage?.output_tokens === 'number'
+          ? usage.output_tokens
+          : null;
+    success = true;
+    return answer;
+  } finally {
+    await recordAnalyticsEvent({
+      providerId: config.analyticsProviderId || config.providerId,
+      modelId: config.model,
+      success,
+      statusCode,
+      latencyMs: Date.now() - startedAt,
+      inputTokens,
+      outputTokens,
+      ttftMs: null,
+    });
+  }
 }
 export async function POST(request: Request) {
   try {
@@ -80,8 +119,21 @@ export async function POST(request: Request) {
     const proposals: unknown[] = [];
     const steps: string[] = [];
     const deadline = Date.now() + 52000;
+    const legacyAnalyticsProvider =
+      config.provider === 'openai'
+        ? 'openai'
+        : config.provider === 'ollama'
+          ? 'ollama'
+          : isOpenRouterEndpoint(config.baseURL)
+            ? 'openrouter'
+            : isFreeLLMAPIEndpoint(config.baseURL)
+              ? 'freellmapi'
+              : isGeminiEndpoint(config.baseURL)
+                ? 'gemini'
+                : 'compatible';
     const primary: ResolvedTarget = {
       providerId: config.routerProviderId || 'ollama-cloud',
+      analyticsProviderId: config.routerProviderId || legacyAnalyticsProvider,
       model: config.model,
       baseURL: config.baseURL,
       key: config.key,

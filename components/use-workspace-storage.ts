@@ -186,7 +186,7 @@ export function useWorkspaceStorage(
   const retry = useCallback(() => {
     if (revision.current === null) {
       setError(
-        'The database was not loaded. Download your draft first, then reload after fixing the connection.',
+        'The database was not loaded. Download your browser draft, open Settings → Database, and use the hosted “Initialize or repair Relay tables” action. Reload only after the database reports ready.',
       );
       return;
     }

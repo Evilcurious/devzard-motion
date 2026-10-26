@@ -298,11 +298,15 @@ Import the repository into Vercel using the Next.js preset and the branch contai
 - `DATABASE_URL` from Neon → Connect, with pooling enabled (optional, recommended)
 - AI/environment settings and endpoint allowlist as needed
 
-For a Vercel deployment, set `DATABASE_URL`, `APP_PASSWORD`, and a stable `SESSION_SECRET` in the project’s Environment Variables. Sign in, open **Settings → Storage**, and choose **Initialize or repair Relay tables** when the database status needs attention. This authenticated, idempotent migration only creates missing tables and preserves existing rows; it does not require running commands on your laptop. For self-hosted Node.js, use `npm run db:migrate` and `npm run db:check`. Set the matching HTTPS Google callback URI in Google Cloud. Use a pooled database URL with serverless hosting; each app instance uses up to three connections.
+For a Vercel deployment, set `DATABASE_URL`, `APP_PASSWORD`, and a stable `SESSION_SECRET` in the project’s Environment Variables. Sign in, open **Settings → Database**, and choose **Initialize or repair Relay tables** when the database status needs attention. This authenticated, idempotent migration only creates missing tables and preserves existing rows; it does not require running commands on your laptop. For self-hosted Node.js, use `npm run db:migrate` and `npm run db:check`. Set the matching HTTPS Google callback URI in Google Cloud. Use a pooled database URL with serverless hosting; each app instance uses up to three connections.
 
 **Vercel hosts the app, not Ollama or the AI model.** A cloud deployment cannot reach your laptop at `localhost`. Use an API or a separately hosted, secured inference server. Never expose an unauthenticated Ollama port to the internet.
 
 On another Node.js host, run `npm run build` then `npm start`. Use HTTPS, a firewall/reverse proxy and external rate limiting. The proxy must preserve Host/Origin; `APP_URL` must match the public origin without a trailing slash. Chat requests request a 60-second budget; actual hosting-plan limits still apply.
+
+## Analytics
+
+The Analytics page records measured upstream model API requests, outcomes, response latency, and token counts only when the provider returns usage. It offers 24-hour, 7-day, 30-day, and 90-day views and stores aggregates in `relay_analytics` when PostgreSQL is enabled; without a database, server-memory metrics are temporary. Historical provider calls are not backfilled. Current non-streaming calls cannot produce true TTFT, and Relay has no verified cross-provider price baseline, so those cards show unavailable rather than invented numbers.
 
 ## Storage and security
 

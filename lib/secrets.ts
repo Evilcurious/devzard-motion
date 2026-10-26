@@ -3,7 +3,9 @@ import { dbQuery } from './db';
 function encryptionKey() {
   if ((process.env.SESSION_SECRET?.length || 0) < 32)
     throw new Error(
-      'Run npm run setup, then restart Relay. A stable SESSION_SECRET of at least 32 characters is required to save API credentials.',
+      process.env.VERCEL
+        ? 'Set a stable SESSION_SECRET of at least 32 characters in Vercel → Project Settings → Environment Variables, then redeploy. Preserve the existing value so saved credentials remain readable.'
+        : 'Run npm run setup, then restart Relay. A stable SESSION_SECRET of at least 32 characters is required to save API credentials.',
     );
   return createHash('sha256').update(process.env.SESSION_SECRET!).digest();
 }

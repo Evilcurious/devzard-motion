@@ -118,18 +118,18 @@ export const routerProviders: RouterProvider[] = [
     name: 'Parallel',
     category: 'search',
     baseURL: null,
-    keyRequired: false,
+    keyRequired: true,
     docsURL: 'https://parallel.ai',
-    note: 'Search connector placeholder; no API integration has been validated.',
+    note: 'Search credential storage only; Relay does not invoke this API yet.',
   },
   {
     id: 'keenable',
     name: 'KeenAble',
     category: 'search',
     baseURL: null,
-    keyRequired: false,
+    keyRequired: true,
     docsURL: 'https://keenable.com',
-    note: 'Search connector placeholder; no API integration has been validated.',
+    note: 'Search credential storage only; Relay does not invoke this API yet.',
   },
 ];
 
