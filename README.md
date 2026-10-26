@@ -138,6 +138,16 @@ AI_API_KEY=your-api-key
 
 API usage may incur provider charges. A blank key field preserves the saved key for the same provider. **Use server defaults** removes the saved model connection and restores environment settings.
 
+### Local FreeLLMAPI server
+
+For a FreeLLMAPI server running on the same computer as Relay, open **Settings → AI model → Use FreeLLMAPI settings**. The preset uses:
+
+```text
+http://127.0.0.1:31415/v1
+```
+
+Enter the model ID configured in your local server and your API key, then choose **Save connection → Test saved connection**. Relay calls the OpenAI-compatible `/chat/completions` route and stores the key encrypted through its normal settings flow. The loopback endpoint is narrowly trusted by default; no `AI_ALLOWED_ORIGINS` entry is needed. This URL points to the computer running Relay, so it will **not** reach your laptop's server when Relay is hosted on Vercel.
+
 ### OpenRouter (including free models)
 
 OpenRouter provides one OpenAI-compatible API key and endpoint for its model catalog. In **Settings → AI model**, click **Use OpenRouter settings**, enter your OpenRouter API key, and keep the suggested model `openrouter/free` to let OpenRouter route to an eligible free model. The preset uses the exact base URL below and is trusted by default—no `AI_ALLOWED_ORIGINS` entry is needed.

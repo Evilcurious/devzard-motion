@@ -5,3 +5,4 @@ export const GEMINI_MODEL_EXAMPLE = 'gemini-2.5-flash';
 export const OPENROUTER_ORIGIN = 'https://openrouter.ai';
 export const OPENROUTER_BASE_URL = `${OPENROUTER_ORIGIN}/api/v1`;
 export const OPENROUTER_FREE_MODEL = 'openrouter/free';
+export const FREELLMAPI_BASE_URL = 'http://127.0.0.1:31415/v1';

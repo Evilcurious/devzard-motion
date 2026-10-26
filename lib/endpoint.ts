@@ -3,6 +3,7 @@ import {
   GEMINI_BASE_URL,
   OPENROUTER_ORIGIN,
   OPENROUTER_BASE_URL,
+  FREELLMAPI_BASE_URL,
 } from './ai-presets';
 
 // Editable endpoints are a privileged, single-owner feature, not an unrestricted proxy.
@@ -28,6 +29,7 @@ export function validateEndpoint(value: string) {
     'https://api.openai.com',
     GEMINI_ORIGIN,
     OPENROUTER_ORIGIN,
+    'http://127.0.0.1:31415',
     'http://localhost:11434',
     'http://127.0.0.1:11434',
     process.env.AI_BASE_URL,
@@ -56,6 +58,9 @@ export function validateEndpoint(value: string) {
     throw new Error(
       `For OpenRouter, use ${OPENROUTER_BASE_URL}. Do not add /chat/completions to the base URL.`,
     );
+  }
+  if (url.origin === 'http://127.0.0.1:31415' && normalized !== FREELLMAPI_BASE_URL) {
+    throw new Error(`For the local FreeLLMAPI service, use ${FREELLMAPI_BASE_URL} exactly.`);
   }
   return normalized;
 }

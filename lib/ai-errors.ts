@@ -1,4 +1,4 @@
-import { GEMINI_BASE_URL, OPENROUTER_BASE_URL } from './ai-presets';
+import { GEMINI_BASE_URL, OPENROUTER_BASE_URL, FREELLMAPI_BASE_URL } from './ai-presets';
 
 export function isGeminiEndpoint(baseURL: string) {
   return baseURL.trim().replace(/\/$/, '') === GEMINI_BASE_URL;
@@ -6,6 +6,10 @@ export function isGeminiEndpoint(baseURL: string) {
 
 export function isOpenRouterEndpoint(baseURL: string) {
   return baseURL.trim().replace(/\/$/, '') === OPENROUTER_BASE_URL;
+}
+
+export function isFreeLLMAPIEndpoint(baseURL: string) {
+  return baseURL.trim().replace(/\/$/, '') === FREELLMAPI_BASE_URL;
 }
 
 // Never expose upstream error bodies, keys, or URLs supplied by a provider.

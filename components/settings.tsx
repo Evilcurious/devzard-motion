@@ -1,7 +1,12 @@
 'use client';
 import { databaseLabel } from '@/lib/database-label';
-import { GEMINI_BASE_URL, OPENROUTER_BASE_URL, OPENROUTER_FREE_MODEL } from '@/lib/ai-presets';
-import { isGeminiEndpoint, isOpenRouterEndpoint } from '@/lib/ai-errors';
+import {
+  GEMINI_BASE_URL,
+  OPENROUTER_BASE_URL,
+  OPENROUTER_FREE_MODEL,
+  FREELLMAPI_BASE_URL,
+} from '@/lib/ai-presets';
+import { isFreeLLMAPIEndpoint, isGeminiEndpoint, isOpenRouterEndpoint } from '@/lib/ai-errors';
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/client-api';
 export { api } from '@/lib/client-api';
@@ -54,6 +59,7 @@ export function Settings({
   const [geminiModels, setGeminiModels] = useState<string[]>([]);
   const gemini = provider === 'compatible' && isGeminiEndpoint(baseURL);
   const openRouter = provider === 'compatible' && isOpenRouterEndpoint(baseURL);
+  const freeLLMAPI = provider === 'compatible' && isFreeLLMAPIEndpoint(baseURL);
   useEffect(() => {
     setGeminiModels([]);
   }, [provider, baseURL, key]);
@@ -297,6 +303,35 @@ export function Settings({
               </button>
             </div>
           </div>
+          <div className="info-callout freellmapi-preset">
+            <Server size={19} />
+            <div>
+              <strong>Connect local FreeLLMAPI</strong>
+              <p>
+                Use your local OpenAI-compatible server. The preset fills in its loopback base URL;
+                enter your API key and the model ID configured in FreeLLMAPI.
+              </p>
+              <button
+                className="button small"
+                type="button"
+                disabled={!!busy}
+                onClick={() => {
+                  setProvider('compatible');
+                  setBaseURL(FREELLMAPI_BASE_URL);
+                  setModel(
+                    status.provider === 'compatible' && isFreeLLMAPIEndpoint(status.baseURL || '')
+                      ? status.model || ''
+                      : '',
+                  );
+                  setKey('');
+                  setError('');
+                  setGeminiModels([]);
+                }}
+              >
+                Use FreeLLMAPI settings
+              </button>
+            </div>
+          </div>
           <section className="settings-panel">
             <div className="panel-title">
               <KeyRound size={18} />
@@ -327,7 +362,9 @@ export function Settings({
                     ? 'Load Gemini models below to choose a current text/chat model, then save and test it. Model names and availability change over time.'
                     : openRouter
                       ? 'Use openrouter/free to let OpenRouter choose an eligible free model, or enter a specific model ID from its model catalog.'
-                      : 'Use a model that supports tool calling for email and spreadsheet tasks.'}
+                      : freeLLMAPI
+                        ? 'Enter the exact model ID configured by your local FreeLLMAPI server.'
+                        : 'Use a model that supports tool calling for email and spreadsheet tasks.'}
                 </span>
               </label>
               {provider !== 'openai' && (
@@ -342,7 +379,8 @@ export function Settings({
                   />
                   <span>
                     Use your provider’s OpenAI-compatible base URL. Gemini uses /v1beta/openai;
-                    OpenRouter uses /api/v1. Custom hosts need AI_ALLOWED_ORIGINS in .env.local.
+                    OpenRouter uses /api/v1. The local FreeLLMAPI preset uses 127.0.0.1:31415/v1.
+                    Custom hosts need AI_ALLOWED_ORIGINS in .env.local.
                   </span>
                 </label>
               )}
@@ -357,7 +395,9 @@ export function Settings({
                           ? '(Gemini key required)'
                           : openRouter
                             ? '(OpenRouter key required)'
-                            : '(if required)'
+                            : freeLLMAPI
+                              ? '(FreeLLMAPI key required)'
+                              : '(if required)'
                         : ''}
                   </span>
                   <input
@@ -443,7 +483,11 @@ export function Settings({
                   <Server size={19} />
                   <div>
                     <strong>
-                      {openRouter ? 'OpenRouter connection' : 'Bring your own endpoint'}
+                      {openRouter
+                        ? 'OpenRouter connection'
+                        : freeLLMAPI
+                          ? 'Local FreeLLMAPI connection'
+                          : 'Bring your own endpoint'}
                     </strong>
                     <p>
                       {openRouter ? (
@@ -452,6 +496,13 @@ export function Settings({
                           OpenRouter API key. Relay sends it privately as a bearer credential.
                           OpenRouter is trusted by default, so no AI_ALLOWED_ORIGINS entry is
                           needed. Free model access and usage limits are controlled by OpenRouter.
+                        </>
+                      ) : freeLLMAPI ? (
+                        <>
+                          This preset uses <code>{FREELLMAPI_BASE_URL}</code> and works when Relay
+                          and FreeLLMAPI run on the same computer. It will not reach your computer
+                          from Vercel or another remote host. Enter the API key here; Relay stores
+                          it encrypted and never returns it to the browser.
                         </>
                       ) : (
                         <>
