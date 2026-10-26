@@ -47,6 +47,7 @@ export async function POST(request: Request) {
     )
       throw new Error('Enter an OpenAI API key, or select Ollama to run without an API key.');
     await saveConnection('model', settings);
+    await removeConnection('router-selection');
     return Response.json({ ok: true, storage: databaseConfigured() ? 'postgresql' : 'cookie' });
   } catch (error) {
     return errorResponse(error);
@@ -56,6 +57,7 @@ export async function DELETE(request: Request) {
   try {
     await guard(request);
     await removeConnection('model');
+    await removeConnection('router-selection');
     return Response.json({ ok: true });
   } catch (error) {
     return errorResponse(error);

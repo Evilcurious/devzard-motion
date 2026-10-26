@@ -7,6 +7,7 @@ A self-hostable, **single-owner** AI agent built with Next.js 16, React 19, Type
 - Chat, searchable history, PDF/text uploads and reusable, manually triggered workflows.
 - **Neon Postgres persistence:** conversations, document text, workflows, activity and theme survive browser changes.
 - **Encrypted connections:** AI API keys, Google OAuth client secrets and Google access/refresh tokens are encrypted at rest in PostgreSQL. Saved secrets are never returned by the settings API.
+- **Multi-provider model router:** add provider credentials, discover and merge models, choose a primary model, and configure API-error fallbacks or multi-model synthesis.
 - **AI settings:** provider, model, API key and editable endpoint; save, reset, and test the saved connection.
 - **Google APIs settings:** save a Google OAuth client ID/secret, then authorize Gmail and Google Sheets.
 - **Gmail:** search/read messages and prepare outgoing emails. **Google Sheets:** append reviewed rows to an existing spreadsheet.
@@ -157,6 +158,18 @@ https://openrouter.ai/api/v1
 ```
 
 Then choose **Save connection → Test saved connection**. Free-model availability, rate limits, context and tool support vary by the model OpenRouter routes to and by your OpenRouter account. If you use Gmail/Sheets actions and the selected free model does not support tools, choose a listed tool-capable model from OpenRouter and enter its model ID instead. Relay sends your key as a private bearer credential; it is never returned to the browser. Never paste it into chat or commit it.
+
+### Multi-provider model router
+
+Open **Models & providers** from the sidebar or click the model control in chat. Relay keeps this multi-provider catalog separate from the existing Settings connection. OpenRouter is included and an existing saved OpenRouter key is reused; you do not need to replace it. Model-provider keys are stored server-side in the existing encrypted cookie/Postgres secret store and are never returned to the browser. Each provider has a fixed HTTPS API host in code rather than a user-editable URL.
+
+The catalog supports OpenRouter, Ollama Cloud, Kilo Gateway, OVH AI Endpoints, Agnes AI, Routeway, BazaarLink, Requesty and AI Horde. Select **Refresh models** to call each provider's model-list API; listings require a saved key where that provider requires one. Provider hosts and adapters are implementation templates and have not been live-validated against every account/region. AI Horde is volunteer-powered and can be slow; it does not support Relay's tool calls. Anonymous routes may be rate-limited.
+
+Select a model and choose **Manual**, **Fallback chain**, or **Fusion**. Fallback proceeds to configured alternatives only when an upstream call fails; it does not claim to select the fastest or most reliable model. Fusion requests independent answers and asks the primary model to synthesize them. Fusion makes additional billable requests and disables Gmail/Sheets tools and approval actions for that response.
+
+Models are grouped only when their IDs match case-insensitively. Context is a model context-window limit, not account quota. Account tokens are displayed/combined only when every listed provider explicitly reports an available-token quota; otherwise Relay shows “Not reported.” Reliability, speed, intelligence and guardrail scores are not fabricated.
+
+Firecrawl, Parallel and KeenAble are displayed separately as search-provider connectors, not as chat models. At this stage their credentials can be stored securely, but Relay does not invoke those search APIs yet; Parallel and KeenAble endpoints have not been validated. Do not treat their connection state as a working search feature.
 
 ### Google Gemini
 

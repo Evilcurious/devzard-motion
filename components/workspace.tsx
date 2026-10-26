@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleHelp,
+  Cpu,
   ExternalLink,
   FileSpreadsheet,
   FileText,
@@ -52,6 +53,7 @@ import { AppIcon, EmptyState, Mark, Modal, Steps, WorkflowCard } from './ui';
 import { api, Settings } from './settings';
 import { useWorkspaceStorage, type WorkspaceData } from './use-workspace-storage';
 import { type Theme } from '@/lib/themes';
+import { ModelHub } from './model-hub';
 import {
   defaultAppearance,
   fontOptions,
@@ -62,6 +64,7 @@ import {
 const titles: Record<Page, string> = {
   chat: 'Agent chat',
   workflows: 'Workflows',
+  models: 'Models & providers',
   connections: 'Connections',
   activity: 'Activity',
   settings: 'Settings',
@@ -69,6 +72,7 @@ const titles: Record<Page, string> = {
 const navigation = [
   { id: 'chat', icon: MessageSquare, label: 'Agent chat' },
   { id: 'workflows', icon: WorkflowIcon, label: 'Workflows' },
+  { id: 'models', icon: Cpu, label: 'Models & providers' },
   { id: 'connections', icon: LayoutGrid, label: 'Connections' },
   { id: 'activity', icon: ActivityIcon, label: 'Activity' },
 ] as const;
@@ -476,7 +480,7 @@ export default function Workspace() {
               <Plus size={21} />
             </button>
             <span className="toolbar-divider" />
-            <button className="model-select" onClick={() => go('settings')}>
+            <button className="model-select" onClick={() => go('models')}>
               <span className={`status-dot ${status?.aiConfigured ? '' : 'muted'}`} />
               {status?.aiConfigured ? status.model : 'Choose a model'}
               <ChevronDown size={13} />
@@ -1271,6 +1275,7 @@ export default function Workspace() {
               </div>
             </div>
           )}
+          {page === 'models' && <ModelHub onSelect={refresh} notify={notify} />}
           {page === 'settings' && status && (
             <Settings
               key={`${status.provider}-${status.model}`}

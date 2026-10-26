@@ -1,5 +1,5 @@
 import type { WriteAction } from './tools';
-export type Page = 'chat' | 'workflows' | 'connections' | 'activity' | 'settings';
+export type Page = 'chat' | 'workflows' | 'models' | 'connections' | 'activity' | 'settings';
 export type Status = {
   authenticated: boolean;
   setupRequired?: boolean;
