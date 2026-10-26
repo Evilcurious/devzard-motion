@@ -37,6 +37,8 @@ export type Message = {
   proposals?: Proposal[];
   steps?: string[];
   modelUsed?: { modelId: string; providerId: string; providerName: string };
+  media?: { type: 'image' | 'video'; urls: string[]; providerName?: string; modelId?: string };
+  sources?: Array<{ title: string; url: string; snippet: string }>;
   error?: boolean;
 };
 export type Conversation = { id: string; title: string; messages: Message[]; updated: string };

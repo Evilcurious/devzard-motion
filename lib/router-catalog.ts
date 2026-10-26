@@ -1,6 +1,4 @@
-import { readConnection } from './connection-store';
-import { isOpenRouterEndpoint } from './ai-errors';
-import type { ModelSettings } from './ai';
+import { getProviderKeys } from './provider-credentials';
 import {
   canonicalModelKey,
   getRouterProvider,
@@ -10,7 +8,6 @@ import {
   type RouterProviderId,
 } from './model-router';
 
-type ProviderCredential = { apiKey: string };
 type ProviderModel = ReturnType<typeof routerModelIds>[number] & {
   providerId: RouterProviderId;
   providerName: string;
@@ -73,61 +70,53 @@ async function requestJSON(url: string, apiKey: string, timeoutMs = 6000): Promi
   }
 }
 
-async function getCredentials(providerId: RouterProviderId) {
-  const provider = getRouterProvider(providerId);
-  if (!provider) return { provider: null, apiKey: '' };
-  const saved = await readConnection<ProviderCredential>(`router-provider-${provider.id}`);
-  const legacy = provider.id === 'openrouter' ? await readConnection<ModelSettings>('model') : null;
-  const legacyKey =
-    legacy?.provider === 'compatible' && isOpenRouterEndpoint(legacy.baseURL || '')
-      ? legacy.key || ''
-      : '';
-  return { provider, apiKey: saved?.apiKey || legacyKey };
-}
-
 async function discoverProvider(providerId: RouterProviderId): Promise<ProviderLoad> {
-  const { provider, apiKey } = await getCredentials(providerId);
+  const provider = getRouterProvider(providerId);
   if (!provider || provider.category !== 'models' || !provider.baseURL)
     return { providerId, error: null, models: [] };
-  if (provider.keyRequired && !apiKey) return { providerId, error: null, models: [] };
+  const keys = await getProviderKeys(provider.id);
+  if (provider.keyRequired && !keys.length) return { providerId, error: null, models: [] };
 
   const endpoint = provider.modelsPath
     ? new URL(provider.modelsPath, provider.baseURL).toString()
     : `${provider.baseURL.replace(/\/$/, '')}/models`;
-  const headers = new Headers({ Accept: 'application/json' });
-  if (provider.id === 'aihorde') headers.set('Authorization', `Bearer ${apiKey || '0000000000'}`);
-  else if (apiKey) headers.set('Authorization', `Bearer ${apiKey}`);
-  if (provider.userAgent) headers.set('User-Agent', provider.userAgent);
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const response = await fetch(endpoint, {
-      headers,
-      signal: controller.signal,
-      cache: 'no-store',
-      redirect: 'error',
-    });
-    if (!response.ok) throw new Error(`${provider.name} returned HTTP ${response.status}.`);
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('json'))
-      throw new Error(`${provider.name} returned a non-JSON model list.`);
-    const body = await response.json();
-    const models = routerModelIds(body).map((model) => ({
-      ...model,
-      providerId: provider.id,
-      providerName: provider.name,
-    }));
-    return { providerId, error: null, models };
-  } catch (error) {
-    return {
-      providerId,
-      error: error instanceof Error ? error.message.slice(0, 240) : 'Could not load models.',
-      models: [],
-    };
-  } finally {
-    clearTimeout(timeout);
+  let lastError: unknown;
+  for (const apiKey of keys.length ? keys : ['']) {
+    const headers = new Headers({ Accept: 'application/json' });
+    if (provider.id === 'aihorde') headers.set('Authorization', `Bearer ${apiKey || '0000000000'}`);
+    else if (apiKey) headers.set('Authorization', `Bearer ${apiKey}`);
+    if (provider.userAgent) headers.set('User-Agent', provider.userAgent);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(endpoint, {
+        headers,
+        signal: controller.signal,
+        cache: 'no-store',
+        redirect: 'error',
+      });
+      if (!response.ok) throw new Error(`${provider.name} returned HTTP ${response.status}.`);
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('json'))
+        throw new Error(`${provider.name} returned a non-JSON model list.`);
+      const body = await response.json();
+      const models = routerModelIds(body).map((model) => ({
+        ...model,
+        providerId: provider.id,
+        providerName: provider.name,
+      }));
+      return { providerId, error: null, models };
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+  return {
+    providerId,
+    error: lastError instanceof Error ? lastError.message.slice(0, 240) : 'Could not load models.',
+    models: [],
+  };
 }
 
 async function openRouterPaidAccess(apiKey: string): Promise<boolean> {
@@ -188,8 +177,10 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
     .filter((provider) => provider.category === 'models')
     .map((provider) => provider.id);
   const settled = await Promise.all(providerIds.map(discoverProvider));
-  const openRouterCredentials = await getCredentials('openrouter');
-  const openRouterPaid = await openRouterPaidAccess(openRouterCredentials.apiKey);
+  const openRouterKeys = await getProviderKeys('openrouter');
+  const openRouterPaid = (await Promise.all(openRouterKeys.map(openRouterPaidAccess))).some(
+    Boolean,
+  );
   const grouped = new Map<string, RouterModel>();
   const eligibleCounts = new Map<RouterProviderId, number>();
 

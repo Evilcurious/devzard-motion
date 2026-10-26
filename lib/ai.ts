@@ -1,6 +1,6 @@
 import { readConnection } from './connection-store';
 import { getRouterProvider, type RouterSelection } from './model-router';
-import { isOpenRouterEndpoint } from './ai-errors';
+import { getProviderKeys } from './provider-credentials';
 export type ModelSettings = {
   provider: 'openai' | 'ollama' | 'compatible';
   model: string;
@@ -8,22 +8,13 @@ export type ModelSettings = {
   baseURL?: string;
 };
 
-type ProviderCredential = { apiKey: string };
-
 export async function aiConfig() {
   const selection = await readConnection<RouterSelection>('router-selection');
   if (selection) {
     const provider = getRouterProvider(selection.providerId);
     if (provider?.category === 'models' && provider.baseURL) {
-      const connection = await readConnection<ProviderCredential>(`router-provider-${provider.id}`);
-      const legacy =
-        provider.id === 'openrouter' ? await readConnection<ModelSettings>('model') : null;
-      const legacyKey =
-        legacy?.provider === 'compatible' && isOpenRouterEndpoint(legacy.baseURL || '')
-          ? legacy.key || ''
-          : '';
-      const key =
-        connection?.apiKey || legacyKey || (provider.id === 'aihorde' ? '0000000000' : '');
+      const apiKeys = await getProviderKeys(provider.id);
+      const key = apiKeys[0] || (provider.id === 'aihorde' ? '0000000000' : '');
       const configured = !provider.keyRequired || !!key;
       return {
         provider: 'compatible' as const,
@@ -35,6 +26,7 @@ export async function aiConfig() {
         isFree: selection.isFree ?? false,
         baseURL: provider.baseURL.replace(/\/$/, ''),
         key,
+        apiKeys,
         configured,
         strategy: selection.strategy === 'fusion' ? ('fusion' as const) : ('auto' as const),
         autoPick: selection.autoPick ?? true,

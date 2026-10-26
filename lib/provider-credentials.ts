@@ -1,0 +1,70 @@
+import { readConnection, saveConnection, removeConnection } from './connection-store';
+import { isOpenRouterEndpoint } from './ai-errors';
+import type { ModelSettings } from './ai';
+import type { RouterProviderId } from './model-router';
+
+type ProviderCredential = { apiKey?: string; apiKeys?: string[] };
+const MAX_KEYS_PER_PROVIDER = 5;
+
+function normalizeKeys(value: ProviderCredential | null | undefined): string[] {
+  return [
+    ...new Set(
+      [...(value?.apiKeys || []), value?.apiKey || ''].map((key) => key.trim()).filter(Boolean),
+    ),
+  ].slice(0, MAX_KEYS_PER_PROVIDER);
+}
+
+export async function getProviderKeys(providerId: RouterProviderId): Promise<string[]> {
+  const saved = await readConnection<ProviderCredential>(`router-provider-${providerId}`);
+  const keys = normalizeKeys(saved);
+  if (providerId === 'openrouter') {
+    const legacy = await readConnection<ModelSettings>('model');
+    const legacyKey =
+      legacy?.provider === 'compatible' && isOpenRouterEndpoint(legacy.baseURL || '')
+        ? legacy.key?.trim()
+        : '';
+    if (legacyKey && !keys.includes(legacyKey)) keys.push(legacyKey);
+  }
+  return keys.slice(0, MAX_KEYS_PER_PROVIDER);
+}
+
+export async function addProviderKey(
+  providerId: RouterProviderId,
+  apiKey: string,
+): Promise<number> {
+  const key = apiKey.trim();
+  const keys = await getProviderKeys(providerId);
+  if (!keys.includes(key)) {
+    if (keys.length >= MAX_KEYS_PER_PROVIDER)
+      throw new Error(`You can save up to ${MAX_KEYS_PER_PROVIDER} API keys per provider.`);
+    keys.push(key);
+  }
+  await saveConnection(`router-provider-${providerId}`, { apiKeys: keys });
+  return keys.length;
+}
+
+export async function removeProviderKey(
+  providerId: RouterProviderId,
+  index?: number,
+): Promise<number> {
+  if (index === undefined) {
+    await removeConnection(`router-provider-${providerId}`);
+    return 0;
+  }
+  const saved = await readConnection<ProviderCredential>(`router-provider-${providerId}`);
+  const storedKeys = normalizeKeys(saved);
+  const keys = await getProviderKeys(providerId);
+  if (index < 0 || index >= keys.length)
+    throw new Error('That saved key was not found. Refresh the provider list and try again.');
+  if (providerId === 'openrouter' && index >= storedKeys.length) {
+    const legacy = await readConnection<ModelSettings>('model');
+    if (legacy?.provider === 'compatible' && isOpenRouterEndpoint(legacy.baseURL || ''))
+      await saveConnection('model', { ...legacy, key: '' });
+  }
+  keys.splice(index, 1);
+  if (keys.length) await saveConnection(`router-provider-${providerId}`, { apiKeys: keys });
+  else await removeConnection(`router-provider-${providerId}`);
+  return keys.length;
+}
+
+export const maxProviderKeys = MAX_KEYS_PER_PROVIDER;

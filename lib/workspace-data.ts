@@ -33,6 +33,24 @@ export const workspaceSchema = z.object({
               modelUsed: z
                 .object({ modelId: short, providerId: short, providerName: short })
                 .optional(),
+              media: z
+                .object({
+                  type: z.enum(['image', 'video']),
+                  urls: z.array(z.string().url().max(2000)).max(8),
+                  providerName: short.optional(),
+                  modelId: short.optional(),
+                })
+                .optional(),
+              sources: z
+                .array(
+                  z.object({
+                    title: short,
+                    url: z.string().url().max(2000),
+                    snippet: z.string().max(2000),
+                  }),
+                )
+                .max(10)
+                .optional(),
               attachment: z
                 .object({
                   name: short,
@@ -71,7 +89,9 @@ export const workspaceSchema = z.object({
       }),
     )
     .max(200),
-  theme: z.enum(['green', 'black', 'red', 'blue', 'yellow', 'gold']).default('green'),
+  theme: z
+    .enum(['light', 'dark', 'green', 'black', 'red', 'blue', 'yellow', 'gold'])
+    .default('light'),
   appearance: z
     .object({
       accentColor: z

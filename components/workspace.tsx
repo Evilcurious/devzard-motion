@@ -18,6 +18,7 @@ import {
   FileText,
   Globe2,
   History,
+  Image as ImageIcon,
   LayoutGrid,
   LoaderCircle,
   LockKeyhole,
@@ -36,6 +37,7 @@ import {
   Square,
   Trash2,
   Unplug,
+  Video,
   Workflow as WorkflowIcon,
   X,
   RefreshCw,
@@ -95,9 +97,11 @@ export default function Workspace() {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>(initialWorkflows);
-  const [theme, setTheme] = useState<Theme>('green');
+  const [theme, setTheme] = useState<Theme>('light');
   const [appearance, setAppearance] = useState<Appearance>(defaultAppearance);
   const [text, setText] = useState('');
+  const [mediaMode, setMediaMode] = useState<'chat' | 'image' | 'video'>('chat');
+  const [webSearch, setWebSearch] = useState(false);
   const [density, setDensity] = useState<AIDensity>('auto');
   const [densityReady, setDensityReady] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -258,6 +262,8 @@ export default function Workspace() {
     setCurrentId(null);
     setText(prompt);
     setAttachment(null);
+    setMediaMode('chat');
+    setWebSearch(false);
     go('chat');
     setTimeout(() => inputRef.current?.focus(), 50);
   }
@@ -410,33 +416,72 @@ export default function Workspace() {
     busyRef.current = true;
     abortRef.current = new AbortController();
     try {
-      const response = await fetch('/api/chat', {
+      const mode = mediaMode;
+      const response = await fetch(mode === 'chat' ? '/api/chat' : '/api/router/media', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: abortRef.current.signal,
-        body: JSON.stringify({
-          density,
-          messages: history
-            .filter((m) => !m.error)
-            .slice(-24)
-            .map((m) => ({
-              role: m.role,
-              content:
-                m.content +
-                (m.attachment
-                  ? `\n\n<untrusted_document name=${JSON.stringify(m.attachment.name)}>\n${m.attachment.text}\n</untrusted_document>`
-                  : '') +
-                (m.proposals?.length
-                  ? `\n[UI action status: ${m.proposals.map((p) => `${p.name}: ${p.state || 'awaiting approval'}${p.result ? ` (${p.result})` : ''}`).join('; ')}]`
-                  : ''),
-            })),
-        }),
+        body: JSON.stringify(
+          mode === 'chat'
+            ? {
+                density,
+                webSearch,
+                messages: history
+                  .filter((m) => !m.error)
+                  .slice(-24)
+                  .map((m) => ({
+                    role: m.role,
+                    content:
+                      m.content +
+                      (m.attachment
+                        ? `\n\n<untrusted_document name=${JSON.stringify(m.attachment.name)}>\n${m.attachment.text}\n</untrusted_document>`
+                        : '') +
+                      (m.proposals?.length
+                        ? `\n[UI action status: ${m.proposals.map((p) => `${p.name}: ${p.state || 'awaiting approval'}${p.result ? ` (${p.result})` : ''}`).join('; ')}]`
+                        : ''),
+                  })),
+              }
+            : { action: 'generate', type: mode, prompt: content },
+        ),
       });
-      const result = await response.json();
+      let result = await response.json();
       if (!response.ok) {
         if (response.status === 401) refresh();
         throw new Error(result.error || 'Could not complete this request.');
       }
+      if (mode === 'image' && result.status === 'processing') {
+        const deadline = Date.now() + 180_000;
+        while (result.status === 'processing' && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 2500));
+          const poll = await fetch('/api/router/media', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: abortRef.current?.signal,
+            body: JSON.stringify({ action: 'poll', token: result.token }),
+          });
+          const next = await poll.json();
+          if (!poll.ok) throw new Error(next.error || 'Could not check image generation status.');
+          result = next;
+        }
+        if (result.status !== 'succeeded')
+          throw new Error(
+            'The image is still processing. Try again in a moment; your provider may take a little longer.',
+          );
+      }
+      const assistantResult =
+        mode === 'chat'
+          ? result
+          : {
+              content: `Image generated with ${result.providerName} (${result.modelId}).`,
+              media: {
+                type: 'image' as const,
+                urls: [result.url],
+                providerName: result.providerName,
+                modelId: result.modelId,
+              },
+            };
+      if (mode !== 'chat') setMediaMode('chat');
+      if (mode === 'chat') setWebSearch(false);
       if (result.modelUsed) {
         setRouterSelection({
           providerId: result.modelUsed.providerId,
@@ -444,7 +489,7 @@ export default function Workspace() {
         });
         if (typeof result.autoPick === 'boolean') setRouterAutoPick(result.autoPick);
       }
-      updateMessages(id, (old) => [...old, { id: uid(), role: 'assistant', ...result }]);
+      updateMessages(id, (old) => [...old, { id: uid(), role: 'assistant', ...assistantResult }]);
     } catch (error) {
       const aborted = error instanceof Error && error.name === 'AbortError';
       updateMessages(id, (old) => [
@@ -606,9 +651,11 @@ export default function Workspace() {
             }
           }}
           placeholder={
-            messages.length
-              ? 'What would you like to do next?'
-              : 'Ask anything, or hand off a task…'
+            mediaMode === 'image'
+              ? 'Describe the image you want to create…'
+              : messages.length
+                ? 'What would you like to do next?'
+                : 'Ask anything, or hand off a task…'
           }
           aria-label="Message your agent"
           rows={2}
@@ -617,6 +664,44 @@ export default function Workspace() {
         />
         <div className="composer-toolbar">
           <div className="composer-tools">
+            <div className="composer-mode-tools" role="group" aria-label="Message mode">
+              <button
+                className={mediaMode === 'chat' && !webSearch ? 'active' : ''}
+                onClick={() => {
+                  setMediaMode('chat');
+                  setWebSearch(false);
+                }}
+                title="Chat with your selected or automatic model"
+              >
+                <MessageSquare size={14} /> Chat
+              </button>
+              <button
+                className={mediaMode === 'image' ? 'active' : ''}
+                onClick={() => {
+                  setMediaMode('image');
+                  setWebSearch(false);
+                }}
+                title="Generate an image with a connected image-capable provider"
+              >
+                <ImageIcon size={14} /> Image
+              </button>
+              <button
+                disabled
+                title="Video generation is not available from the connected providers yet"
+              >
+                <Video size={14} /> Video
+              </button>
+              <button
+                className={webSearch ? 'active' : ''}
+                onClick={() => {
+                  setMediaMode('chat');
+                  setWebSearch((value) => !value);
+                }}
+                title="Search the web and include sources with your answer"
+              >
+                <Globe2 size={14} /> Web search
+              </button>
+            </div>
             <button
               className="icon-button attach-button"
               title="Attach PDF, TXT, CSV, Markdown or JSON (up to 3 MB)"
@@ -677,7 +762,13 @@ export default function Workspace() {
       </div>
       <div className="composer-footnote">
         <ShieldCheck size={13} />
-        <span>You’re in control. Relay asks before taking action.</span>
+        <span>
+          {mediaMode === 'image'
+            ? 'Image jobs use your connected provider’s image service and may use its free allowance or account credits.'
+            : webSearch
+              ? 'Web search uses your saved Firecrawl key and returns clickable sources.'
+              : 'You’re in control. Relay asks before taking action.'}
+        </span>
       </div>
       <input
         hidden
@@ -1094,6 +1185,37 @@ export default function Workspace() {
                         <div className={`message-content ${message.error ? 'message-error' : ''}`}>
                           {message.content}
                         </div>
+                        {message.media?.type === 'image' && (
+                          <div className="message-image-results" aria-label="Generated images">
+                            {message.media.urls
+                              .filter((url) => url.startsWith('https://'))
+                              .map((url) => (
+                                <a key={url} href={url} target="_blank" rel="noreferrer">
+                                  <img src={url} alt="AI-generated result" loading="lazy" />
+                                </a>
+                              ))}
+                          </div>
+                        )}
+                        {!!message.sources?.length && (
+                          <div className="message-sources">
+                            <strong>Sources</strong>
+                            {message.sources.map((source, index) =>
+                              source.url.startsWith('https://') ? (
+                                <a
+                                  key={source.url}
+                                  href={source.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <span>
+                                    {index + 1}. {source.title}
+                                  </span>
+                                  <small>{new URL(source.url).hostname}</small>
+                                </a>
+                              ) : null,
+                            )}
+                          </div>
+                        )}
                         {message.modelUsed && (
                           <button className="message-model-used" onClick={openModelPicker}>
                             <Cpu size={12} />
@@ -1130,7 +1252,13 @@ export default function Workspace() {
                           <span />
                           <span />
                           <span />
-                          <small>Working on it…</small>
+                          <small>
+                            {mediaMode === 'image'
+                              ? 'Generating your image…'
+                              : webSearch
+                                ? 'Searching the web and preparing an answer…'
+                                : 'Working on it…'}
+                          </small>
                         </div>
                       </div>
                     </div>

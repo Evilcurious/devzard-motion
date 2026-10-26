@@ -9,6 +9,8 @@ export type RouterProviderId =
   | 'requesty'
   | 'aihorde'
   | 'electronhub'
+  | 'xkiro'
+  | 'septorlabs'
   | 'firecrawl'
   | 'parallel'
   | 'keenable';
@@ -116,13 +118,32 @@ export const routerProviders: RouterProvider[] = [
     note: 'Only models reported free or with remaining-token data are shown.',
   },
   {
+    id: 'xkiro',
+    name: 'xKiro',
+    category: 'models',
+    baseURL: 'https://api.xkiro.com/v1',
+    modelsPath: '/v1/models?modality=chat',
+    keyRequired: true,
+    docsURL: 'https://docs.xkiro.com/',
+    note: 'OpenAI-compatible chat models; image generation is available through a separate image job API.',
+  },
+  {
+    id: 'septorlabs',
+    name: 'Septor Labs',
+    category: 'models',
+    baseURL: 'https://api.septorlabs.com/v1',
+    keyRequired: true,
+    docsURL: 'https://septorlabs.com/docs/introduction',
+    note: 'OpenAI-compatible model gateway with image generation on paid plans.',
+  },
+  {
     id: 'firecrawl',
     name: 'Firecrawl',
     category: 'search',
-    baseURL: null,
+    baseURL: 'https://api.firecrawl.dev/v2',
     keyRequired: true,
-    docsURL: 'https://firecrawl.dev',
-    note: 'Search credential management only; Relay does not invoke this provider yet.',
+    docsURL: 'https://docs.firecrawl.dev/api-reference/endpoint/search',
+    note: 'Web search is called when you turn on Search the web in chat.',
   },
   {
     id: 'parallel',

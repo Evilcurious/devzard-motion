@@ -15,7 +15,7 @@ const empty = (): WorkspaceData => ({
   conversations: [],
   activities: [],
   workflows: initialWorkflows,
-  theme: 'green',
+  theme: 'light',
   appearance: defaultAppearance,
 });
 function localData(): WorkspaceData {
@@ -24,7 +24,7 @@ function localData(): WorkspaceData {
     conversations: Array.isArray(saved.conversations) ? saved.conversations : [],
     activities: Array.isArray(saved.activities) ? saved.activities : [],
     workflows: Array.isArray(saved.workflows) ? saved.workflows : initialWorkflows,
-    theme: isTheme(saved.theme) ? saved.theme : 'green',
+    theme: isTheme(saved.theme) ? saved.theme : 'light',
     appearance: normalizeAppearance(saved.appearance),
   };
 }

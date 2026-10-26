@@ -9,12 +9,15 @@ import {
 } from '../lib/model-router';
 
 test('model provider registry uses fixed HTTPS hosts and separates search services', () => {
-  assert.equal(routerProviders.length, 13);
+  assert.equal(routerProviders.length, 15);
   assert.equal(getRouterProvider('openrouter')?.baseURL, 'https://openrouter.ai/api/v1');
   assert.equal(getRouterProvider('kilo')?.baseURL, 'https://api.kilo.ai/api/gateway/v1');
   assert.equal(getRouterProvider('aihorde')?.keyRequired, false);
   assert.equal(getRouterProvider('electronhub')?.baseURL, 'https://api.electronhub.ai/v1');
+  assert.equal(getRouterProvider('xkiro')?.baseURL, 'https://api.xkiro.com/v1');
+  assert.equal(getRouterProvider('septorlabs')?.baseURL, 'https://api.septorlabs.com/v1');
   assert.equal(getRouterProvider('firecrawl')?.category, 'search');
+  assert.equal(getRouterProvider('firecrawl')?.baseURL, 'https://api.firecrawl.dev/v2');
   assert.equal(getRouterProvider('parallel')?.category, 'search');
   assert.equal(getRouterProvider('keenable')?.category, 'search');
   for (const provider of routerProviders) {

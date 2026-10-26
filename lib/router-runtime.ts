@@ -1,15 +1,13 @@
-import { readConnection } from './connection-store';
 import { getRouterProvider, type RouterProviderId, type RouterTarget } from './model-router';
-import { isOpenRouterEndpoint } from './ai-errors';
-import type { ModelSettings } from './ai';
+import { getProviderKeys } from './provider-credentials';
 
-type ProviderCredential = { apiKey: string };
 export type ResolvedTarget = {
   providerId: RouterProviderId;
   analyticsProviderId?: string;
   model: string;
   baseURL: string;
   key: string;
+  apiKeys?: string[];
   supportsTools?: boolean;
 };
 
@@ -18,13 +16,8 @@ export async function resolveRouterTarget(target: RouterTarget): Promise<Resolve
   if (!provider || provider.category !== 'models' || !provider.baseURL) {
     throw new Error('The selected model provider is not supported.');
   }
-  const saved = await readConnection<ProviderCredential>(`router-provider-${provider.id}`);
-  const legacy = provider.id === 'openrouter' ? await readConnection<ModelSettings>('model') : null;
-  const legacyKey =
-    legacy?.provider === 'compatible' && isOpenRouterEndpoint(legacy.baseURL || '')
-      ? legacy.key || ''
-      : '';
-  const apiKey = saved?.apiKey || legacyKey;
+  const apiKeys = await getProviderKeys(provider.id);
+  const apiKey = apiKeys[0] || '';
   if (provider.keyRequired && !apiKey) {
     throw new Error(`${provider.name} needs an API key before it can be used.`);
   }
@@ -34,6 +27,7 @@ export async function resolveRouterTarget(target: RouterTarget): Promise<Resolve
     model: target.modelId,
     baseURL: provider.baseURL.replace(/\/$/, ''),
     key: apiKey || (provider.id === 'aihorde' ? '0000000000' : ''),
+    apiKeys,
     ...(provider.id === 'aihorde' ? { supportsTools: false } : {}),
   };
 }

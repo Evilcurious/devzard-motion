@@ -59,6 +59,19 @@ test('workspace persistence strips approval tokens and rejects malformed message
             id: 'message',
             role: 'assistant',
             content: 'Review this email.',
+            media: {
+              type: 'image',
+              urls: ['https://cdn.example.com/generated.png'],
+              providerName: 'xKiro',
+              modelId: 'sensenova/sensenova-u1.5-lite',
+            },
+            sources: [
+              {
+                title: 'Example source',
+                url: 'https://example.com/article',
+                snippet: 'A sample source excerpt.',
+              },
+            ],
             proposals: [
               {
                 id: 'action',
@@ -77,7 +90,13 @@ test('workspace persistence strips approval tokens and rejects malformed message
   };
   const result = workspaceSchema.parse(data);
   assert.equal(result.conversations[0].messages[0].proposals?.[0].token, '');
+  assert.equal(
+    result.conversations[0].messages[0].media?.urls[0],
+    'https://cdn.example.com/generated.png',
+  );
+  assert.equal(result.conversations[0].messages[0].sources?.[0].title, 'Example source');
   assert.equal(result.theme, 'blue');
+  assert.equal(workspaceSchema.parse({ ...data, theme: 'dark' }).theme, 'dark');
   assert.equal(workspaceSchema.safeParse({ ...data, theme: 'unknown' }).success, false);
   assert.equal(
     workspaceSchema.safeParse({
@@ -90,10 +109,10 @@ test('workspace persistence strips approval tokens and rejects malformed message
   );
 });
 
-test('all six requested themes are supported', () => {
+test('light, dark and accent themes are supported', () => {
   assert.deepEqual(
     themes.map((theme) => theme.id),
-    ['green', 'black', 'red', 'blue', 'yellow', 'gold'],
+    ['light', 'dark', 'green', 'black', 'red', 'blue', 'yellow', 'gold'],
   );
   for (const theme of themes) assert.ok(isTheme(theme.id));
   assert.equal(isTheme('purple'), false);

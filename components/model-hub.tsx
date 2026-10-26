@@ -23,6 +23,8 @@ type Provider = {
   keyRequired: boolean;
   connected: boolean;
   keySaved: boolean;
+  keyCount: number;
+  maxKeys: number;
   docsURL: string;
   note: string | null;
 };
@@ -64,6 +66,8 @@ const providerNames: Record<string, string> = {
   requesty: 'Requesty',
   aihorde: 'AI Horde',
   electronhub: 'Electron Hub',
+  xkiro: 'xKiro',
+  septorlabs: 'Septor Labs',
   firecrawl: 'Firecrawl',
   parallel: 'Parallel',
   keenable: 'KeenAble',
@@ -202,19 +206,27 @@ export function ModelHub({
       setBusy('');
     }
   }
-  async function removeProvider(providerId: string) {
+  async function removeProvider(providerId: string, keyIndex?: number) {
     setBusy(providerId);
     setError('');
     try {
-      await api('/api/router/providers', { providerId }, 'DELETE');
-      if (selection?.providerId === providerId) {
+      const result = await api<{ keyCount: number }>(
+        '/api/router/providers',
+        { providerId, keyIndex },
+        'DELETE',
+      );
+      if (result.keyCount === 0 && selection?.providerId === providerId) {
         setSelection(null);
         setStrategy('auto');
       }
       setFusionModels((items) => items.filter((target) => target.providerId !== providerId));
       await loadProviders();
       await discover();
-      notify(`${providerNames[providerId] || providerId} connection removed.`);
+      notify(
+        result.keyCount
+          ? `${providerNames[providerId] || providerId} key removed. ${result.keyCount} key${result.keyCount === 1 ? '' : 's'} remain.`
+          : `${providerNames[providerId] || providerId} connection removed.`,
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -281,6 +293,12 @@ export function ModelHub({
     [catalog, filter],
   );
   const providerErrors = catalog?.providers.filter((provider) => provider.error) || [];
+  const allModelRoutes = (catalog?.models || []).flatMap((model) => model.providers);
+  const totalModelRoutes = allModelRoutes.length;
+  const totalReportedTokens = allModelRoutes.reduce(
+    (sum, provider) => sum + (provider.availableTokens !== null ? provider.availableTokens : 0),
+    0,
+  );
   const quickProvider = providers.find((provider) => provider.id === quickProviderId);
 
   return (
@@ -367,8 +385,9 @@ export function ModelHub({
         </div>
         {quickProvider?.category === 'search' && quickProvider.note && (
           <p className="provider-note">
-            Search credentials are encrypted for future integration; this provider is not called by
-            Relay yet.
+            {quickProvider.id === 'firecrawl'
+              ? 'Firecrawl is used when you turn on Web search in the chat composer.'
+              : quickProvider.note}
           </p>
         )}
         <div className="provider-tabs">
@@ -415,7 +434,8 @@ export function ModelHub({
                 <div className="provider-card-actions">
                   {provider.keyRequired && provider.keySaved ? (
                     <span className="key-saved">
-                      <ShieldCheck size={14} /> Encrypted key saved
+                      <ShieldCheck size={14} /> {provider.keyCount} encrypted key
+                      {provider.keyCount === 1 ? '' : 's'} saved
                     </span>
                   ) : null}
                   {connectId === provider.id ? (
@@ -453,15 +473,19 @@ export function ModelHub({
                     </div>
                   ) : (
                     <>
-                      {provider.keySaved ? (
-                        <button
-                          className="text-button danger-text"
-                          onClick={() => removeProvider(provider.id)}
-                          disabled={busy === provider.id}
-                        >
-                          <Trash2 size={14} /> Remove key
-                        </button>
-                      ) : null}
+                      {provider.keySaved
+                        ? Array.from({ length: provider.keyCount }, (_, index) => (
+                            <button
+                              className="text-button danger-text"
+                              key={`${provider.id}-key-${index}`}
+                              onClick={() => removeProvider(provider.id, index)}
+                              disabled={busy === provider.id}
+                              title={`Remove saved API key ${index + 1}`}
+                            >
+                              <Trash2 size={14} /> Remove key {index + 1}
+                            </button>
+                          ))
+                        : null}
                       <button
                         className="text-button"
                         onClick={() => {
@@ -494,6 +518,21 @@ export function ModelHub({
           <span className="model-count">
             {catalog ? `${catalog.models.length} models` : 'Loading…'}
           </span>
+        </div>
+        <div className="model-count-summary" aria-live="polite">
+          <span>
+            <strong>{catalog?.models.length ?? 0}</strong> unique models
+          </span>
+          <span>
+            <strong>{totalModelRoutes}</strong> provider/model routes
+          </span>
+          <span>
+            <strong>{totalReportedTokens.toLocaleString()}</strong> reported remaining tokens
+          </span>
+          <small>
+            Token total sums only provider-reported per-model quotas; unknown quotas and
+            account-wide credits are omitted, and shared account limits may make totals overlap.
+          </small>
         </div>
         <div className="model-tools">
           <label className="model-search">

@@ -12,8 +12,8 @@ A self-hostable, **single-owner** AI agent built with Next.js 16, React 19, Type
 - **Google APIs settings:** save a Google OAuth client ID/secret, then authorize Gmail and Google Sheets.
 - **Gmail:** search/read messages and prepare outgoing emails. **Google Sheets:** append reviewed rows to an existing spreadsheet.
 - Approval is required for every email send and spreadsheet write. PostgreSQL prevents a submitted approval ID from being executed again by another server instance.
-- **Personalized appearance:** six light themes, a color picker, eight font families and custom WOFF2/WOFF/TTF/OTF font uploads.
-- **Heritage-inspired AI chat:** refined ivory-and-brass conversation styling; Relay answers creator questions with “Faizan made me.”
+- **Personalized appearance:** pure-white Light and pure-black Dark modes, accent themes, a color picker, eight font families and custom WOFF2/WOFF/TTF/OTF font uploads.
+- **Chat-first workspace:** readable assistant/user layout, automatic model selection, image generation, Firecrawl web search with sources, and Relay answers creator questions with “Faizan made me.”
 - Database health checks, visible save status, conflict protection and a downloadable backup when syncing fails.
 
 Without `DATABASE_URL`, Relay still works with browser-local history and encrypted HTTP-only cookies for saved connections. There are no bundled AI keys, Google accounts or simulated successful actions.
@@ -161,15 +161,19 @@ Then choose **Save connection → Test saved connection**. Free-model availabili
 
 ### Multi-provider model router
 
-Open **Models & providers** from the sidebar or click the model control in chat. Relay keeps this multi-provider catalog separate from the existing Settings connection. OpenRouter is included and an existing saved OpenRouter key is reused; you do not need to replace it. Model-provider keys are stored server-side in the existing encrypted cookie/Postgres secret store and are never returned to the browser. Each provider has a fixed HTTPS API host in code rather than a user-editable URL.
+Open **Models & providers** from the sidebar or click the model control in chat. Relay keeps this multi-provider catalog separate from the existing Settings connection. OpenRouter is included and an existing saved OpenRouter key is reused; you do not need to replace it. Up to five API keys per provider can be stored server-side in the existing encrypted cookie/Postgres secret store; key values are never returned to the browser. When a provider rejects one key for authentication, quota, or rate limits, Relay tries the other saved keys before moving to another eligible model. Each provider has a fixed HTTPS API host in code rather than a user-editable URL.
 
-The catalog supports OpenRouter, Ollama Cloud, Kilo Gateway, OVH AI Endpoints, Agnes AI, Routeway, BazaarLink, Requesty, AI Horde, and Electron Hub. Select **Refresh models** to call each provider's model-list API; listings require a saved key where that provider requires one. Provider hosts and adapters are implementation templates and have not been live-validated against every account/region. AI Horde is volunteer-powered and can be slow; it does not support Relay's tool calls. Anonymous routes may be rate-limited.
+The catalog supports OpenRouter, Ollama Cloud, Kilo Gateway, OVH AI Endpoints, Agnes AI, Routeway, BazaarLink, Requesty, AI Horde, Electron Hub, xKiro, and Septor Labs. Select **Refresh models** to call each provider's model-list API; listings require a saved key where that provider requires one. Provider hosts and adapters are implementation templates and have not been live-validated against every account/region. AI Horde is volunteer-powered and can be slow; it does not support Relay's tool calls. Anonymous routes may be rate-limited.
 
 Choose **Auto select** or **Fusion** in Models & providers. Auto select uses only models listed by the connected provider API that are explicitly free, report remaining tokens, or (for OpenRouter) have positive account/key credits. A model pinned in the chat picker is tried first; otherwise Relay picks the best eligible model for the chat’s density. On provider errors such as HTTP 402, it automatically tries the next eligible model. Each assistant reply identifies the model that answered. Quota and access can change between catalog checks, so provider errors remain possible. Fusion requests independent answers and asks a model to synthesize them; it makes additional provider requests and disables Gmail/Sheets tools and approval actions for that response.
 
-Models are grouped only when their IDs match case-insensitively. Context is a model context-window limit, not account quota. Account tokens are displayed/combined only when every listed provider explicitly reports an available-token quota; otherwise Relay shows “Not reported.” Reliability, speed, intelligence and guardrail scores are not fabricated.
+Models are grouped only when their IDs match case-insensitively. Context is a model context-window limit, not account quota. The catalog summary totals only provider-reported, per-model remaining-token values; it omits unknown quotas and account-wide credits, and shared account limits can make a sum overlap. Reliability, speed, intelligence and guardrail scores are not fabricated.
 
-Firecrawl, Parallel and KeenAble are displayed separately as search-provider connectors, not as chat models. At this stage their credentials can be stored securely, but Relay does not invoke those search APIs yet; Parallel and KeenAble endpoints have not been validated. Do not treat their connection state as a working search feature.
+Firecrawl, Parallel and KeenAble are displayed separately as search-provider connectors, not as chat models. The chat composer’s **Web search** option calls Firecrawl and adds clickable source links to the answer; save a Firecrawl API key in Models & providers first. Parallel and KeenAble remain credential-only connectors and are not invoked by Relay.
+
+### Images, web search and video
+
+Choose **Image** in the chat composer to generate an image. Relay automatically uses a connected xKiro image model first, then tries Septor Labs for authentication, quota, or rate-limit errors. Image generation can consume a provider free allowance or account credits; xKiro image jobs are asynchronous and may take longer than chat replies. Generated results are saved in conversation history. **Video** is shown but disabled because the connected providers do not currently expose a video-generation endpoint verified by Relay. Relay does not fabricate video clips or combine unrelated text responses into a video.
 
 ### Google Gemini
 
@@ -271,7 +275,7 @@ Outgoing reply content is sent as a **new email**, not a threaded Gmail reply. S
 
 ## Personalize colors and fonts
 
-Open **Settings → Appearance**. Choose **Green & white, Black & white, Red & white, Blue & white, Yellow & white, or Gold & white**, then use **Accent color** to select any custom color. **Reset to theme color** clears the override. All six preset themes remain light with a white canvas.
+Open **Settings → Appearance**. Choose **Light · pure white** or **Dark · pure black** for a monochrome canvas, or select one of the accent themes. Use **Accent color** to customize highlights; **Reset to theme color** clears the override.
 
 Choose one of eight built-in font families (Arial, Georgia, Palatino, Times New Roman, Trebuchet MS, Verdana, Tahoma or Courier New), or upload your own WOFF2, WOFF, TTF or OTF font up to 1 MB. Uploaded font data is stored inside your workspace preferences and browser backup; when Neon is configured, it syncs with the shared workspace. Only upload fonts you have permission to use. Your selected font and color apply across Relay immediately.
 
