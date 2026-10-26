@@ -208,6 +208,21 @@ export function StorageSettings({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  async function initializeTables() {
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/database', undefined, 'POST');
+      await refresh();
+      notify(
+        'Neon tables are ready. Your existing database contents were preserved. Download any unsaved browser draft, then reload to reconnect it.',
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <>
       <div className="section-intro">
@@ -311,6 +326,19 @@ export function StorageSettings({
             {busy ? <LoaderCircle size={15} className="spin" /> : <Database size={15} />}Check
             database connection
           </button>
+          {status.databaseConfigured && !status.databaseReady && (
+            <div className="database-migration-help">
+              <p>
+                If Neon is connected but Relay tables are missing, initialize them here. This
+                migration only creates missing tables and preserves existing workspace data. Keep
+                this page open; download any unsaved draft before reloading after migration.
+              </p>
+              <button className="button" disabled={busy} onClick={initializeTables}>
+                {busy ? <LoaderCircle size={15} className="spin" /> : <Database size={15} />}
+                Initialize or repair Relay tables
+              </button>
+            </div>
+          )}
         </div>
       </section>
       <section className="settings-panel">
@@ -329,22 +357,27 @@ export function StorageSettings({
               Copy the complete PostgreSQL connection string.
             </li>
             <li>
-              Run <code>npm run setup</code> to create missing security settings. Open{' '}
-              <code>.env.local</code> to find your workspace password.
+              {status.deployment === 'vercel'
+                ? 'On Vercel, set APP_PASSWORD and a stable SESSION_SECRET in the relay project’s Environment Variables. Do not run npm run setup on your computer.'
+                : 'Run npm run setup to create missing security settings. Open .env.local to find your workspace password.'}
             </li>
             <li>
-              On your laptop, add the URL to <code>.env.local</code>. On Vercel, add it to
-              Environment Variables:
-              <pre className="config-example">
-                DATABASE_URL="paste-your-full-Neon-connection-string"
-              </pre>
+              {status.deployment === 'vercel'
+                ? 'In Vercel → relay → Settings → Environment Variables, make sure DATABASE_URL is set for Production (and Preview if needed). Do not paste it into chat or the code repository.'
+                : 'On your laptop, add the URL to .env.local. For Vercel, add it to the project’s Environment Variables:'}
+              {status.deployment !== 'vercel' && (
+                <pre className="config-example">
+                  DATABASE_URL="paste-your-full-Neon-connection-string"
+                </pre>
+              )}{' '}
               Keep the actual database name from Neon (often <code>neondb</code>), not{' '}
               <code>relay</code> unless you created it. Copy plain text, with <code>&amp;</code>{' '}
               instead of HTML <code>&amp;amp;</code>.
             </li>
             <li>
-              Run <code>npm run db:migrate</code> and <code>npm run db:check</code>. Restart Relay
-              or redeploy Vercel. This creates Relay’s tables without deleting existing data.
+              {status.deployment === 'vercel'
+                ? 'After connecting Neon, use “Initialize or repair Relay tables” above. This hosted migration creates missing Relay tables without deleting existing data; no local command or restart is required.'
+                : 'Run npm run db:migrate and npm run db:check. This creates Relay’s tables without deleting existing data.'}
             </li>
           </ol>
           <p className="muted-text">
@@ -356,7 +389,7 @@ export function StorageSettings({
           <div className="info-callout">
             <ShieldCheck size={18} />
             <div>
-              <strong>Your app stays local. Your saved data lives in Neon.</strong>
+              <strong>Your app can run locally or on Vercel; saved data lives in Neon.</strong>
               <p>
                 Neon requires internet access. Keep your DATABASE_URL private and preserve your
                 existing SESSION_SECRET. Changing it makes saved credentials unreadable. Chats are

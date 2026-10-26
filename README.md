@@ -298,7 +298,7 @@ Import the repository into Vercel using the Next.js preset and the branch contai
 - `DATABASE_URL` from Neon → Connect, with pooling enabled (optional, recommended)
 - AI/environment settings and endpoint allowlist as needed
 
-Run `npm run db:migrate` against that database once from your machine or deployment tooling. Do not put migrations into every request. Set the matching HTTPS Google callback URI in Google Cloud. Use a pooled database URL with serverless hosting; each app instance uses up to three connections.
+For a Vercel deployment, set `DATABASE_URL`, `APP_PASSWORD`, and a stable `SESSION_SECRET` in the project’s Environment Variables. Sign in, open **Settings → Storage**, and choose **Initialize or repair Relay tables** when the database status needs attention. This authenticated, idempotent migration only creates missing tables and preserves existing rows; it does not require running commands on your laptop. For self-hosted Node.js, use `npm run db:migrate` and `npm run db:check`. Set the matching HTTPS Google callback URI in Google Cloud. Use a pooled database URL with serverless hosting; each app instance uses up to three connections.
 
 **Vercel hosts the app, not Ollama or the AI model.** A cloud deployment cannot reach your laptop at `localhost`. Use an API or a separately hosted, secured inference server. Never expose an unauthenticated Ollama port to the internet.
 
