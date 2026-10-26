@@ -449,7 +449,7 @@ export function ModelHub({
                     ))}
                   </span>
                   <span className="model-metric">
-                    <small>Context window</small>
+                    <small>Largest context</small>
                     <strong>{formatTokens(model.contextTokens)}</strong>
                   </span>
                   <span className="model-metric">
