@@ -82,6 +82,10 @@ test('bad URL and driver errors provide actionable messages without exposing cre
   }
   assert.match(databaseErrorMessage({ code: '3D000', message: pooled }), /actual database name/);
   assert.match(databaseErrorMessage({ code: '28P01', message: pooled }), /sign-in failed/);
-  assert.match(databaseErrorMessage({ code: '42P01', message: pooled }), /db:migrate/);
+  assert.match(databaseErrorMessage({ code: '42P01', message: pooled }), /Settings → Database/);
+  assert.match(
+    databaseErrorMessage({ code: '42P01', message: pooled }),
+    /does not delete existing data/,
+  );
   assert.ok(!databaseErrorMessage(new Error(pooled)).includes('test_password'));
 });

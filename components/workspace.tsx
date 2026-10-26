@@ -3,6 +3,7 @@ import { databaseLabel } from '@/lib/database-label';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity as ActivityIcon,
+  BarChart3,
   ArrowRight,
   ArrowUp,
   ArrowUpRight,
@@ -54,6 +55,7 @@ import { api, Settings } from './settings';
 import { useWorkspaceStorage, type WorkspaceData } from './use-workspace-storage';
 import { type Theme } from '@/lib/themes';
 import { ModelHub } from './model-hub';
+import { Analytics } from './analytics';
 import {
   defaultAppearance,
   fontOptions,
@@ -67,6 +69,7 @@ const titles: Record<Page, string> = {
   models: 'Models & providers',
   connections: 'Connections',
   activity: 'Activity',
+  analytics: 'Analytics',
   settings: 'Settings',
 };
 const navigation = [
@@ -75,6 +78,7 @@ const navigation = [
   { id: 'models', icon: Cpu, label: 'Models & providers' },
   { id: 'connections', icon: LayoutGrid, label: 'Connections' },
   { id: 'activity', icon: ActivityIcon, label: 'Activity' },
+  { id: 'analytics', icon: BarChart3, label: 'Analytics' },
 ] as const;
 const uid = () => crypto.randomUUID();
 const friendlyDate = (date: string) =>
@@ -82,6 +86,7 @@ const friendlyDate = (date: string) =>
 
 export default function Workspace() {
   const [page, setPage] = useState<Page>('chat');
+  const [settingsTab, setSettingsTab] = useState('model');
   const [status, setStatus] = useState<Status | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -204,6 +209,12 @@ export default function Workspace() {
   }, [text]);
   function go(next: Page) {
     setPage(next);
+    if (next === 'settings') setSettingsTab('model');
+    setSidebar(false);
+  }
+  function openDatabaseSettings() {
+    setSettingsTab('storage');
+    setPage('settings');
     setSidebar(false);
   }
   function newChat(prompt = '') {
@@ -733,18 +744,31 @@ export default function Workspace() {
                   ? status?.databaseConfigured
                     ? `Not saved to ${databaseLabel(status)}`
                     : 'Browser history could not be saved'
-                  : `Saved to ${databaseLabel(status)}`}
+                  : status?.databaseConfigured && status.databaseReady === false
+                    ? `${databaseLabel(status)} needs setup`
+                    : `Saved to ${databaseLabel(status)}`}
             </span>
             {storage.syncError && (
               <>
                 <span>{storage.syncError}</span>
-                {status?.databaseConfigured && (
+                {status?.databaseConfigured && status.databaseReady && (
                   <button className="text-button" onClick={storage.retry}>
                     Retry save
                   </button>
                 )}
                 <button className="text-button" onClick={storage.downloadBackup}>
-                  Download backup
+                  Download browser draft
+                </button>
+              </>
+            )}
+            {status?.databaseConfigured && status.databaseReady === false && (
+              <>
+                <span>
+                  {status.databaseError ||
+                    'Neon is connected, but Relay tables need initialization.'}
+                </span>
+                <button className="text-button" onClick={openDatabaseSettings}>
+                  Open Settings → Database
                 </button>
               </>
             )}
@@ -1275,6 +1299,7 @@ export default function Workspace() {
               </div>
             </div>
           )}
+          {page === 'analytics' && <Analytics onOpenStorage={openDatabaseSettings} />}
           {page === 'models' && <ModelHub onSelect={refresh} notify={notify} />}
           {page === 'settings' && status && (
             <Settings
@@ -1286,6 +1311,8 @@ export default function Workspace() {
               onAppearanceChange={setAppearance}
               refresh={refresh}
               notify={notify}
+              initialTab={settingsTab}
+              onOpenModelHub={() => go('models')}
             />
           )}
         </main>

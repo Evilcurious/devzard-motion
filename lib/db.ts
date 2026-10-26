@@ -38,11 +38,16 @@ export async function databaseHealth() {
     provider = config.provider;
     pooled = config.pooled;
     const result = await dbQuery(
-      "SELECT to_regclass('relay_settings') AS settings, to_regclass('relay_workspace') AS workspace, to_regclass('relay_action_claims') AS claims",
+      "SELECT to_regclass('relay_settings') AS settings, to_regclass('relay_workspace') AS workspace, to_regclass('relay_action_claims') AS claims, to_regclass('relay_analytics') AS analytics",
     );
-    if (!result.rows[0]?.settings || !result.rows[0]?.workspace || !result.rows[0]?.claims)
+    if (
+      !result.rows[0]?.settings ||
+      !result.rows[0]?.workspace ||
+      !result.rows[0]?.claims ||
+      !result.rows[0]?.analytics
+    )
       throw new Error(
-        'Connected, but Relay tables are missing. Run npm run db:migrate, then refresh.',
+        `${provider === 'neon' ? 'Neon is reachable' : 'The database is reachable'}, but Relay tables need initialization. Open Settings → Database and choose “Initialize or repair Relay tables”. This hosted migration is safe; it does not delete existing data. Download your browser draft before reloading.`,
       );
     return { configured: true, ready: true, provider, pooled, tls: config.verifyTLS };
   } catch (error) {

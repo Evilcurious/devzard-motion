@@ -8,4 +8,6 @@ test('hosted migration schema stays identical to the safe CLI migration', async 
   assert.equal(schemaSql.trim(), fileSchema.trim());
   assert.match(schemaSql, /CREATE TABLE IF NOT EXISTS relay_workspace/);
   assert.match(schemaSql, /ON CONFLICT DO NOTHING/);
+  assert.match(schemaSql, /CREATE TABLE IF NOT EXISTS relay_analytics/);
+  assert.match(schemaSql, /CREATE INDEX IF NOT EXISTS relay_analytics_created_at_idx/);
 });

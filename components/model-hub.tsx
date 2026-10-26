@@ -83,6 +83,8 @@ export function ModelHub({
   const [fusionModels, setFusionModels] = useState<Target[]>([]);
   const [connectId, setConnectId] = useState('');
   const [key, setKey] = useState('');
+  const [quickProviderId, setQuickProviderId] = useState('openrouter');
+  const [quickKey, setQuickKey] = useState('');
   const [filter, setFilter] = useState('');
   const [category, setCategory] = useState<'all' | 'models' | 'search'>('all');
   const [busy, setBusy] = useState('');
@@ -103,6 +105,13 @@ export function ModelHub({
       'GET',
     );
     setProviders(response.providers);
+    setQuickProviderId((current) =>
+      response.providers.some((provider) => provider.id === current)
+        ? current
+        : response.providers.find((provider) => provider.id === 'openrouter')?.id ||
+          response.providers.find((provider) => provider.category === 'models')?.id ||
+          '',
+    );
   }
   async function loadSelection() {
     const response = await api<{
@@ -153,12 +162,13 @@ export function ModelHub({
       .catch((e) => setError((e as Error).message));
   }, []);
 
-  async function saveProvider(providerId: string) {
+  async function saveProvider(providerId: string, apiKey = key) {
     setBusy(providerId);
     setError('');
     try {
-      await api('/api/router/providers', { providerId, apiKey: key });
+      await api('/api/router/providers', { providerId, apiKey });
       setKey('');
+      setQuickKey('');
       setConnectId('');
       await loadProviders();
       await discover();
@@ -231,6 +241,7 @@ export function ModelHub({
     [catalog, filter],
   );
   const providerErrors = catalog?.providers.filter((provider) => provider.error) || [];
+  const quickProvider = providers.find((provider) => provider.id === quickProviderId);
 
   return (
     <div className="model-hub">
@@ -271,6 +282,55 @@ export function ModelHub({
           Keys are encrypted in Relay storage and never sent to your browser after saving. Search
           services are listed separately from chat models.
         </p>
+        <div className="provider-key-quickform">
+          <label>
+            Provider
+            <select
+              aria-label="Choose an AI provider"
+              value={quickProviderId}
+              onChange={(event) => setQuickProviderId(event.target.value)}
+            >
+              {providers.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.name} · {provider.category === 'models' ? 'Chat model' : 'Search'}
+                </option>
+              ))}
+            </select>
+          </label>
+          {quickProvider?.keyRequired && (
+            <label>
+              API key
+              <input
+                type="password"
+                autoComplete="new-password"
+                placeholder="Paste this provider’s API key"
+                aria-label="API key for selected provider"
+                value={quickKey}
+                onChange={(event) => setQuickKey(event.target.value)}
+              />
+            </label>
+          )}
+          <button
+            className="button primary"
+            disabled={
+              !!busy || !quickProviderId || (!!quickProvider?.keyRequired && !quickKey.trim())
+            }
+            onClick={() => void saveProvider(quickProviderId, quickKey)}
+          >
+            {busy === quickProviderId ? (
+              <LoaderCircle className="spin" size={15} />
+            ) : (
+              <Plus size={15} />
+            )}
+            {quickProvider?.keyRequired ? 'Save API key' : 'Connect provider'}
+          </button>
+        </div>
+        {quickProvider?.category === 'search' && quickProvider.note && (
+          <p className="provider-note">
+            Search credentials are encrypted for future integration; this provider is not called by
+            Relay yet.
+          </p>
+        )}
         <div className="provider-tabs">
           {(['all', 'models', 'search'] as const).map((tab) => (
             <button

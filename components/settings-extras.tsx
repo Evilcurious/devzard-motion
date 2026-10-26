@@ -212,10 +212,16 @@ export function StorageSettings({
     setBusy(true);
     setError('');
     try {
-      await api('/api/database', undefined, 'POST');
+      const result = await api<{ provider: string | null; ready: boolean }>(
+        '/api/database',
+        undefined,
+        'POST',
+      );
+      if (!result.ready)
+        throw new Error('The database connection did not pass the readiness check.');
       await refresh();
       notify(
-        'Neon tables are ready. Your existing database contents were preserved. Download any unsaved browser draft, then reload to reconnect it.',
+        `${result.provider === 'neon' ? 'Neon' : 'PostgreSQL'} connection succeeded. Relay tables are initialized; existing database rows were preserved. Download your browser draft before reloading.`,
       );
     } catch (e) {
       setError((e as Error).message);
@@ -314,7 +320,7 @@ export function StorageSettings({
                 else
                   setError(
                     result.error ||
-                      'Set DATABASE_URL and run the migration to enable database storage.',
+                      'Open Settings → Database and choose “Initialize or repair Relay tables” to run the safe hosted migration.',
                   );
               } catch (e) {
                 setError((e as Error).message);

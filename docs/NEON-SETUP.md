@@ -84,14 +84,14 @@ In Relay choose **Settings → AI model → Use server defaults → Test saved c
 
 Set the same `DATABASE_URL` in Vercel's server Environment Variables, along with `APP_PASSWORD`, `APP_URL` for the deployed domain, and the **same SESSION_SECRET** when sharing this database. Don't use a `NEXT_PUBLIC_` variable for credentials. Redeploy after changing variables.
 
-You can run the migration from your laptop against Neon; no local Postgres server is needed. Vercel cannot reach laptop Ollama via localhost—use the separate secure-tunnel guide or a hosted AI API.
+On Vercel, sign in to Relay, open Settings → Database, and choose “Initialize or repair Relay tables”. This hosted, idempotent action creates missing tables without deleting existing rows; no local commands are needed. For self-hosted Node.js, use `npm run db:migrate` and `npm run db:check`. Vercel cannot reach laptop Ollama via localhost—use the separate secure-tunnel guide or a hosted AI API.
 
 ## Troubleshooting
 
 - **Sign-in failed:** reset the Neon role password and copy a fresh URL. This is separate from Relay's APP_PASSWORD.
 - **Database does not exist:** select the real database in Neon → Connect and recopy the URL. Often `/neondb`, not `/relay`.
 - **Link/HTML formatting error:** remove Markdown/mailto formatting, use `&` rather than `&amp;`, or copy directly from Neon again.
-- **Connected but tables missing:** run `npm run db:migrate` against the same URL, then refresh.
+- **Connected but tables missing:** on Vercel, download your browser draft, then open Settings → Database and use “Initialize or repair Relay tables”. On a self-hosted Node.js install, use `npm run db:migrate` against the same URL. The migration does not delete existing rows.
 - **Cannot reach the database:** check your internet connection, Neon project state and any network restrictions. Cold starts may take a few seconds; retry the check.
 - **Saved credentials cannot be decrypted:** restore your original SESSION_SECRET. Don't generate a replacement to try to fix it.
 
