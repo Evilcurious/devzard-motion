@@ -19,6 +19,10 @@ test('local FreeLLMAPI preset accepts a model and key without exposing the key',
       },
     }),
   );
+  await page.route('**/api/model/local-models', async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ key: 'test-only-local-llmapi-key' });
+    await route.fulfill({ json: { models: ['configured-local-model'] } });
+  });
   await page.route('**/api/config', async (route) => {
     saved = route.request().postDataJSON();
     await route.fulfill({ json: { ok: true } });
@@ -29,8 +33,12 @@ test('local FreeLLMAPI preset accepts a model and key without exposing the key',
   await expect(page.getByLabel('API endpoint')).toHaveValue(FREELLMAPI_BASE_URL);
   await expect(page.getByLabel('Model name')).toHaveValue('');
   await expect(page.getByText(/will not reach your computer from Vercel/i)).toBeVisible();
-  await page.getByLabel('Model name').fill('configured-local-model');
   await page.getByRole('textbox', { name: /^API key/ }).fill('test-only-local-llmapi-key');
+  await page.getByRole('button', { name: 'Load FreeLLMAPI models', exact: true }).click();
+  await page
+    .getByRole('combobox', { name: 'Models on this server' })
+    .selectOption('configured-local-model');
+  await expect(page.getByLabel('Model name')).toHaveValue('configured-local-model');
   await page.getByRole('button', { name: 'Save connection', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'API connection saved' })).toBeVisible();
   expect(saved).toEqual({

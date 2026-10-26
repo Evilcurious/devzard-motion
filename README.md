@@ -146,7 +146,7 @@ For a FreeLLMAPI server running on the same computer as Relay, open **Settings �
 http://127.0.0.1:31415/v1
 ```
 
-Enter the model ID configured in your local server and your API key, then choose **Save connection → Test saved connection**. Relay calls the OpenAI-compatible `/chat/completions` route and stores the key encrypted through its normal settings flow. The loopback endpoint is narrowly trusted by default; no `AI_ALLOWED_ORIGINS` entry is needed. This URL points to the computer running Relay, so it will **not** reach your laptop's server when Relay is hosted on Vercel.
+Enter your API key, click **Load FreeLLMAPI models**, and select the exact model ID exposed by the local server. Then choose **Save connection → Test saved connection**. Relay checks `GET /v1/models`, calls the OpenAI-compatible `/chat/completions` route, and stores the key encrypted through its normal settings flow. If the local server does not implement model listing, enter its configured model ID manually. The loopback endpoint is narrowly trusted by default; no `AI_ALLOWED_ORIGINS` entry is needed. This URL points to the computer running Relay, so it will **not** reach your laptop's server when Relay is hosted on Vercel.
 
 ### OpenRouter (including free models)
 

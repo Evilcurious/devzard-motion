@@ -57,11 +57,13 @@ export function Settings({
   const [error, setError] = useState('');
   const [tab, setTab] = useState('model');
   const [geminiModels, setGeminiModels] = useState<string[]>([]);
+  const [localModels, setLocalModels] = useState<string[]>([]);
   const gemini = provider === 'compatible' && isGeminiEndpoint(baseURL);
   const openRouter = provider === 'compatible' && isOpenRouterEndpoint(baseURL);
   const freeLLMAPI = provider === 'compatible' && isFreeLLMAPIEndpoint(baseURL);
   useEffect(() => {
     setGeminiModels([]);
+    setLocalModels([]);
   }, [provider, baseURL, key]);
   async function loadModels() {
     setBusy('models');
@@ -70,6 +72,19 @@ export function Settings({
     try {
       const data = await api<{ models: string[] }>('/api/model/models', { key });
       setGeminiModels(data.models);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy('');
+    }
+  }
+  async function loadLocalModels() {
+    setBusy('models');
+    setError('');
+    setLocalModels([]);
+    try {
+      const data = await api<{ models: string[] }>('/api/model/local-models', { key });
+      setLocalModels(data.models);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -459,6 +474,50 @@ export function Settings({
                           Choose a text/chat model, not an image or audio-only model. Listing does
                           not guarantee OpenAI-compatible chat, tool support or quota. Click Save
                           connection, then Test saved connection to check it.
+                        </span>
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
+              {freeLLMAPI && (
+                <div className="info-callout">
+                  <Server size={19} />
+                  <div>
+                    <strong>Find the model configured on your local server</strong>
+                    <p>
+                      Relay checks GET /v1/models on 127.0.0.1:31415 using the key above, or your
+                      saved FreeLLMAPI key. This only lists model IDs; save and test to verify chat.
+                    </p>
+                    <button
+                      className="button small"
+                      type="button"
+                      disabled={!!busy}
+                      onClick={loadLocalModels}
+                    >
+                      {busy === 'models' && <LoaderCircle className="spin" size={16} />}
+                      Load FreeLLMAPI models
+                    </button>
+                    {localModels.length > 0 && (
+                      <label>
+                        Models on this server
+                        <select
+                          value={localModels.includes(model) ? model : ''}
+                          disabled={!!busy}
+                          onChange={(event) => setModel(event.target.value)}
+                        >
+                          <option value="" disabled>
+                            Choose your configured model
+                          </option>
+                          {localModels.map((id) => (
+                            <option key={id} value={id}>
+                              {id}
+                            </option>
+                          ))}
+                        </select>
+                        <span>
+                          Choose a model ID exactly as listed, then Save connection and Test saved
+                          connection. Listing does not guarantee the chat route is enabled.
                         </span>
                       </label>
                     )}

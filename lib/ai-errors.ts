@@ -15,10 +15,13 @@ export function isFreeLLMAPIEndpoint(baseURL: string) {
 // Never expose upstream error bodies, keys, or URLs supplied by a provider.
 export function providerError(status: number, baseURL: string) {
   const gemini = isGeminiEndpoint(baseURL);
+  const freeLLMAPI = isFreeLLMAPIEndpoint(baseURL);
   if (status === 404)
     return gemini
       ? 'Gemini returned 404: the requested model or API route was not found. In Settings → AI model, click Load Gemini models, choose a text/chat model, then Save connection and Test saved connection. A listed model may not support the OpenAI-compatible API. Changing .env.local will not override a saved model.'
-      : 'The AI provider returned 404: the model or API route was not found. Check the model name and OpenAI-compatible base URL in Settings, then Save connection and Test saved connection.';
+      : freeLLMAPI
+        ? 'FreeLLMAPI returned 404. In Settings → AI model, click Load FreeLLMAPI models and select the exact model ID it lists, then Save connection and Test. If the list works but chat still returns 404, confirm FreeLLMAPI supports POST /v1/chat/completions at this base URL.'
+        : 'The AI provider returned 404: the model or API route was not found. Check the model name and OpenAI-compatible base URL in Settings, then Save connection and Test saved connection.';
   if (status === 401)
     return 'Your AI API key was rejected (401). Enter the correct key in Settings and save the connection.';
   if (status === 402)
