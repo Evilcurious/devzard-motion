@@ -50,6 +50,7 @@ export function useWorkspaceStorage(
     'loading',
   );
   const [error, setError] = useState('');
+  const [canRetry, setCanRetry] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const latest = useRef(value);
   latest.current = value;
@@ -69,6 +70,7 @@ export function useWorkspaceStorage(
     setHydrated(false);
     saved.current = '';
     revision.current = null;
+    setCanRetry(false);
     blocked.current = false;
     if (!authenticated) return;
     setSyncState('loading');
@@ -81,6 +83,7 @@ export function useWorkspaceStorage(
           if (!response.ok) throw new Error(result.error || 'Could not load database history.');
           if (disposed) return;
           revision.current = result.revision;
+          setCanRetry(true);
           if (result.data) {
             data = result.data;
             saved.current = JSON.stringify(sanitized(data));
@@ -95,6 +98,7 @@ export function useWorkspaceStorage(
       } catch (e) {
         if (disposed) return;
         blocked.current = true;
+        setCanRetry(false);
         setError((e as Error).message);
         setSyncState('error');
         // Keep an offline draft available. Never write it over a database that failed to load.
@@ -184,12 +188,7 @@ export function useWorkspaceStorage(
     return () => window.removeEventListener('beforeunload', beforeUnload);
   }, [syncState]);
   const retry = useCallback(() => {
-    if (revision.current === null) {
-      setError(
-        'The database was not loaded. Download your browser draft, open Settings → Database, and use the hosted “Initialize or repair Relay tables” action. Reload only after the database reports ready.',
-      );
-      return;
-    }
+    if (revision.current === null) return;
     blocked.current = false;
     setRetryCount((n) => n + 1);
   }, []);
@@ -204,5 +203,5 @@ export function useWorkspaceStorage(
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, []);
-  return { hydrated, syncState, syncError: error, retry, downloadBackup };
+  return { hydrated, syncState, syncError: error, canRetry, retry, downloadBackup };
 }

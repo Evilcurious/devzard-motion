@@ -29,13 +29,16 @@ export async function aiConfig() {
         provider: 'compatible' as const,
         routerProviderId: provider.id,
         model: selection.modelId,
+        availableTokens: selection.availableTokens ?? null,
+        contextTokens: selection.contextTokens ?? null,
+        supportsTools: provider.id === 'aihorde' ? false : selection.supportsTools,
+        isFree: selection.isFree ?? false,
         baseURL: provider.baseURL.replace(/\/$/, ''),
         key,
         configured,
-        supportsTools: provider.id === 'aihorde' ? false : undefined,
-        strategy: selection.strategy,
-        fallbackChain: selection.fallbackChain,
-        fusionModels: selection.fusionModels,
+        strategy: selection.strategy === 'fusion' ? ('fusion' as const) : ('auto' as const),
+        autoPick: selection.autoPick ?? true,
+        fusionModels: selection.fusionModels || [],
       };
     }
   }
@@ -66,7 +69,6 @@ export async function aiConfig() {
     configured: provider === 'ollama' || (provider === 'openai' ? !!key : !!baseURL),
     supportsTools: undefined,
     strategy: 'manual' as const,
-    fallbackChain: [],
     fusionModels: [],
   };
 }

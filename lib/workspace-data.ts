@@ -30,6 +30,9 @@ export const workspaceSchema = z.object({
               content: z.string().max(50000),
               error: z.boolean().optional(),
               steps: z.array(short).max(50).optional(),
+              modelUsed: z
+                .object({ modelId: short, providerId: short, providerName: short })
+                .optional(),
               attachment: z
                 .object({
                   name: short,

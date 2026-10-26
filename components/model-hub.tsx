@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/client-api';
+import { rankRouterTargets, type RouterProviderId, type RouterTarget } from '@/lib/model-router';
 import {
   Check,
   CircleHelp,
@@ -26,12 +27,13 @@ type Provider = {
   note: string | null;
 };
 type ModelProvider = {
-  id: string;
+  id: RouterProviderId;
   name: string;
   modelId: string;
   contextTokens: number | null;
   availableTokens: number | null;
   supportsTools: boolean | null;
+  isFree: boolean;
 };
 type Model = {
   key: string;
@@ -40,9 +42,10 @@ type Model = {
   providers: ModelProvider[];
   contextTokens: number | null;
   availableTokens: number | null;
+  isFree: boolean;
 };
-type Strategy = 'manual' | 'fallback' | 'fusion';
-type Target = { providerId: string; modelId: string };
+type Strategy = 'auto' | 'fusion';
+type Target = RouterTarget;
 type Catalog = {
   models: Model[];
   providers: Array<{ providerId: string; modelCount: number; error: string | null }>;
@@ -60,6 +63,7 @@ const providerNames: Record<string, string> = {
   bazaarlink: 'BazaarLink',
   requesty: 'Requesty',
   aihorde: 'AI Horde',
+  electronhub: 'Electron Hub',
   firecrawl: 'Firecrawl',
   parallel: 'Parallel',
   keenable: 'KeenAble',
@@ -67,6 +71,19 @@ const providerNames: Record<string, string> = {
 const targetKey = (target: Target) => `${target.providerId}::${target.modelId}`;
 const formatTokens = (n: number | null) =>
   n === null ? 'Not reported' : `${n.toLocaleString()} tokens`;
+const catalogTargets = (models: Model[]): Target[] =>
+  models.flatMap((model) =>
+    model.providers.map((provider) => ({
+      providerId: provider.id,
+      modelId: provider.modelId,
+      availableTokens: provider.availableTokens,
+      contextTokens: provider.contextTokens,
+      supportsTools: provider.supportsTools,
+      isFree: provider.isFree,
+    })),
+  );
+const enrichTarget = (target: Target, models: Model[]): Target =>
+  catalogTargets(models).find((candidate) => targetKey(candidate) === targetKey(target)) || target;
 
 export function ModelHub({
   onSelect,
@@ -78,8 +95,8 @@ export function ModelHub({
   const [providers, setProviders] = useState<Provider[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [selection, setSelection] = useState<Target | null>(null);
-  const [strategy, setStrategy] = useState<Strategy>('manual');
-  const [fallbacks, setFallbacks] = useState<Target[]>([]);
+  const [strategy, setStrategy] = useState<Strategy>('auto');
+  const [autoPick, setAutoPick] = useState(true);
   const [fusionModels, setFusionModels] = useState<Target[]>([]);
   const [connectId, setConnectId] = useState('');
   const [key, setKey] = useState('');
@@ -90,13 +107,7 @@ export function ModelHub({
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const selected =
-    selection ||
-    (catalog?.models[0]?.providers[0]
-      ? {
-          providerId: catalog.models[0].providers[0].id,
-          modelId: catalog.models[0].providers[0].modelId,
-        }
-      : null);
+    selection || rankRouterTargets(catalogTargets(catalog?.models || []), 'auto')[0] || null;
 
   async function loadProviders() {
     const response = await api<{ providers: Provider[] }>(
@@ -116,10 +127,14 @@ export function ModelHub({
   async function loadSelection() {
     const response = await api<{
       selection: null | {
-        providerId: string;
+        providerId: RouterProviderId;
         modelId: string;
+        availableTokens?: number | null;
+        contextTokens?: number | null;
+        supportsTools?: boolean | null;
+        isFree?: boolean;
         strategy: Strategy;
-        fallbackChain: Target[];
+        autoPick?: boolean;
         fusionModels: Target[];
       };
     }>('/api/router/selection', undefined, 'GET');
@@ -127,13 +142,13 @@ export function ModelHub({
       setSelection({
         providerId: response.selection.providerId,
         modelId: response.selection.modelId,
+        availableTokens: response.selection.availableTokens,
+        contextTokens: response.selection.contextTokens,
+        supportsTools: response.selection.supportsTools,
+        isFree: response.selection.isFree,
       });
-      setStrategy(
-        response.selection.strategy === 'fallback' || response.selection.strategy === 'fusion'
-          ? response.selection.strategy
-          : 'manual',
-      );
-      setFallbacks(response.selection.fallbackChain || []);
+      setStrategy(response.selection.strategy === 'fusion' ? 'fusion' : 'auto');
+      setAutoPick(response.selection.autoPick ?? true);
       setFusionModels(response.selection.fusionModels || []);
     }
     return response.selection;
@@ -144,11 +159,19 @@ export function ModelHub({
     try {
       const result = await api<Catalog>('/api/router/models', undefined, 'GET');
       setCatalog(result);
-      if (autoSelect && !selection && result.models[0]?.providers[0]) {
-        setSelection({
-          providerId: result.models[0].providers[0].id,
-          modelId: result.models[0].providers[0].modelId,
-        });
+      setSelection((current) =>
+        current && result.models.length ? enrichTarget(current, result.models) : current,
+      );
+      setFusionModels((current) => current.map((target) => enrichTarget(target, result.models)));
+      if (autoSelect && !selection) {
+        const first = rankRouterTargets(catalogTargets(result.models), 'auto')[0];
+        if (first) {
+          setSelection(first);
+          setAutoPick(true);
+        } else
+          setError(
+            'No models are currently marked free, reporting positive remaining tokens, or (for OpenRouter) backed by positive account/key credits. Refresh model lists or check API access.',
+          );
       }
     } catch (e) {
       setError((e as Error).message);
@@ -186,9 +209,8 @@ export function ModelHub({
       await api('/api/router/providers', { providerId }, 'DELETE');
       if (selection?.providerId === providerId) {
         setSelection(null);
-        setStrategy('manual');
+        setStrategy('auto');
       }
-      setFallbacks((items) => items.filter((target) => target.providerId !== providerId));
       setFusionModels((items) => items.filter((target) => target.providerId !== providerId));
       await loadProviders();
       await discover();
@@ -205,9 +227,9 @@ export function ModelHub({
     setError('');
     try {
       await api('/api/router/selection', {
-        ...selected,
+        ...enrichTarget(selected, catalog?.models || []),
         strategy,
-        fallbackChain: strategy === 'fallback' ? fallbacks : [],
+        autoPick: strategy === 'auto' && autoPick,
         fusionModels: strategy === 'fusion' ? fusionModels : [],
       });
       await onSelect();
@@ -227,7 +249,25 @@ export function ModelHub({
     const key = targetKey(target);
     if (list.some((item) => targetKey(item) === key))
       setList(list.filter((item) => targetKey(item) !== key));
-    else if (list.length < max) setList([...list, target]);
+    else if (target.availableTokens !== 0 && list.length < max)
+      setList([...list, enrichTarget(target, catalog?.models || [])]);
+  }
+
+  function autoPickPrimary() {
+    const best = rankRouterTargets(catalogTargets(catalog?.models || []), 'auto')[0];
+    if (!best) {
+      setError(
+        'No eligible models were found. Only API-listed models marked free, reporting positive remaining tokens, or (for OpenRouter) backed by positive account/key credits are shown. Refresh the catalog or connect another provider.',
+      );
+      return;
+    }
+    setSelection(best);
+    setStrategy('auto');
+    setAutoPick(true);
+    setError('');
+    notify(
+      `Selected ${best.modelId} by quota-aware ranking from models the connected APIs report as eligible.`,
+    );
   }
 
   const visibleProviders = providers.filter((p) => category === 'all' || p.category === category);
@@ -487,12 +527,17 @@ export function ModelHub({
               >
                 <button
                   className="model-row-main"
-                  onClick={() =>
+                  onClick={() => {
                     setSelection({
                       providerId: model.providers[0].id,
                       modelId: model.providers[0].modelId,
-                    })
-                  }
+                      isFree: model.providers[0].isFree,
+                      availableTokens: model.providers[0].availableTokens,
+                      contextTokens: model.providers[0].contextTokens,
+                      supportsTools: model.providers[0].supportsTools,
+                    });
+                    setAutoPick(false);
+                  }}
                 >
                   <span className="model-icon">
                     <Zap size={17} />
@@ -513,8 +558,14 @@ export function ModelHub({
                     <strong>{formatTokens(model.contextTokens)}</strong>
                   </span>
                   <span className="model-metric">
-                    <small>Account quota</small>
-                    <strong>{formatTokens(model.availableTokens)}</strong>
+                    <small>Availability</small>
+                    <strong>
+                      {model.isFree
+                        ? 'Free'
+                        : model.availableTokens !== null
+                          ? formatTokens(model.availableTokens)
+                          : 'Account credits available'}
+                    </strong>
                   </span>
                   <span className="model-check">
                     {selected &&
@@ -534,7 +585,17 @@ export function ModelHub({
                             ? 'active'
                             : ''
                         }
-                        onClick={() => setSelection({ providerId: p.id, modelId: p.modelId })}
+                        onClick={() => {
+                          setSelection({
+                            providerId: p.id,
+                            modelId: p.modelId,
+                            isFree: p.isFree,
+                            availableTokens: p.availableTokens,
+                            contextTokens: p.contextTokens,
+                            supportsTools: p.supportsTools,
+                          });
+                          setAutoPick(false);
+                        }}
                       >
                         {p.name}
                       </button>
@@ -575,23 +636,36 @@ export function ModelHub({
             <h2>Choose your chat strategy</h2>
           </div>
         </div>
-        <p className="model-hub-copy">
-          Primary model:{' '}
-          <strong>
-            {selected
-              ? `${selected.modelId} · ${providerNames[selected.providerId] || selected.providerId}`
-              : 'Select a model above'}
-          </strong>
-        </p>
+        <div className="primary-model-picker-row">
+          <p className="model-hub-copy">
+            Primary model:{' '}
+            <strong>
+              {selected
+                ? `${selected.modelId} · ${providerNames[selected.providerId] || selected.providerId}`
+                : 'Select a model above'}
+            </strong>
+          </p>
+          <button
+            className="button small"
+            type="button"
+            onClick={autoPickPrimary}
+            disabled={!catalog?.models.length}
+          >
+            <Zap size={14} /> Auto-pick available
+          </button>
+        </div>
         <div className="strategy-grid">
           {(
             [
-              ['manual', 'Manual', 'Use the selected model for every request.'],
-              ['fallback', 'Fallback chain', 'Try backup models if the selected provider fails.'],
+              [
+                'auto',
+                'Auto select',
+                'Use the best currently eligible model, then try the next by your chat density if the provider rejects it or reports exhausted quota.',
+              ],
               [
                 'fusion',
                 'Fusion',
-                'Ask multiple models, then synthesize their answers. Tools and approval actions are disabled in fusion mode.',
+                'Ask multiple selected models, then synthesize their answers. Tools and approval actions are disabled in fusion mode.',
               ],
             ] as const
           ).map(([id, title, description]) => (
@@ -606,49 +680,53 @@ export function ModelHub({
             </button>
           ))}
         </div>
-        {strategy !== 'manual' && (
+        {strategy === 'auto' && (
+          <p className="route-quota-note">
+            Only API-listed models marked free or reporting positive remaining tokens are available;
+            OpenRouter paid models also require positive account and API-key credits. A failed or
+            exhausted model is skipped for the next eligible choice.
+          </p>
+        )}
+        {strategy === 'fusion' && (
           <div className="route-candidates">
-            <label>
-              {strategy === 'fallback' ? 'Fallback models (in order)' : 'Fusion models (up to 4)'}
-            </label>
+            <div className="route-candidate-heading">
+              <label>Fusion models (up to 4)</label>
+            </div>
             <div className="route-model-options">
               {(catalog?.models || []).flatMap((model) =>
                 model.providers.map((provider) => {
-                  const target = { providerId: provider.id, modelId: provider.modelId };
-                  const activeList = strategy === 'fallback' ? fallbacks : fusionModels;
-                  const limit = strategy === 'fallback' ? 8 : 4;
-                  const checked = activeList.some((item) => targetKey(item) === targetKey(target));
+                  const target: Target = {
+                    providerId: provider.id,
+                    modelId: provider.modelId,
+                    availableTokens: provider.availableTokens,
+                    contextTokens: provider.contextTokens,
+                    supportsTools: provider.supportsTools,
+                    isFree: provider.isFree,
+                  };
+                  const checked = fusionModels.some(
+                    (item) => targetKey(item) === targetKey(target),
+                  );
                   return (
                     <label key={targetKey(target)}>
                       <input
                         type="checkbox"
                         checked={checked}
                         disabled={
-                          (!checked && activeList.length >= limit) ||
+                          (!checked && fusionModels.length >= 4) ||
                           targetKey(target) === (selected ? targetKey(selected) : '')
                         }
-                        onChange={() =>
-                          toggleTarget(
-                            activeList,
-                            strategy === 'fallback' ? setFallbacks : setFusionModels,
-                            target,
-                            limit,
-                          )
-                        }
+                        onChange={() => toggleTarget(fusionModels, setFusionModels, target, 4)}
                       />
                       <span>{provider.name}</span>
                       <small>{provider.modelId}</small>
+                      <small>
+                        {provider.isFree ? 'Free' : formatTokens(provider.availableTokens)}
+                      </small>
                     </label>
                   );
                 }),
               )}
             </div>
-            {strategy === 'fallback' && fallbacks.length > 0 && (
-              <small>
-                Fallback order is the order selected below; reorder by removing and adding models
-                again.
-              </small>
-            )}
           </div>
         )}
         <div className="routing-footer">
@@ -659,10 +737,7 @@ export function ModelHub({
           <button
             className="button"
             disabled={
-              !selected ||
-              busy === 'activate' ||
-              (strategy === 'fallback' && !fallbacks.length) ||
-              (strategy === 'fusion' && !fusionModels.length)
+              !selected || busy === 'activate' || (strategy === 'fusion' && !fusionModels.length)
             }
             onClick={activate}
           >

@@ -8,6 +8,7 @@ export type RouterProviderId =
   | 'bazaarlink'
   | 'requesty'
   | 'aihorde'
+  | 'electronhub'
   | 'firecrawl'
   | 'parallel'
   | 'keenable';
@@ -33,6 +34,7 @@ export const routerProviders: RouterProvider[] = [
     name: 'OpenRouter',
     category: 'models',
     baseURL: 'https://openrouter.ai/api/v1',
+    modelsPath: '/api/v1/models/user?limit=500',
     keyRequired: true,
     docsURL: 'https://openrouter.ai/settings/keys',
   },
@@ -105,6 +107,15 @@ export const routerProviders: RouterProvider[] = [
     note: 'Volunteer-powered; responses can be slow and tools are not supported.',
   },
   {
+    id: 'electronhub',
+    name: 'Electron Hub',
+    category: 'models',
+    baseURL: 'https://api.electronhub.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://app.electronhub.ai',
+    note: 'Only models reported free or with remaining-token data are shown.',
+  },
+  {
     id: 'firecrawl',
     name: 'Firecrawl',
     category: 'search',
@@ -144,19 +155,88 @@ export type RouterModel = {
     contextTokens: number | null;
     availableTokens: number | null;
     supportsTools: boolean | null;
+    isFree: boolean;
   }>;
   contextTokens: number | null;
   availableTokens: number | null;
+  isFree: boolean;
 };
-export type RouterStrategy =
-  'manual' | 'fallback' | 'fusion' | 'balanced' | 'fastest' | 'reliable' | 'smartest';
-export type RouterSelection = {
+export type RouterStrategy = 'auto' | 'fusion';
+export type AIDensity = 'auto' | 'fast' | 'faster' | 'high' | 'slow';
+export type RouterTarget = {
   providerId: RouterProviderId;
   modelId: string;
-  strategy: RouterStrategy;
-  fallbackChain: Array<{ providerId: RouterProviderId; modelId: string }>;
-  fusionModels: Array<{ providerId: RouterProviderId; modelId: string }>;
+  availableTokens?: number | null;
+  contextTokens?: number | null;
+  supportsTools?: boolean | null;
+  isFree?: boolean;
 };
+export type RouterSelection = RouterTarget & {
+  strategy: RouterStrategy;
+  autoPick?: boolean;
+  fusionModels: RouterTarget[];
+};
+
+export function rankRouterTargets<T extends RouterTarget>(
+  targets: T[],
+  density: AIDensity,
+  measuredLatencyMs: ReadonlyMap<string, number> = new Map(),
+): T[] {
+  const eligible = targets.filter((target) => target.availableTokens !== 0);
+  return eligible
+    .map((target, index) => ({ target, index }))
+    .sort((a, b) => {
+      const quotaA = a.target.availableTokens;
+      const quotaB = b.target.availableTokens;
+      const quotaRankA = quotaA === null || quotaA === undefined ? 1 : 0;
+      const quotaRankB = quotaB === null || quotaB === undefined ? 1 : 0;
+      if (quotaRankA !== quotaRankB) return quotaRankA - quotaRankB;
+      const compareQuota = () =>
+        quotaA !== null &&
+        quotaA !== undefined &&
+        quotaB !== null &&
+        quotaB !== undefined &&
+        quotaA !== quotaB
+          ? quotaB - quotaA
+          : 0;
+      const compareLatency = () => {
+        const latencyA = measuredLatencyMs.get(`${a.target.providerId}::${a.target.modelId}`);
+        const latencyB = measuredLatencyMs.get(`${b.target.providerId}::${b.target.modelId}`);
+        if (latencyA === undefined && latencyB !== undefined) return 1;
+        if (latencyB === undefined && latencyA !== undefined) return -1;
+        return latencyA !== undefined && latencyB !== undefined ? latencyA - latencyB : 0;
+      };
+      if (density === 'faster') {
+        const latencyOrder = compareLatency();
+        if (latencyOrder) return latencyOrder;
+        const quotaOrder = compareQuota();
+        if (quotaOrder) return quotaOrder;
+      } else if (density === 'high') {
+        const contextA = a.target.contextTokens ?? -1;
+        const contextB = b.target.contextTokens ?? -1;
+        if (contextA !== contextB) return contextB - contextA;
+        const quotaOrder = compareQuota();
+        if (quotaOrder) return quotaOrder;
+      } else {
+        const quotaOrder = compareQuota();
+        if (quotaOrder) return quotaOrder;
+        if (density === 'fast') {
+          const latencyOrder = compareLatency();
+          if (latencyOrder) return latencyOrder;
+        }
+        if (density === 'slow') {
+          const contextA = a.target.contextTokens ?? -1;
+          const contextB = b.target.contextTokens ?? -1;
+          if (contextA !== contextB) return contextB - contextA;
+        }
+      }
+      const freeRankA = a.target.isFree ? 0 : 1;
+      const freeRankB = b.target.isFree ? 0 : 1;
+      if (freeRankA !== freeRankB) return freeRankA - freeRankB;
+      return a.index - b.index;
+    })
+    .map(({ target }) => target);
+}
 
 export function getRouterProvider(id: string): RouterProvider | undefined {
   return routerProviders.find((provider) => provider.id === id);
@@ -172,6 +252,7 @@ export function routerModelIds(body: unknown): Array<{
   contextTokens: number | null;
   availableTokens: number | null;
   supportsTools: boolean | null;
+  isFree: boolean;
 }> {
   const entries = Array.isArray(body)
     ? body
@@ -188,6 +269,7 @@ export function routerModelIds(body: unknown): Array<{
       contextTokens: number | null;
       availableTokens: number | null;
       supportsTools: boolean | null;
+      isFree: boolean;
     }
   >();
   for (const item of entries.slice(0, 2000)) {
@@ -224,6 +306,20 @@ export function routerModelIds(body: unknown): Array<{
       'supports_tools' in item && typeof item.supports_tools === 'boolean'
         ? item.supports_tools
         : null;
+    const itemRecord = item as Record<string, unknown>;
+    const pricing = itemRecord.pricing;
+    const prices =
+      pricing && typeof pricing === 'object'
+        ? ['prompt', 'completion', 'input', 'output']
+            .map((key) => (pricing as Record<string, unknown>)[key])
+            .filter((value) => value !== undefined && value !== null)
+            .map((value) => (typeof value === 'string' ? Number(value) : value))
+        : [];
+    const isFree =
+      id.toLowerCase().endsWith(':free') ||
+      itemRecord.free === true ||
+      itemRecord.is_free === true ||
+      (prices.length >= 2 && prices.every((value) => typeof value === 'number' && value === 0));
     if (!output.has(id))
       output.set(id, {
         id,
@@ -231,6 +327,7 @@ export function routerModelIds(body: unknown): Array<{
         contextTokens,
         availableTokens,
         supportsTools,
+        isFree,
       });
   }
   return [...output.values()];

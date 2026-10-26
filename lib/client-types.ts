@@ -36,6 +36,7 @@ export type Message = {
   attachment?: Attachment;
   proposals?: Proposal[];
   steps?: string[];
+  modelUsed?: { modelId: string; providerId: string; providerName: string };
   error?: boolean;
 };
 export type Conversation = { id: string; title: string; messages: Message[]; updated: string };

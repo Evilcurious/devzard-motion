@@ -38,7 +38,10 @@ import {
   Unplug,
   Workflow as WorkflowIcon,
   X,
+  RefreshCw,
+  Zap,
 } from 'lucide-react';
+import type { AIDensity, RouterModel, RouterTarget } from '@/lib/model-router';
 import type {
   Activity,
   Attachment,
@@ -95,6 +98,14 @@ export default function Workspace() {
   const [theme, setTheme] = useState<Theme>('green');
   const [appearance, setAppearance] = useState<Appearance>(defaultAppearance);
   const [text, setText] = useState('');
+  const [density, setDensity] = useState<AIDensity>('auto');
+  const [densityReady, setDensityReady] = useState(false);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelChoices, setModelChoices] = useState<RouterModel[]>([]);
+  const [routerSelection, setRouterSelection] = useState<RouterTarget | null>(null);
+  const [routerAutoPick, setRouterAutoPick] = useState(false);
+  const [modelPickerBusy, setModelPickerBusy] = useState(false);
+  const [modelPickerError, setModelPickerError] = useState('');
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -146,6 +157,28 @@ export default function Workspace() {
     window.addEventListener('keydown', keyboard);
     return () => window.removeEventListener('keydown', keyboard);
   }, [refresh, notify]);
+  useEffect(() => {
+    const saved = window.localStorage.getItem('relay-ai-density');
+    if (saved && ['slow', 'fast', 'faster', 'high', 'auto'].includes(saved))
+      setDensity(saved as AIDensity);
+    setDensityReady(true);
+  }, []);
+  useEffect(() => {
+    if (densityReady) window.localStorage.setItem('relay-ai-density', density);
+  }, [density, densityReady]);
+  useEffect(() => {
+    if (!status?.authenticated) return;
+    api<{ selection: (RouterTarget & { autoPick?: boolean }) | null }>(
+      '/api/router/selection',
+      undefined,
+      'GET',
+    )
+      .then(({ selection }) => {
+        setRouterSelection(selection);
+        setRouterAutoPick(selection?.autoPick ?? true);
+      })
+      .catch(() => {});
+  }, [status?.authenticated]);
   const snapshot = useMemo(
     () => ({ conversations, activities, workflows, theme, appearance }),
     [conversations, activities, workflows, theme, appearance],
@@ -253,6 +286,101 @@ export default function Workspace() {
       ),
     );
   }
+  async function openModelPicker() {
+    setModelPickerOpen(true);
+    setModelPickerBusy(true);
+    setModelPickerError('');
+    try {
+      const [catalog, saved] = await Promise.all([
+        api<{ models: RouterModel[] }>('/api/router/models', undefined, 'GET'),
+        api<{ selection: (RouterTarget & { autoPick?: boolean }) | null }>(
+          '/api/router/selection',
+          undefined,
+          'GET',
+        ),
+      ]);
+      setModelChoices(catalog.models);
+      setRouterSelection(saved.selection);
+      setRouterAutoPick(saved.selection?.autoPick ?? true);
+    } catch (error) {
+      setModelPickerError((error as Error).message);
+    } finally {
+      setModelPickerBusy(false);
+    }
+  }
+  async function chooseChatModel(model: RouterModel, provider: RouterModel['providers'][number]) {
+    const target: RouterTarget = {
+      providerId: provider.id,
+      modelId: provider.modelId,
+      availableTokens: provider.availableTokens,
+      contextTokens: provider.contextTokens,
+      supportsTools: provider.supportsTools,
+      isFree: provider.isFree,
+    };
+    setModelPickerBusy(true);
+    setModelPickerError('');
+    try {
+      await api('/api/router/selection', {
+        ...target,
+        strategy: 'auto',
+        autoPick: false,
+        fusionModels: [],
+      });
+      setRouterSelection(target);
+      setRouterAutoPick(false);
+      setModelPickerOpen(false);
+      await refresh();
+      notify(
+        `${model.name} · ${provider.name} selected. Relay will automatically move to the next eligible model if it becomes unavailable.`,
+      );
+    } catch (error) {
+      setModelPickerError((error as Error).message);
+    } finally {
+      setModelPickerBusy(false);
+    }
+  }
+  async function chooseAutomaticModel() {
+    const firstProvider = modelChoices.flatMap((model) =>
+      model.providers.map((provider) => ({ model, provider })),
+    )[0];
+    const target =
+      routerSelection ||
+      (firstProvider
+        ? {
+            providerId: firstProvider.provider.id,
+            modelId: firstProvider.provider.modelId,
+            availableTokens: firstProvider.provider.availableTokens,
+            contextTokens: firstProvider.provider.contextTokens,
+            supportsTools: firstProvider.provider.supportsTools,
+            isFree: firstProvider.provider.isFree,
+          }
+        : null);
+    if (!target) {
+      setModelPickerError('No eligible API models are available to auto-select.');
+      return;
+    }
+    setModelPickerBusy(true);
+    setModelPickerError('');
+    try {
+      await api('/api/router/selection', {
+        ...target,
+        strategy: 'auto',
+        autoPick: true,
+        fusionModels: [],
+      });
+      setRouterSelection(target);
+      setRouterAutoPick(true);
+      setModelPickerOpen(false);
+      await refresh();
+      notify(
+        `Auto-pick enabled. The best eligible model will be chosen using ${density} chat density.`,
+      );
+    } catch (error) {
+      setModelPickerError((error as Error).message);
+    } finally {
+      setModelPickerBusy(false);
+    }
+  }
   async function send() {
     if (!hydrated || busyRef.current || uploading || (!text.trim() && !attachment)) return;
     const content = text.trim() || 'Please summarize the attached document.';
@@ -287,6 +415,7 @@ export default function Workspace() {
         headers: { 'Content-Type': 'application/json' },
         signal: abortRef.current.signal,
         body: JSON.stringify({
+          density,
           messages: history
             .filter((m) => !m.error)
             .slice(-24)
@@ -307,6 +436,13 @@ export default function Workspace() {
       if (!response.ok) {
         if (response.status === 401) refresh();
         throw new Error(result.error || 'Could not complete this request.');
+      }
+      if (result.modelUsed) {
+        setRouterSelection({
+          providerId: result.modelUsed.providerId,
+          modelId: result.modelUsed.modelId,
+        });
+        if (typeof result.autoPick === 'boolean') setRouterAutoPick(result.autoPick);
       }
       updateMessages(id, (old) => [...old, { id: uid(), role: 'assistant', ...result }]);
     } catch (error) {
@@ -491,11 +627,30 @@ export default function Workspace() {
               <Plus size={21} />
             </button>
             <span className="toolbar-divider" />
-            <button className="model-select" onClick={() => go('models')}>
+            <button className="model-select" onClick={openModelPicker} aria-haspopup="dialog">
               <span className={`status-dot ${status?.aiConfigured ? '' : 'muted'}`} />
-              {status?.aiConfigured ? status.model : 'Choose a model'}
+              {routerAutoPick && routerSelection
+                ? `Auto · ${density}`
+                : routerSelection?.modelId ||
+                  (status?.aiConfigured ? status.model : 'Choose a model')}
               <ChevronDown size={13} />
             </button>
+            <label className="density-control">
+              <span>AI density</span>
+              <select
+                aria-label="AI density"
+                title="Only API-listed models marked free or reporting remaining tokens are candidates. Slow favors quota then context; Fast favors quota then observed latency; Faster favors observed latency; High favors reported context; Auto favors quota."
+                value={density}
+                onChange={(event) => setDensity(event.target.value as AIDensity)}
+                disabled={busy}
+              >
+                <option value="slow">Slow</option>
+                <option value="fast">Fast</option>
+                <option value="faster">Faster</option>
+                <option value="high">High</option>
+                <option value="auto">Auto</option>
+              </select>
+            </label>
           </div>
           <div className="send-tools">
             <span>Enter to send</span>
@@ -751,7 +906,7 @@ export default function Workspace() {
             {storage.syncError && (
               <>
                 <span>{storage.syncError}</span>
-                {status?.databaseConfigured && status.databaseReady && (
+                {status?.databaseConfigured && status.databaseReady && storage.canRetry && (
                   <button className="text-button" onClick={storage.retry}>
                     Retry save
                   </button>
@@ -939,6 +1094,12 @@ export default function Workspace() {
                         <div className={`message-content ${message.error ? 'message-error' : ''}`}>
                           {message.content}
                         </div>
+                        {message.modelUsed && (
+                          <button className="message-model-used" onClick={openModelPicker}>
+                            <Cpu size={12} />
+                            Used {message.modelUsed.modelId} · {message.modelUsed.providerName}
+                          </button>
+                        )}
                         {message.error && !status?.aiConfigured && (
                           <button className="text-button" onClick={() => go('settings')}>
                             Connect your AI model
@@ -1331,6 +1492,93 @@ export default function Workspace() {
             <X size={15} />
           </button>
         </div>
+      )}
+      {modelPickerOpen && (
+        <Modal
+          title="Choose an available model"
+          subtitle="Only models allowed by the connected API and reported free, with tokens, or (for OpenRouter) with account credits are listed."
+          onClose={() => setModelPickerOpen(false)}
+        >
+          {modelPickerError && (
+            <div className="model-hub-error" role="alert">
+              {modelPickerError}
+            </div>
+          )}
+          <button
+            className={`chat-auto-model-option ${routerAutoPick ? 'selected' : ''}`}
+            onClick={() => void chooseAutomaticModel()}
+            disabled={modelPickerBusy || !modelChoices.length}
+          >
+            <Zap size={16} />
+            <span>
+              <strong>Auto-pick best for density</strong>
+              <small>
+                At each request, choose the top eligible model using {density} density, then
+                auto-switch on provider errors.
+              </small>
+            </span>
+            {routerAutoPick && <Check size={16} />}
+          </button>
+          {modelPickerBusy && !modelChoices.length ? (
+            <div className="model-picker-loading">
+              <LoaderCircle className="spin" size={18} /> Checking your API model access…
+            </div>
+          ) : modelChoices.length ? (
+            <div className="chat-model-picker-list">
+              {modelChoices.flatMap((model) =>
+                model.providers.map((provider) => {
+                  const isSelected =
+                    routerSelection?.providerId === provider.id &&
+                    routerSelection.modelId === provider.modelId;
+                  const availability = provider.isFree
+                    ? 'Free on this API'
+                    : provider.availableTokens !== null
+                      ? `${provider.availableTokens.toLocaleString()} tokens reported`
+                      : 'Account credits available';
+                  return (
+                    <button
+                      key={`${provider.id}::${provider.modelId}`}
+                      className={`chat-model-option ${isSelected ? 'selected' : ''}`}
+                      disabled={modelPickerBusy}
+                      onClick={() => void chooseChatModel(model, provider)}
+                    >
+                      <span className="chat-model-option-copy">
+                        <strong>{model.name}</strong>
+                        <small>
+                          {provider.modelId} · {provider.name}
+                        </small>
+                        <small className="chat-model-availability">{availability}</small>
+                      </span>
+                      {isSelected ? <Check size={16} /> : <ChevronRight size={16} />}
+                    </button>
+                  );
+                }),
+              )}
+            </div>
+          ) : (
+            <div className="model-picker-empty">
+              <CircleHelp size={20} />
+              <strong>No eligible models are listed</strong>
+              <span>
+                Refresh your provider keys or check the provider’s quota and model access. Quota can
+                change after this catalog check.
+              </span>
+            </div>
+          )}
+          <div className="model-picker-footer">
+            <span>
+              Model availability is a provider-reported snapshot. The provider can still return a
+              quota error.
+            </span>
+            <button
+              className="button small"
+              onClick={() => void openModelPicker()}
+              disabled={modelPickerBusy}
+            >
+              <RefreshCw size={14} /> Refresh list
+            </button>
+          </div>
+        </Modal>
       )}
       {modal === 'search' && (
         <Modal

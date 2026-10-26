@@ -3,15 +3,17 @@ import assert from 'node:assert/strict';
 import {
   canonicalModelKey,
   getRouterProvider,
+  rankRouterTargets,
   routerModelIds,
   routerProviders,
 } from '../lib/model-router';
 
 test('model provider registry uses fixed HTTPS hosts and separates search services', () => {
-  assert.equal(routerProviders.length, 12);
+  assert.equal(routerProviders.length, 13);
   assert.equal(getRouterProvider('openrouter')?.baseURL, 'https://openrouter.ai/api/v1');
   assert.equal(getRouterProvider('kilo')?.baseURL, 'https://api.kilo.ai/api/gateway/v1');
   assert.equal(getRouterProvider('aihorde')?.keyRequired, false);
+  assert.equal(getRouterProvider('electronhub')?.baseURL, 'https://api.electronhub.ai/v1');
   assert.equal(getRouterProvider('firecrawl')?.category, 'search');
   assert.equal(getRouterProvider('parallel')?.category, 'search');
   assert.equal(getRouterProvider('keenable')?.category, 'search');
@@ -33,6 +35,8 @@ test('catalog normalizer accepts bounded OpenAI arrays and wrapper shapes withou
       { id: 'vendor/model-x', name: 'duplicate' },
       { id: 'x\n\nhttps://evil.invalid', name: 'unsafe' },
       { name: 'another-model', context_window: 8192, monthly_tokens_remaining: 700 },
+      { id: 'vendor/free-model:free' },
+      { id: 'vendor/zero-priced', pricing: { input: 0, output: '0' } },
       { id: 'ignore spaces in/id' },
       { id: 'a'.repeat(201) },
     ],
@@ -44,6 +48,7 @@ test('catalog normalizer accepts bounded OpenAI arrays and wrapper shapes withou
       contextTokens: 32000,
       availableTokens: null,
       supportsTools: true,
+      isFree: false,
     },
     {
       id: 'another-model',
@@ -51,11 +56,87 @@ test('catalog normalizer accepts bounded OpenAI arrays and wrapper shapes withou
       contextTokens: 8192,
       availableTokens: 700,
       supportsTools: null,
+      isFree: false,
+    },
+    {
+      id: 'vendor/free-model:free',
+      name: 'vendor/free-model:free',
+      contextTokens: null,
+      availableTokens: null,
+      supportsTools: null,
+      isFree: true,
+    },
+    {
+      id: 'vendor/zero-priced',
+      name: 'vendor/zero-priced',
+      contextTokens: null,
+      availableTokens: null,
+      supportsTools: null,
+      isFree: true,
     },
   ]);
   assert.equal(JSON.stringify(result).includes('secret'), false);
   assert.equal(routerModelIds({ models: [{ id: 'model-y' }] })[0]?.id, 'model-y');
   assert.equal(routerModelIds('not json').length, 0);
+});
+
+test('routing excludes reported zero quota and ranks only from provider or observed metrics', () => {
+  const targets = [
+    {
+      providerId: 'openrouter' as const,
+      modelId: 'quota-large',
+      availableTokens: 900,
+      contextTokens: 8000,
+    },
+    {
+      providerId: 'kilo' as const,
+      modelId: 'quota-small',
+      availableTokens: 100,
+      contextTokens: 64000,
+    },
+    {
+      providerId: 'ovh' as const,
+      modelId: 'unknown-quota',
+      availableTokens: null,
+      contextTokens: 128000,
+    },
+    {
+      providerId: 'agnes' as const,
+      modelId: 'depleted',
+      availableTokens: 0,
+      contextTokens: 1000000,
+    },
+  ];
+  assert.deepEqual(
+    rankRouterTargets(targets, 'auto').map((target) => target.modelId),
+    ['quota-large', 'quota-small', 'unknown-quota'],
+  );
+  assert.deepEqual(
+    rankRouterTargets(
+      [
+        { providerId: 'openrouter', modelId: 'paid', availableTokens: null },
+        { providerId: 'kilo', modelId: 'free', availableTokens: null, isFree: true },
+      ],
+      'auto',
+    ).map((target) => target.modelId),
+    ['free', 'paid'],
+  );
+  assert.deepEqual(
+    rankRouterTargets(targets, 'high').map((target) => target.modelId),
+    ['quota-small', 'quota-large', 'unknown-quota'],
+  );
+  const observed = new Map([
+    ['openrouter::quota-large', 500],
+    ['kilo::quota-small', 100],
+  ]);
+  assert.deepEqual(
+    rankRouterTargets(targets, 'faster', observed).map((target) => target.modelId),
+    ['quota-small', 'quota-large', 'unknown-quota'],
+  );
+  assert.deepEqual(
+    rankRouterTargets(targets, 'fast', observed).map((target) => target.modelId),
+    ['quota-large', 'quota-small', 'unknown-quota'],
+  );
 });
 
 test('identical model ids merge case-insensitively without stripping vendor namespaces', () => {

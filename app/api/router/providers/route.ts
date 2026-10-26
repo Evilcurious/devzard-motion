@@ -80,19 +80,18 @@ export async function DELETE(request: Request) {
     if (selection?.providerId === provider.id) {
       await removeConnection('router-selection');
     } else if (selection) {
-      const fallbackChain = selection.fallbackChain.filter(
-        (target) => target.providerId !== provider.id,
-      );
       const fusionModels = selection.fusionModels.filter(
         (target) => target.providerId !== provider.id,
       );
-      const next = { ...selection, fallbackChain, fusionModels };
-      if (
-        (next.strategy === 'fallback' && !fallbackChain.length) ||
-        (next.strategy === 'fusion' && !fusionModels.length)
-      ) {
+      if (selection.strategy === 'fusion' && !fusionModels.length) {
         await removeConnection('router-selection');
       } else {
+        const next = {
+          ...selection,
+          strategy: selection.strategy === 'fusion' ? ('fusion' as const) : ('auto' as const),
+          fusionModels,
+        } as RouterSelection & { fallbackChain?: unknown };
+        delete next.fallbackChain;
         await saveConnection('router-selection', next);
       }
     }

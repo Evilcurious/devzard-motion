@@ -11,30 +11,19 @@ const targetSchema = z.object({
     .min(1)
     .max(200)
     .regex(/^[\w./:-]+$/),
+  availableTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  contextTokens: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  supportsTools: z.boolean().nullable().optional(),
+  isFree: z.boolean().optional(),
 });
 const schema = z
   .object({
     ...targetSchema.shape,
-    strategy: z.enum([
-      'manual',
-      'fallback',
-      'fusion',
-      'balanced',
-      'fastest',
-      'reliable',
-      'smartest',
-    ]),
-    fallbackChain: z.array(targetSchema).max(8).default([]),
+    strategy: z.enum(['auto', 'fusion']),
+    autoPick: z.boolean().default(false),
     fusionModels: z.array(targetSchema).max(4).default([]),
   })
   .superRefine((input, context) => {
-    if (input.strategy === 'fallback' && !input.fallbackChain.length) {
-      context.addIssue({
-        code: 'custom',
-        path: ['fallbackChain'],
-        message: 'Add at least one fallback model.',
-      });
-    }
     if (input.strategy === 'fusion' && !input.fusionModels.length) {
       context.addIssue({
         code: 'custom',
@@ -42,16 +31,12 @@ const schema = z
         message: 'Add at least one synthesis model.',
       });
     }
-    for (const [index, target] of [
-      input,
-      ...input.fallbackChain,
-      ...input.fusionModels,
-    ].entries()) {
+    for (const [index, target] of [input, ...input.fusionModels].entries()) {
       const provider = getRouterProvider(target.providerId);
       if (!provider || provider.category !== 'models') {
         context.addIssue({
           code: 'custom',
-          path: [index === 0 ? 'providerId' : 'fallbackChain', index || 0],
+          path: [index === 0 ? 'providerId' : 'fusionModels', index || 0],
           message: 'Select a chat-model provider.',
         });
       }
@@ -61,7 +46,18 @@ const schema = z
 export async function GET() {
   try {
     await guard();
-    return Response.json({ selection: await readConnection<RouterSelection>('router-selection') });
+    const raw = await readConnection<RouterSelection & { fallbackChain?: unknown }>(
+      'router-selection',
+    );
+    if (!raw) return Response.json({ selection: null });
+    const selection = {
+      ...raw,
+      strategy: raw.strategy === 'fusion' ? ('fusion' as const) : ('auto' as const),
+      autoPick: raw.autoPick ?? true,
+      fusionModels: raw.fusionModels || [],
+    } as RouterSelection & { fallbackChain?: unknown };
+    delete selection.fallbackChain;
+    return Response.json({ selection });
   } catch (error) {
     return errorResponse(error);
   }

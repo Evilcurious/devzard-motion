@@ -1,10 +1,9 @@
 import { readConnection } from './connection-store';
-import { getRouterProvider, type RouterProviderId } from './model-router';
+import { getRouterProvider, type RouterProviderId, type RouterTarget } from './model-router';
 import { isOpenRouterEndpoint } from './ai-errors';
 import type { ModelSettings } from './ai';
 
 type ProviderCredential = { apiKey: string };
-export type RouterTarget = { providerId: RouterProviderId; modelId: string };
 export type ResolvedTarget = {
   providerId: RouterProviderId;
   analyticsProviderId?: string;

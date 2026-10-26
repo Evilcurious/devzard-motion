@@ -67,6 +67,36 @@ export function inMemoryAnalytics(since: number): AnalyticsEvent[] {
   );
 }
 
+export async function observedLatencyByTarget(): Promise<Map<string, number>> {
+  const recent = inMemoryAnalytics(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const totals = new Map<string, { total: number; count: number }>();
+  for (const event of recent) {
+    if (!event.success) continue;
+    const key = `${event.providerId}::${event.modelId}`;
+    const current = totals.get(key) || { total: 0, count: 0 };
+    current.total += event.latencyMs;
+    current.count++;
+    totals.set(key, current);
+  }
+  const latencies = new Map([...totals].map(([key, value]) => [key, value.total / value.count]));
+  if (!databaseConfigured()) return latencies;
+  try {
+    const result = await dbQuery(
+      `SELECT provider_id, model_id, avg(latency_ms)::float AS average_latency
+       FROM relay_analytics
+       WHERE succeeded = true AND created_at >= now() - interval '30 days'
+       GROUP BY provider_id, model_id`,
+    );
+    for (const row of result.rows) {
+      const average = Number(row.average_latency);
+      if (Number.isFinite(average)) latencies.set(`${row.provider_id}::${row.model_id}`, average);
+    }
+  } catch {
+    // Routing remains available when analytics storage is not initialized.
+  }
+  return latencies;
+}
+
 export const analyticsRanges = {
   '24h': { hours: 24, stepMs: 60 * 60 * 1000, buckets: 24 },
   '7d': { hours: 24 * 7, stepMs: 24 * 60 * 60 * 1000, buckets: 7 },
