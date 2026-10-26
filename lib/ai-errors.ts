@@ -1,7 +1,11 @@
-import { GEMINI_BASE_URL } from './ai-presets';
+import { GEMINI_BASE_URL, OPENROUTER_BASE_URL } from './ai-presets';
 
 export function isGeminiEndpoint(baseURL: string) {
   return baseURL.trim().replace(/\/$/, '') === GEMINI_BASE_URL;
+}
+
+export function isOpenRouterEndpoint(baseURL: string) {
+  return baseURL.trim().replace(/\/$/, '') === OPENROUTER_BASE_URL;
 }
 
 // Never expose upstream error bodies, keys, or URLs supplied by a provider.
@@ -13,6 +17,8 @@ export function providerError(status: number, baseURL: string) {
       : 'The AI provider returned 404: the model or API route was not found. Check the model name and OpenAI-compatible base URL in Settings, then Save connection and Test saved connection.';
   if (status === 401)
     return 'Your AI API key was rejected (401). Enter the correct key in Settings and save the connection.';
+  if (status === 402)
+    return 'The AI provider requires account credits or plan access (402). Check whether your selected model is free and available to your account.';
   if (status === 403)
     return 'The AI provider denied access (403). Check the API key restrictions, project permissions and model access with your provider.';
   if (status === 429)

@@ -1,6 +1,6 @@
 # Relay — your personal AI workspace
 
-A self-hostable, **single-owner** AI agent built with Next.js 16, React 19, TypeScript and optional **Neon Postgres** (hosted PostgreSQL). Run it on your laptop, a Node.js host, or Vercel. Connect Ollama, OpenAI or another OpenAI-compatible API.
+A self-hostable, **single-owner** AI agent built with Next.js 16, React 19, TypeScript and optional **Neon Postgres** (hosted PostgreSQL). Run it on your laptop, a Node.js host, or Vercel. Connect Ollama, OpenAI, OpenRouter’s unified model API or another OpenAI-compatible API.
 
 ## What's included
 
@@ -137,6 +137,16 @@ AI_API_KEY=your-api-key
 ```
 
 API usage may incur provider charges. A blank key field preserves the saved key for the same provider. **Use server defaults** removes the saved model connection and restores environment settings.
+
+### OpenRouter (including free models)
+
+OpenRouter provides one OpenAI-compatible API key and endpoint for its model catalog. In **Settings → AI model**, click **Use OpenRouter settings**, enter your OpenRouter API key, and keep the suggested model `openrouter/free` to let OpenRouter route to an eligible free model. The preset uses the exact base URL below and is trusted by default—no `AI_ALLOWED_ORIGINS` entry is needed.
+
+```text
+https://openrouter.ai/api/v1
+```
+
+Then choose **Save connection → Test saved connection**. Free-model availability, rate limits, context and tool support vary by the model OpenRouter routes to and by your OpenRouter account. If you use Gmail/Sheets actions and the selected free model does not support tools, choose a listed tool-capable model from OpenRouter and enter its model ID instead. Relay sends your key as a private bearer credential; it is never returned to the browser. Never paste it into chat or commit it.
 
 ### Google Gemini
 

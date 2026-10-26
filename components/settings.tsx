@@ -1,7 +1,7 @@
 'use client';
 import { databaseLabel } from '@/lib/database-label';
-import { GEMINI_BASE_URL } from '@/lib/ai-presets';
-import { isGeminiEndpoint } from '@/lib/ai-errors';
+import { GEMINI_BASE_URL, OPENROUTER_BASE_URL, OPENROUTER_FREE_MODEL } from '@/lib/ai-presets';
+import { isGeminiEndpoint, isOpenRouterEndpoint } from '@/lib/ai-errors';
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/client-api';
 export { api } from '@/lib/client-api';
@@ -53,6 +53,7 @@ export function Settings({
   const [tab, setTab] = useState('model');
   const [geminiModels, setGeminiModels] = useState<string[]>([]);
   const gemini = provider === 'compatible' && isGeminiEndpoint(baseURL);
+  const openRouter = provider === 'compatible' && isOpenRouterEndpoint(baseURL);
   useEffect(() => {
     setGeminiModels([]);
   }, [provider, baseURL, key]);
@@ -267,6 +268,35 @@ export function Settings({
               </button>
             </div>
           </div>
+          <div className="info-callout openrouter-preset">
+            <Globe2 size={19} />
+            <div>
+              <strong>Use OpenRouter’s unified model API</strong>
+              <p>
+                Connect one OpenRouter key to its catalog of models. The free-model router is a
+                convenient starting point; free availability, rate limits and tool support vary.
+              </p>
+              <button
+                className="button small"
+                type="button"
+                disabled={!!busy}
+                onClick={() => {
+                  setProvider('compatible');
+                  setBaseURL(OPENROUTER_BASE_URL);
+                  setModel(
+                    status.provider === 'compatible' && isOpenRouterEndpoint(status.baseURL || '')
+                      ? status.model || OPENROUTER_FREE_MODEL
+                      : OPENROUTER_FREE_MODEL,
+                  );
+                  setKey('');
+                  setError('');
+                  setGeminiModels([]);
+                }}
+              >
+                Use OpenRouter settings
+              </button>
+            </div>
+          </div>
           <section className="settings-panel">
             <div className="panel-title">
               <KeyRound size={18} />
@@ -287,13 +317,17 @@ export function Settings({
                       ? 'qwen2.5:7b'
                       : provider === 'openai'
                         ? 'gpt-4o-mini'
-                        : 'Your provider’s model ID'
+                        : openRouter
+                          ? OPENROUTER_FREE_MODEL
+                          : 'Your provider’s model ID'
                   }
                 />
                 <span>
-                  {provider === 'compatible' && baseURL.replace(/\/$/, '') === GEMINI_BASE_URL
+                  {gemini
                     ? 'Load Gemini models below to choose a current text/chat model, then save and test it. Model names and availability change over time.'
-                    : 'Use a model that supports tool calling for email and spreadsheet tasks.'}
+                    : openRouter
+                      ? 'Use openrouter/free to let OpenRouter choose an eligible free model, or enter a specific model ID from its model catalog.'
+                      : 'Use a model that supports tool calling for email and spreadsheet tasks.'}
                 </span>
               </label>
               {provider !== 'openai' && (
@@ -307,8 +341,8 @@ export function Settings({
                     maxLength={500}
                   />
                   <span>
-                    Use your provider’s OpenAI-compatible base URL. Gemini uses /v1beta/openai, not
-                    /v1. Custom hosts need AI_ALLOWED_ORIGINS in .env.local.
+                    Use your provider’s OpenAI-compatible base URL. Gemini uses /v1beta/openai;
+                    OpenRouter uses /api/v1. Custom hosts need AI_ALLOWED_ORIGINS in .env.local.
                   </span>
                 </label>
               )}
@@ -319,9 +353,11 @@ export function Settings({
                     {status.keySaved && provider === status.provider
                       ? '(leave blank to keep existing)'
                       : provider === 'compatible'
-                        ? baseURL.replace(/\/$/, '') === GEMINI_BASE_URL
+                        ? gemini
                           ? '(Gemini key required)'
-                          : '(if required)'
+                          : openRouter
+                            ? '(OpenRouter key required)'
+                            : '(if required)'
                         : ''}
                   </span>
                   <input
@@ -406,11 +442,24 @@ export function Settings({
                 <div className="info-callout">
                   <Server size={19} />
                   <div>
-                    <strong>Bring your own endpoint</strong>
+                    <strong>
+                      {openRouter ? 'OpenRouter connection' : 'Bring your own endpoint'}
+                    </strong>
                     <p>
-                      Enter your provider’s OpenAI-compatible base URL above. Gemini uses{' '}
-                      <code>/v1beta/openai</code> and is trusted by default. Other custom origins
-                      must be allowed with AI_ALLOWED_ORIGINS on the server.
+                      {openRouter ? (
+                        <>
+                          Use the exact base URL <code>{OPENROUTER_BASE_URL}</code> and your
+                          OpenRouter API key. Relay sends it privately as a bearer credential.
+                          OpenRouter is trusted by default, so no AI_ALLOWED_ORIGINS entry is
+                          needed. Free model access and usage limits are controlled by OpenRouter.
+                        </>
+                      ) : (
+                        <>
+                          Enter your provider’s OpenAI-compatible base URL above. Gemini uses{' '}
+                          <code>/v1beta/openai</code> and is trusted by default. Other custom
+                          origins must be allowed with AI_ALLOWED_ORIGINS on the server.
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
