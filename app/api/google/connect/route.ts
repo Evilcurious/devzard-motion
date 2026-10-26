@@ -13,7 +13,7 @@ export async function POST(request: Request) {
       !config.appURL
     )
       throw new Error(
-        'Save your Google OAuth client ID and secret in Settings → Google APIs. Set APP_URL and SESSION_SECRET on the server first.',
+        'Google sign-in is not configured for this deployment. The deployment owner must set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, APP_URL, and a stable SESSION_SECRET in the server or Vercel environment, then redeploy. Enable the Gmail API and Google Sheets API in the same Google Cloud project.',
       );
     const state = randomBytes(32).toString('hex');
     (await cookies()).set('relay_oauth_state', state, { ...cookieOptions, maxAge: 600 });

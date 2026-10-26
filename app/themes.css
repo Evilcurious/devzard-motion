@@ -1404,3 +1404,174 @@
   --tone-fcfdfb: #fefcfa;
   --tone-fcfdfbdf: #fefcfadf;
 }
+
+/* Balanced, softly tinted theme surfaces and higher-contrast accent colours. */
+:root[data-theme='light'] {
+  --bg: #f5f8f6;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --sidebar: #f1f5f2;
+  --text: #20352b;
+  --body: #4d5f55;
+  --muted: #75837b;
+  --line: #e1e9e3;
+  --green: var(--user-accent, #34745f);
+  --light-green: #eaf2ec;
+  color-scheme: light;
+}
+:root[data-theme='green'] {
+  --bg: #eff5f0;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --sidebar: #e9f1eb;
+  --text: #233a2d;
+  --body: #4c6254;
+  --muted: #75877a;
+  --line: #dce8df;
+  --green: var(--user-accent, #4c8066);
+  --light-green: #e3efe6;
+  color-scheme: light;
+}
+:root[data-theme='black'] {
+  --bg: #f1f3f6;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --sidebar: #e9edf2;
+  --text: #282e39;
+  --body: #505a6b;
+  --muted: #778194;
+  --line: #dfe4ec;
+  --green: var(--user-accent, #59677f);
+  --light-green: #e7ebf1;
+  color-scheme: light;
+}
+:root[data-theme='red'] {
+  --bg: #fbf2f3;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --sidebar: #f7e9eb;
+  --text: #422b30;
+  --body: #684c52;
+  --muted: #92777d;
+  --line: #efdcdf;
+  --green: var(--user-accent, #bd586b);
+  --light-green: #f6e5e8;
+  color-scheme: light;
+}
+:root[data-theme='blue'] {
+  --bg: #f1f5fb;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --sidebar: #eaf0f8;
+  --text: #25344a;
+  --body: #4d5c73;
+  --muted: #77869c;
+  --line: #dce5f1;
+  --green: var(--user-accent, #3977bd);
+  --light-green: #e3edf8;
+  color-scheme: light;
+}
+:root[data-theme='yellow'] {
+  --bg: #faf7ec;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --sidebar: #f5f0df;
+  --text: #413819;
+  --body: #625934;
+  --muted: #8c8058;
+  --line: #e9e2cd;
+  --green: var(--user-accent, #987425);
+  --light-green: #f2ecd7;
+  color-scheme: light;
+}
+:root[data-theme='gold'] {
+  --bg: #f7f2eb;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --sidebar: #f1e9df;
+  --text: #403126;
+  --body: #625044;
+  --muted: #8b7869;
+  --line: #e8ddd0;
+  --green: var(--user-accent, #a8754c);
+  --light-green: #f0e6da;
+  color-scheme: light;
+}
+:root[data-theme='dark'] {
+  --bg: #111815;
+  --surface: #171f1b;
+  --surface-raised: #1d2822;
+  --sidebar: #141b17;
+  --text: #e9f2ec;
+  --body: #c4d1c8;
+  --muted: #94a49a;
+  --line: #2d3a32;
+  --green: var(--user-accent, #8ed8b8);
+  --light-green: #202d25;
+  color-scheme: dark;
+}
+
+:root[data-theme='dark'] .settings-panel,
+:root[data-theme='dark'] .integration-card,
+:root[data-theme='dark'] .theme-card {
+  background: var(--surface);
+  border-color: var(--line);
+}
+:root[data-theme='dark'] .settings-form input,
+:root[data-theme='dark'] .settings-form select,
+:root[data-theme='dark'] .vercel-connect-form input {
+  background: var(--surface-raised);
+  color: var(--text);
+  border-color: var(--line);
+}
+.theme-preview {
+  background: var(--preview-background, #f5f8f6);
+  border-color: color-mix(in srgb, var(--preview-ink, #20352b) 12%, transparent);
+}
+.theme-preview-sidebar {
+  background: color-mix(in srgb, var(--preview-accent) 10%, var(--preview-background));
+  border-right: 1px solid color-mix(in srgb, var(--preview-ink) 8%, transparent);
+}
+.theme-preview-sidebar i {
+  background: var(--preview-ink);
+  opacity: 0.18;
+}
+.theme-preview-body {
+  background: var(--preview-surface, #ffffff);
+}
+.theme-preview-body > i {
+  background: var(--preview-ink, #20352b);
+  opacity: 0.68;
+}
+.theme-preview-body > i:nth-child(2) {
+  opacity: 0.16;
+}
+.theme-preview-body > span {
+  background: color-mix(in srgb, var(--preview-background) 45%, var(--preview-surface));
+  border-color: color-mix(in srgb, var(--preview-accent) 25%, var(--preview-surface));
+}
+
+.button.primary,
+.new-chat,
+.send-button:not(:disabled),
+.analytics-range button.active {
+  background: var(--green);
+  border-color: var(--green);
+}
+.button.primary:hover,
+.new-chat:hover,
+.send-button:not(:disabled):hover {
+  background: color-mix(in srgb, var(--green) 84%, #000000);
+  border-color: color-mix(in srgb, var(--green) 84%, #000000);
+}
+.nav-item.active,
+.nav-item:hover,
+.recent-chat:hover,
+.recent-chat.selected {
+  background: color-mix(in srgb, var(--green) 10%, var(--surface));
+}
+:root[data-theme='dark'] .button.primary,
+:root[data-theme='dark'] .new-chat,
+:root[data-theme='dark'] .send-button:not(:disabled) {
+  color: #112019;
+}

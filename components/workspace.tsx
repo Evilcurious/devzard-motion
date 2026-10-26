@@ -37,6 +37,7 @@ import {
   Sparkles,
   Square,
   Trash2,
+  Triangle,
   Unplug,
   Video,
   Workflow as WorkflowIcon,
@@ -93,7 +94,7 @@ const friendlyDate = (date: string) =>
 
 export default function Workspace() {
   const [page, setPage] = useState<Page>('chat');
-  const [settingsTab, setSettingsTab] = useState('model');
+  const [settingsTab, setSettingsTab] = useState('appearance');
   const [status, setStatus] = useState<Status | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -252,7 +253,7 @@ export default function Workspace() {
   }, [text]);
   function go(next: Page) {
     setPage(next);
-    if (next === 'settings') setSettingsTab('model');
+    if (next === 'settings') setSettingsTab('appearance');
     setSidebar(false);
   }
   function openDatabaseSettings() {
@@ -905,7 +906,7 @@ export default function Workspace() {
         <div className="sidebar-bottom">
           <button
             className="setup-card"
-            onClick={() => go(status?.aiConfigured ? 'connections' : 'settings')}
+            onClick={() => go(status?.aiConfigured ? 'connections' : 'models')}
           >
             <span className="setup-title">
               <span>
@@ -1248,7 +1249,7 @@ export default function Workspace() {
                           </button>
                         )}
                         {message.error && !status?.aiConfigured && (
-                          <button className="text-button" onClick={() => go('settings')}>
+                          <button className="text-button" onClick={() => go('models')}>
                             Connect your AI model
                             <ArrowRight size={14} />
                           </button>
@@ -1377,15 +1378,15 @@ export default function Workspace() {
               <div className="connections-summary">
                 <span>
                   <span
-                    className={`status-dot ${status?.googleEmail || status?.githubAccount ? '' : 'muted'}`}
+                    className={`status-dot ${status?.googleEmail || status?.githubAccount || status?.vercelConnected ? '' : 'muted'}`}
                   />
-                  {status?.googleEmail && status?.githubAccount
-                    ? 'Google and GitHub connected'
-                    : status?.googleEmail
-                      ? 'Gmail and Sheets connected'
-                      : status?.githubAccount
-                        ? 'GitHub connected'
-                        : 'No apps connected yet'}
+                  {[
+                    status?.googleEmail && 'Google',
+                    status?.githubAccount && 'GitHub',
+                    status?.vercelConnected && 'Vercel',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || 'No apps connected yet'}
                 </span>
                 <span>
                   <ShieldCheck size={15} />
@@ -1445,19 +1446,16 @@ export default function Workspace() {
                         {status.googleEmail}
                       </div>
                     ) : (
-                      <button
-                        className="button"
-                        onClick={connect}
-                        disabled={!status?.googleConfigured}
-                      >
+                      <button className="button" onClick={connect}>
                         Sign in with Google
                         <ArrowUpRight size={15} />
                       </button>
                     )}
                   </section>
                 ))}
+                <GitHubConnectionCard status={status} refresh={refresh} notify={notify} />
+                <VercelConnectionCard status={status} refresh={refresh} notify={notify} />
               </div>
-              <GitHubConnectionCard status={status} refresh={refresh} notify={notify} />
               {status?.googleEmail ? (
                 <div className="info-callout">
                   <ShieldCheck size={19} />
@@ -1496,14 +1494,9 @@ export default function Workspace() {
                     <p>
                       {status?.googleConfigured
                         ? 'One Google sign-in authorizes Gmail and Sheets together. You choose the account in Google’s permission screen; writes still wait for your approval.'
-                        : 'Google sign-in is not configured for this Relay deployment yet. The deployment owner must complete the one-time Google OAuth setup; you will only need to sign in and approve access afterward.'}
+                        : 'Google sign-in needs one-time deployment-owner setup. In Vercel → relay → Settings → Environment Variables, configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, APP_URL, and a stable SESSION_SECRET; enable Gmail and Google Sheets APIs in Google Cloud, add the authorized redirect URI shown below, then redeploy. Never paste client secrets into chat.'}
                     </p>
-                    {!status?.googleConfigured && (
-                      <button className="text-button" onClick={() => go('settings')}>
-                        View connection setup
-                        <ArrowRight size={13} />
-                      </button>
-                    )}
+                    {!status?.googleConfigured && <GoogleOAuthSetupHint />}
                   </div>
                 </div>
               )}
@@ -1639,7 +1632,6 @@ export default function Workspace() {
               refresh={refresh}
               notify={notify}
               initialTab={settingsTab}
-              onOpenModelHub={() => go('models')}
             />
           )}
         </main>
@@ -2227,11 +2219,7 @@ function GitHubConnectionCard({
               <CheckCircle2 size={14} /> Review every generated file before it is pushed
             </li>
           </ul>
-          <button
-            className="button"
-            onClick={() => void connectGitHub()}
-            disabled={!status?.githubConfigured || busy}
-          >
+          <button className="button" onClick={() => void connectGitHub()} disabled={busy}>
             {busy ? <LoaderCircle size={15} className="spin" /> : <Github size={15} />}
             Install & connect GitHub
             <ArrowUpRight size={15} />
@@ -2245,10 +2233,301 @@ function GitHubConnectionCard({
       )}
       {!status?.githubConfigured && (
         <div className="github-setup-hint">
-          One-time server setup is required: a GitHub App with <code>Contents: read/write</code> and{' '}
-          <code>Metadata: read</code>. After that, connect by installing it from GitHub; never paste
-          a token here.
+          GitHub needs a one-time GitHub App setup. The deployment owner configures{' '}
+          <code>GITHUB_APP_ID</code>, <code>GITHUB_APP_SLUG</code>,{' '}
+          <code>GITHUB_APP_PRIVATE_KEY</code>, <code>APP_URL</code>, and a stable{' '}
+          <code>SESSION_SECRET</code> on the server, then installs the app with{' '}
+          <code>Contents: read/write</code> and <code>Metadata: read</code>. Users then connect
+          here; no personal access token is needed.
         </div>
+      )}
+    </section>
+  );
+}
+function GoogleOAuthSetupHint() {
+  const [redirectURI, setRedirectURI] = useState('');
+  useEffect(() => {
+    api<{ redirectURI: string }>('/api/google/config', undefined, 'GET')
+      .then((result) => setRedirectURI(result.redirectURI))
+      .catch(() => {});
+  }, []);
+  return redirectURI ? (
+    <code className="oauth-redirect-uri">Authorized redirect URI: {redirectURI}</code>
+  ) : null;
+}
+type VercelProjectOption = { id: string; name: string; framework: string | null };
+type VercelDeploymentItem = {
+  id: string;
+  name: string;
+  url: string;
+  state: string;
+  target: string | null;
+  createdAt: number;
+};
+function VercelConnectionCard({
+  status,
+  refresh,
+  notify,
+}: {
+  status: Status | null;
+  refresh: () => Promise<void>;
+  notify: (message: string) => void;
+}) {
+  const [connected, setConnected] = useState(!!status?.vercelConnected);
+  const [account, setAccount] = useState(status?.vercelAccount || '');
+  const [projects, setProjects] = useState<VercelProjectOption[]>([]);
+  const [selection, setSelection] = useState<VercelProjectOption | null>(null);
+  const [deployments, setDeployments] = useState<VercelDeploymentItem[]>([]);
+  const [token, setToken] = useState('');
+  const [teamId, setTeamId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await api<{
+        connected: boolean;
+        account?: { username: string; name: string };
+        projects: VercelProjectOption[];
+        selection: VercelProjectOption | null;
+        deployments: VercelDeploymentItem[];
+      }>('/api/vercel', undefined, 'GET');
+      setConnected(result.connected);
+      setAccount(result.account?.username || '');
+      setProjects(result.projects);
+      setSelection(result.selection);
+      setDeployments(result.deployments);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function connectVercel() {
+    setBusy(true);
+    setError('');
+    try {
+      const result = await api<{
+        connected: boolean;
+        account: { username: string };
+        projects: VercelProjectOption[];
+      }>('/api/vercel', { action: 'connect', token, teamId });
+      setConnected(result.connected);
+      setAccount(result.account.username);
+      setProjects(result.projects);
+      setSelection(null);
+      setDeployments([]);
+      setToken('');
+      await refresh();
+      notify(
+        `Vercel connected as ${result.account.username}. Choose a project to view deployments.`,
+      );
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function chooseProject(event: React.ChangeEvent<HTMLSelectElement>) {
+    const projectId = event.target.value;
+    if (!projectId) {
+      setSelection(null);
+      setDeployments([]);
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const result = await api<{
+        selection: VercelProjectOption;
+        deployments: VercelDeploymentItem[];
+      }>('/api/vercel', { action: 'select-project', projectId });
+      setSelection(result.selection);
+      setDeployments(result.deployments);
+      await refresh();
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    if (
+      !window.confirm(
+        'Remove the encrypted Vercel token and project selection from this Relay workspace?',
+      )
+    )
+      return;
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/vercel', { action: 'disconnect' });
+      setConnected(false);
+      setAccount('');
+      setProjects([]);
+      setSelection(null);
+      setDeployments([]);
+      await refresh();
+      notify('Vercel disconnected from Relay.');
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="integration-card vercel-integration-card">
+      <div className="card-top">
+        <span className="vercel-mark" aria-hidden="true">
+          ▲
+        </span>
+        <span className={`small-badge ${connected ? 'green' : ''}`}>
+          {connected ? 'Connected' : 'Not connected'}
+        </span>
+      </div>
+      <h2>Vercel</h2>
+      <h3>Keep an eye on your live projects.</h3>
+      <p>
+        Connect a Vercel account to choose a project and check its latest preview and production
+        deployments.
+      </p>
+      {connected ? (
+        <>
+          <div className="connected-account">
+            <span className="status-dot" />
+            Connected as {account}
+          </div>
+          <label className="github-repository-select">
+            <span>Project to monitor</span>
+            <select
+              value={selection?.id || ''}
+              onChange={(event) => void chooseProject(event)}
+              disabled={busy || loading}
+            >
+              <option value="">{loading ? 'Loading projects…' : 'Choose a project'}</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                  {project.framework ? ` · ${project.framework}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selection && (
+            <div className="vercel-deployments">
+              <div className="vercel-deployments-heading">
+                <strong>Recent deployments · {selection.name}</strong>
+                <button
+                  className="text-button"
+                  type="button"
+                  onClick={() => void load()}
+                  disabled={loading}
+                >
+                  <RefreshCw size={13} /> Refresh
+                </button>
+              </div>
+              {loading ? (
+                <p className="settings-help">Loading deployment status…</p>
+              ) : deployments.length ? (
+                deployments.map((deployment) => (
+                  <div className="vercel-deployment-row" key={deployment.id}>
+                    <span className={`vercel-state ${deployment.state.toLowerCase()}`}>
+                      {deployment.state.replaceAll('_', ' ')}
+                    </span>
+                    <span className="vercel-deployment-meta">
+                      {deployment.target || 'Preview'} ·{' '}
+                      {deployment.createdAt
+                        ? new Date(deployment.createdAt).toLocaleDateString()
+                        : 'Date unavailable'}
+                    </span>
+                    {deployment.url && (
+                      <a
+                        href={`https://${deployment.url}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Open deployment ${deployment.url}`}
+                      >
+                        <ExternalLink size={14} />
+                      </a>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p className="settings-help">No deployments found for this project yet.</p>
+              )}
+            </div>
+          )}
+          <button
+            className="text-button danger-text"
+            type="button"
+            onClick={() => void disconnect()}
+            disabled={busy}
+          >
+            <Unplug size={13} /> Disconnect Vercel
+          </button>
+        </>
+      ) : (
+        <form
+          className="vercel-connect-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void connectVercel();
+          }}
+        >
+          <label>
+            Vercel access token
+            <input
+              type="password"
+              autoComplete="off"
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+              placeholder="Paste a scoped Vercel token"
+              required
+            />
+          </label>
+          <label>
+            Team ID <span className="optional">(optional; for a team account)</span>
+            <input
+              value={teamId}
+              onChange={(event) => setTeamId(event.target.value)}
+              placeholder="team_…"
+              autoComplete="off"
+            />
+          </label>
+          <div className="vercel-token-help">
+            Create a token in{' '}
+            <a href="https://vercel.com/account/settings/tokens" target="_blank" rel="noreferrer">
+              Vercel account settings <ExternalLink size={12} />
+            </a>
+            . Use the narrowest access that can read the projects you want to monitor.
+          </div>
+          <button className="button primary" type="submit" disabled={busy || !token.trim()}>
+            {busy ? <LoaderCircle size={15} className="spin" /> : <Triangle size={15} />}Connect
+            Vercel
+          </button>
+        </form>
+      )}
+      {error && (
+        <div className="error-box" role="alert">
+          {error}
+        </div>
+      )}
+      {connected && !projects.length && !loading && (
+        <p className="settings-help">
+          No projects are visible. Check the token’s account/team access or disconnect to use a
+          different token.
+        </p>
       )}
     </section>
   );

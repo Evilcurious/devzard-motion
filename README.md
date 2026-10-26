@@ -6,13 +6,14 @@ A self-hostable, **single-owner** AI agent built with Next.js 16, React 19, Type
 
 - Chat, searchable history, PDF/text uploads and reusable, manually triggered workflows.
 - **Neon Postgres persistence:** conversations, document text, workflows, activity and theme survive browser changes.
-- **Encrypted connections:** AI API keys, Google OAuth client secrets and Google access/refresh tokens are encrypted at rest in PostgreSQL. Saved secrets are never returned by the settings API.
+- **Encrypted connections:** AI API keys, Google OAuth client secrets and access/refresh tokens, and Vercel access tokens are encrypted at rest in PostgreSQL. Saved secrets are never returned by the settings API.
 - **Multi-provider model router:** discover eligible models, pin an explicitly selected model to every reply, or auto-select and fail over only while Auto-pick is enabled.
-- **AI settings:** provider, model, API key and editable endpoint; save, reset, and test the saved connection.
+- **Models & providers:** provider, model, API key and editable endpoint; save, reset and test the saved connection.
 - **One-click Google OAuth:** sign in once to connect Gmail and Google Sheets; deployment-level OAuth configuration is handled by the Relay owner.
 - **Gmail:** search/read messages and prepare outgoing emails. **Google Sheets:** append reviewed rows to an existing spreadsheet.
+- **Vercel connection:** securely connect an account, select a project, and inspect recent deployment states/links.
 - Approval is required for every email send, spreadsheet write and GitHub code push. GitHub changes go to a new branch; Relay never changes the default branch directly.
-- **Personalized appearance:** pure-white Light and pure-black Dark modes, accent themes, a color picker, eight font families and custom WOFF2/WOFF/TTF/OTF font uploads.
+- **Personalized appearance:** eight balanced light/dark and softly tinted themes, a color picker, eight font families and custom WOFF2/WOFF/TTF/OTF font uploads.
 - **Chat-first workspace:** readable assistant/user layout, automatic model selection, image generation, Firecrawl web search with sources, and Relay answers creator questions with “Faizan made me.”
 - Database health checks, visible save status, conflict protection and a downloadable backup when syncing fails.
 
@@ -109,7 +110,7 @@ Install and start Ollama, then download a model:
 ollama pull qwen2.5:7b
 ```
 
-In **Settings → AI model**, select Ollama:
+In **Models & providers**, select Ollama:
 
 - Model: `qwen2.5:7b`
 - API endpoint: `http://localhost:11434/v1`
@@ -141,7 +142,7 @@ API usage may incur provider charges. A blank key field preserves the saved key 
 
 ### Local FreeLLMAPI server
 
-For a FreeLLMAPI server running on the same computer as Relay, open **Settings → AI model → Use FreeLLMAPI settings**. The preset uses:
+For a FreeLLMAPI server running on the same computer as Relay, open **Models & providers → Use FreeLLMAPI settings**. The preset uses:
 
 ```text
 http://127.0.0.1:31415/v1
@@ -151,7 +152,7 @@ Enter your API key, click **Load FreeLLMAPI models**, and select the exact model
 
 ### OpenRouter (including free models)
 
-OpenRouter provides one OpenAI-compatible API key and endpoint for its model catalog. In **Settings → AI model**, click **Use OpenRouter settings**, enter your OpenRouter API key, and keep the suggested model `openrouter/free` to let OpenRouter route to an eligible free model. The preset uses the exact base URL below and is trusted by default—no `AI_ALLOWED_ORIGINS` entry is needed.
+OpenRouter provides one OpenAI-compatible API key and endpoint for its model catalog. In **Models & providers**, click **Use OpenRouter settings**, enter your OpenRouter API key, and keep the suggested model `openrouter/free` to let OpenRouter route to an eligible free model. The preset uses the exact base URL below and is trusted by default—no `AI_ALLOWED_ORIGINS` entry is needed.
 
 ```text
 https://openrouter.ai/api/v1
@@ -179,7 +180,7 @@ Choose **Image** in the chat composer—or directly ask Chat to create/draw/gene
 
 Gemini's official OpenAI-compatible endpoint is **allowed by default**. You no longer need an `AI_ALLOWED_ORIGINS` entry for Google Gemini.
 
-1. Open **Settings → AI model → Use Gemini settings**. This chooses Other API and fills the correct base URL.
+1. Open **Models & providers → Use Gemini settings**. This chooses Other API and fills the correct base URL.
 2. Enter your Gemini API key (or leave it blank to use an already-saved Gemini key), then click **Load Gemini models**. This fetches Google's current generation-model catalog server-side; it does not generate content or save your settings.
 3. Choose a **text/chat** model from the dropdown. Image/audio-only models may also appear in the catalog; being listed does not guarantee compatibility, tool support or quota. You can also enter a current model ID manually from Google AI Studio. The preset leaves the model blank for new connections rather than guessing a model ID. `gemini-2.5-flash` in older releases and environment examples is only an example and may be unavailable.
 4. Choose **Save connection**, then **Test saved connection**. The test uses the same OpenAI-compatible chat route as Relay's chat. It generates a short reply and may use quota.
@@ -207,7 +208,7 @@ If you still see the old “origin is not allowed” error, stop the old process
 
 #### Gemini returns 404 after saving
 
-A 404 means the requested model or API route was not found; it is not the usual quota error (429). Check that **Other API** and the exact base URL above are saved. In **Settings → AI model**, use **Load Gemini models**, select a current **text/chat** model, then **Save connection → Test saved connection**. Do not paste `models/` or a full API URL into Model name. A listed generation model is not necessarily supported by Google's OpenAI-compatible chat API; choose another text/chat model if the test returns 404. No key or raw upstream error body is returned to the browser.
+A 404 means the requested model or API route was not found; it is not the usual quota error (429). Check that **Other API** and the exact base URL above are saved. In **Models & providers**, use **Load Gemini models**, select a current **text/chat** model, then **Save connection → Test saved connection**. Do not paste `models/` or a full API URL into Model name. A listed generation model is not necessarily supported by Google's OpenAI-compatible chat API; choose another text/chat model if the test returns 404. No key or raw upstream error body is returned to the browser.
 
 Saved Settings override `AI_MODEL` in `.env.local`. Editing the file alone will not replace the saved model. If the Load Gemini models button is missing, update the project and restart it from the updated folder (or rebuild/redeploy production). If you need help, share only the model ID, endpoint and error status—never your API key.
 
@@ -219,7 +220,7 @@ Allow the endpoint's exact origin in `.env.local`, then restart:
 AI_ALLOWED_ORIGINS=https://your-inference-host.example
 ```
 
-In Settings select Other API and enter:
+In **Models & providers**, select Other API and enter:
 
 - API endpoint: `https://your-inference-host.example/v1`
 - Model: your provider's model ID
@@ -244,7 +245,7 @@ Saved Settings take precedence over environment defaults. For a separate Ollama 
 
 The deployment owner completes the Google setup once: enable **Gmail API** and **Google Sheets API**, configure the OAuth consent screen, create a **Web application** OAuth client, and register `https://YOUR-RELAY-DOMAIN/api/google/callback` as its redirect URI. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `APP_URL` in the server environment (for Vercel, the project Environment Variables). For local development, use the corresponding `http://localhost:3000` values.
 
-After that, a user opens Connections or Settings → Google APIs, clicks **Sign in with Google**, chooses an account, and approves the requested access. One login enables both Gmail and Sheets. Requested scopes are `openid`, `email`, `gmail.readonly`, `gmail.send`, and `spreadsheets`. Email sends and sheet writes still require approval in chat. Gmail scopes may require verification for public distribution; Google's testing-mode refresh tokens may expire after seven days.
+After that, a user opens **Connections**, clicks **Sign in with Google**, chooses an account, and approves the requested access. One login enables both Gmail and Sheets. Requested scopes are `openid`, `email`, `gmail.readonly`, `gmail.send`, and `spreadsheets`. Email sends and sheet writes still require approval in chat. Gmail scopes may require verification for public distribution; Google's testing-mode refresh tokens may expire after seven days.
 
 With PostgreSQL configured, Google account tokens are encrypted in the database; otherwise, they are kept in encrypted HTTP-only cookies for up to 30 days. Disconnect removes the saved account tokens. To revoke the grant completely, remove Relay in your Google account's third-party access settings.
 
@@ -254,7 +255,7 @@ Relay connects through a **GitHub App installation**, not a pasted personal acce
 
 Each user then chooses **Install & connect GitHub**, selects only the repositories to grant, and chooses one writable repository in Connections. In any chat, ask Relay to create or change a site/app. Relay prepares a structured multi-file proposal with a full content preview. After explicit approval, it creates a `relay/<id>` branch based on the repository's default branch. It does not write directly to the default branch, execute generated code, include secrets, or add GitHub Actions workflows.
 
-If the repository is already connected to a Vercel project, Vercel's normal Git integration may create a **Preview Deployment** for the new branch. Preview builds execute repository scripts, so keep production secrets out of preview environments. Relay does not yet create Vercel projects or change Vercel project settings/deployment configuration. Review and merge the branch in GitHub when ready; do not assume a preview is production-ready.
+In **Connections**, Vercel can be connected with an access token created in Vercel account settings and an optional team ID. Relay encrypts the token, lists projects, and shows recent deployment state and links for one selected project. The token is sent only to Vercel's API from Relay's server and is never returned to the browser. Relay does not create projects, change Vercel settings, or trigger deployments. If a GitHub repository is linked to Vercel, Vercel's normal Git integration may create a **Preview Deployment** for a new `relay/` branch. Preview builds execute repository scripts, so keep production secrets out of preview environments. Review and merge the branch in GitHub when ready; do not assume a preview is production-ready.
 
 ### Example tasks
 
@@ -305,14 +306,14 @@ The Analytics page records measured upstream model API requests, outcomes, respo
 
 ## Storage and security
 
-| Data                                                 | With PostgreSQL                                      | Without PostgreSQL                  |
-| ---------------------------------------------------- | ---------------------------------------------------- | ----------------------------------- |
-| Chats, extracted text, workflows, activity, theme    | Database JSON workspace + browser backup             | Browser localStorage                |
-| AI keys, Google client secret, access/refresh tokens | AES-256-GCM encrypted database values, purpose-bound | Encrypted HTTP-only SameSite cookie |
-| GitHub App installation ID and selected repository   | AES-256-GCM encrypted database values                | Encrypted HTTP-only SameSite cookie |
-| Original document                                    | Request memory only                                  | Request memory only                 |
-| Pending approval token                               | Memory only; 15-minute expiry                        | Memory only; 15-minute expiry       |
-| Used approval ID                                     | Unique PostgreSQL claim, retained across restarts    | Process cache and signed cookie     |
+| Data                                                                  | With PostgreSQL                                      | Without PostgreSQL                  |
+| --------------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------- |
+| Chats, extracted text, workflows, activity, theme                     | Database JSON workspace + browser backup             | Browser localStorage                |
+| AI keys, Google client secret and access/refresh tokens, Vercel token | AES-256-GCM encrypted database values, purpose-bound | Encrypted HTTP-only SameSite cookie |
+| GitHub App installation ID and selected repository                    | AES-256-GCM encrypted database values                | Encrypted HTTP-only SameSite cookie |
+| Original document                                                     | Request memory only                                  | Request memory only                 |
+| Pending approval token                                                | Memory only; 15-minute expiry                        | Memory only; 15-minute expiry       |
+| Used approval ID                                                      | Unique PostgreSQL claim, retained across restarts    | Process cache and signed cookie     |
 
 - This is a **single-owner app**, not a multi-tenant SaaS. Every signed-in browser uses the same database workspace/accounts.
 - All server mutations require same-origin requests and workspace authentication. Password protection is mandatory on Vercel and in database mode.
@@ -342,13 +343,15 @@ lib/secrets.ts                   Purpose-bound at-rest credential encryption
 lib/connection-store.ts          Database or encrypted-cookie connection storage
 lib/ai.ts, lib/endpoint.ts       Model configuration and endpoint allowlist
 lib/google*.ts                  Google client configuration, sessions and requests
+lib/vercel.ts                   Encrypted Vercel account and deployment requests
+app/api/vercel/                 Vercel connect, project and deployment API
 lib/workspace-data.ts            Validated history payloads; approval tokens stripped
 app/api/workspace/               Revision-controlled workspace load/save
 app/api/config/, google/config/  AI and Google credential settings APIs
 app/api/chat/, actions/          Model tool orchestration and approved execution
 components/use-workspace-storage.ts  Autosave, browser backup and conflict handling
-components/settings-extras.tsx  Google, database and appearance controls
-app/themes.css                  Six color theme tokens
+components/settings-extras.tsx  Database and appearance controls
+app/themes.css                  Eight semantic color theme palettes
 ```
 
 Add constrained tools in `lib/tools.ts`, validate all model-generated arguments and route writes through approval cards. Introduce a separate durable worker and tightly controlled permissions before enabling unattended automation.

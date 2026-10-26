@@ -12,6 +12,9 @@ export type Status = {
   googleEmail?: string | null;
   githubConfigured?: boolean;
   githubAccount?: string | null;
+  vercelConnected?: boolean;
+  vercelAccount?: string | null;
+  vercelProject?: string | null;
   deployment?: string;
   secureSettings?: boolean;
   databaseConfigured?: boolean;

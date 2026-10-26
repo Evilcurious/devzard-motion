@@ -5,6 +5,7 @@ import { aiConfig } from '@/lib/ai';
 import { databaseHealth } from '@/lib/db';
 import { getGitHubInstallation } from '@/lib/github';
 import { githubAppConfig } from '@/lib/github';
+import { getVercelConnection, getVercelProjectSelection } from '@/lib/vercel';
 export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
@@ -32,6 +33,8 @@ export async function GET() {
       const client = await googleClientConfig();
       const github = await getGitHubInstallation();
       const githubApp = githubAppConfig();
+      const vercel = await getVercelConnection();
+      const vercelProject = vercel ? await getVercelProjectSelection() : null;
       return Response.json({
         ...common,
         provider: ai.provider,
@@ -54,6 +57,9 @@ export async function GET() {
           common.secureSettings
         ),
         githubAccount: github?.account || null,
+        vercelConnected: !!vercel,
+        vercelAccount: vercel?.username || null,
+        vercelProject: vercelProject?.name || null,
       });
     } catch (error) {
       return Response.json({ ...common, connectionError: (error as Error).message });

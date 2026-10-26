@@ -34,8 +34,8 @@ export function AppearanceSettings({
   return (
     <section>
       <div className="section-intro">
-        <h2>Make it your kind of workspace</h2>
-        <p>Six colors, one clean white canvas. Your choice applies across the entire app.</p>
+        <h2>Find your comfortable palette</h2>
+        <p>Choose a balanced colour theme. Your selection carries across the whole workspace.</p>
       </div>
       <div className="theme-grid">
         {themes.map((item) => (
@@ -47,7 +47,14 @@ export function AppearanceSettings({
           >
             <div
               className="theme-preview"
-              style={{ '--preview-accent': item.color } as React.CSSProperties}
+              style={
+                {
+                  '--preview-accent': item.color,
+                  '--preview-background': item.background,
+                  '--preview-surface': item.surface,
+                  '--preview-ink': item.ink,
+                } as React.CSSProperties
+              }
             >
               <div className="theme-preview-sidebar">
                 <i />
