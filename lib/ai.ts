@@ -69,8 +69,9 @@ function asUserRouterConfig(
     key,
     apiKeys: keys,
     configured: !!provider && (!provider.keyRequired || !!key),
-    strategy: selection.strategy === 'fusion' ? ('fusion' as const) : ('auto' as const),
+    strategy: selection.strategy,
     autoPick: selection.autoPick ?? false,
+    fallbackChain: selection.fallbackChain || [],
     fusionModels: selection.fusionModels || [],
   };
 }
@@ -83,14 +84,16 @@ async function userAIConfig(user: UserPrincipal) {
   if (selection) {
     const primary = { providerId: selection.providerId, modelId: selection.modelId };
     if (selection.providerId === 'managed') {
-      const fusionAllowed =
-        selection.strategy !== 'fusion' ||
-        (
-          await Promise.all(
-            (selection.fusionModels || []).map((target) => userCanUseTarget(user, target)),
-          )
-        ).every(Boolean);
-      if ((await userCanUseTarget(user, primary)) && fusionAllowed) {
+      const extraTargets =
+        selection.strategy === 'fusion'
+          ? selection.fusionModels || []
+          : selection.strategy === 'fallback'
+            ? selection.fallbackChain || []
+            : [];
+      const routingAllowed = (
+        await Promise.all(extraTargets.map((target) => userCanUseTarget(user, target)))
+      ).every(Boolean);
+      if ((await userCanUseTarget(user, primary)) && routingAllowed) {
         const managed = await getManagedModelConfig();
         if (managed.configured && managed.model === selection.modelId && managed.baseURL) {
           const apiKeys = await getProviderKeysForTarget(selection);
@@ -102,8 +105,9 @@ async function userAIConfig(user: UserPrincipal) {
             key: apiKeys[0] || '',
             apiKeys,
             configured: true,
-            strategy: selection.strategy === 'fusion' ? ('fusion' as const) : ('auto' as const),
+            strategy: selection.strategy,
             autoPick: selection.autoPick ?? false,
+            fallbackChain: selection.fallbackChain || [],
             fusionModels: selection.fusionModels || [],
           };
         }
@@ -114,14 +118,16 @@ async function userAIConfig(user: UserPrincipal) {
       provider?.category === 'models' &&
       provider.baseURL &&
       (await userCanUseTarget(user, primary));
-    const fusionAllowed =
-      selection.strategy !== 'fusion' ||
-      (
-        await Promise.all(
-          (selection.fusionModels || []).map((target) => userCanUseTarget(user, target)),
-        )
-      ).every(Boolean);
-    if (allowed && fusionAllowed) {
+    const extraTargets =
+      selection.strategy === 'fusion'
+        ? selection.fusionModels || []
+        : selection.strategy === 'fallback'
+          ? selection.fallbackChain || []
+          : [];
+    const routingAllowed = (
+      await Promise.all(extraTargets.map((target) => userCanUseTarget(user, target)))
+    ).every(Boolean);
+    if (allowed && routingAllowed) {
       const [keys, ownKeys] = await Promise.all([
         getProviderKeysForTarget(primary),
         getOwnProviderKeys(provider.id),
@@ -232,8 +238,9 @@ export async function aiConfig() {
         key,
         apiKeys,
         configured,
-        strategy: selection.strategy === 'fusion' ? ('fusion' as const) : ('auto' as const),
+        strategy: selection.strategy,
         autoPick: selection.autoPick ?? true,
+        fallbackChain: selection.fallbackChain || [],
         fusionModels: selection.fusionModels || [],
       };
     }

@@ -2354,6 +2354,83 @@ kbd {
   font-size: 12px;
   line-height: 1.55;
 }
+.chat-routing-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+.chat-routing-mode {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-height: 80px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.chat-routing-mode.selected {
+  border-color: var(--green);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--green) 18%, transparent);
+}
+.chat-routing-mode strong {
+  font-size: 12px;
+}
+.chat-routing-mode small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.chat-route-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.chat-route-choices > strong,
+.chat-route-choices > small {
+  grid-column: 1 / -1;
+}
+.chat-route-choices > strong {
+  font-size: 12px;
+}
+.chat-route-choices > small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.chat-route-choices label {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  align-items: center;
+  gap: 3px 7px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.chat-route-choices input {
+  grid-row: span 2;
+  accent-color: var(--green);
+}
+.chat-route-choices label span {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.chat-route-choices label small {
+  color: var(--muted);
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
 .chat-model-picker-list {
   display: grid;
   gap: 9px;
@@ -4586,7 +4663,9 @@ kbd {
     padding-left: 14px;
   }
   .strategy-grid,
-  .route-model-options {
+  .route-model-options,
+  .chat-routing-mode-grid,
+  .chat-route-choices {
     grid-template-columns: 1fr;
   }
   .routing-footer {
@@ -7088,6 +7167,44 @@ body {
   justify-content: center;
   align-items: center;
   gap: 9px;
+}
+.account-database-dialog {
+  display: grid;
+  gap: 14px;
+}
+.account-database-dialog > p {
+  margin: 0 0 3px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.account-database-dialog form {
+  display: grid;
+  gap: 14px;
+  margin-top: 4px;
+}
+.account-database-dialog label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.account-database-dialog label span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.account-database-dialog input {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+  font-size: 12px;
 }
 .account-database-card .brand {
   margin-bottom: 22px;

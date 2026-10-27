@@ -956,7 +956,7 @@ export function ModelHub({
         {strategy === 'fusion' && (
           <div className="route-candidates">
             <div className="route-candidate-heading">
-              <label>Fusion models (up to 4)</label>
+              <label>Fusion models (up to 3 additional; 4 total)</label>
             </div>
             <div className="route-model-options">
               {(catalog?.models || []).flatMap((model) =>
@@ -979,10 +979,10 @@ export function ModelHub({
                         type="checkbox"
                         checked={checked}
                         disabled={
-                          (!checked && fusionModels.length >= 4) ||
+                          (!checked && fusionModels.length >= 3) ||
                           targetKey(target) === (selected ? targetKey(selected) : '')
                         }
-                        onChange={() => toggleTarget(fusionModels, setFusionModels, target, 4)}
+                        onChange={() => toggleTarget(fusionModels, setFusionModels, target, 3)}
                       />
                       <span>{provider.name}</span>
                       <small>{provider.modelId}</small>

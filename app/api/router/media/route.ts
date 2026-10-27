@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { guard, errorResponse, readJson, seal, unseal } from '@/lib/security';
 import { getAdminProviderKeys, getProviderKeys } from '@/lib/provider-credentials';
 import { getRouterProvider } from '@/lib/model-router';
+import { accountDatabaseHealth } from '@/lib/tenant-database';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -184,6 +185,18 @@ export async function POST(request: Request) {
   try {
     const principal = await guard(request);
     const input = schema.parse(await readJson(request, 5000));
+    if (
+      input.action === 'generate' &&
+      principal.role === 'user' &&
+      principal.plan === 'free' &&
+      !(await accountDatabaseHealth(principal.id)).ready
+    )
+      return Response.json(
+        {
+          error: 'Connect a reachable personal PostgreSQL database before starting an agent task.',
+        },
+        { status: 428 },
+      );
     if (input.action === 'poll') {
       const job = unseal<ImageJob>(input.token);
       if (

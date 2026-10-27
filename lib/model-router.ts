@@ -296,7 +296,7 @@ export type RouterModel = {
   availableTokens: number | null;
   isFree: boolean;
 };
-export type RouterStrategy = 'auto' | 'fusion';
+export type RouterStrategy = 'auto' | 'fallback' | 'fusion' | 'auto-fusion';
 export type AIDensity = 'auto' | 'fast' | 'faster' | 'high' | 'slow';
 export type RoutingStrategy = 'balanced' | 'fastest' | 'most-reliable' | 'largest-context';
 export type ObservedModelMetric = {
@@ -316,6 +316,7 @@ export type RouterTarget = {
 export type RouterSelection = RouterTarget & {
   strategy: RouterStrategy;
   autoPick?: boolean;
+  fallbackChain?: RouterTarget[];
   fusionModels: RouterTarget[];
 };
 
@@ -329,6 +330,92 @@ export function selectRouterCandidates<T extends RouterTarget>(
   const key = `${selected.providerId}::${selected.modelId}`;
   const pinned = ranked.find((target) => `${target.providerId}::${target.modelId}` === key);
   return pinned ? [pinned] : [];
+}
+
+export function selectFallbackCandidates<T extends RouterTarget>(
+  available: T[],
+  primary: RouterTarget,
+  fallbackChain: RouterTarget[],
+  limit = 4,
+): T[] {
+  const byKey = new Map(
+    available
+      .filter((target) => target.availableTokens !== 0)
+      .map((target) => [`${target.providerId}::${target.modelId}`, target]),
+  );
+  const ordered = [primary, ...fallbackChain]
+    .map((target) => byKey.get(`${target.providerId}::${target.modelId}`))
+    .filter((target): target is T => !!target);
+  return [
+    ...new Map(
+      ordered.map((target) => [`${target.providerId}::${target.modelId}`, target]),
+    ).values(),
+  ].slice(0, limit);
+}
+
+export function selectAutoFusionTargets<T extends RouterTarget>(
+  prompt: string,
+  targets: T[],
+  density: AIDensity = 'auto',
+  metrics: ReadonlyMap<string, number> = new Map(),
+  strategy: RoutingStrategy = 'balanced',
+  observedMetrics: ReadonlyMap<string, ObservedModelMetric> = new Map(),
+  limit = 4,
+): T[] {
+  const query = prompt.toLowerCase();
+  const codeTask =
+    /\b(code|coding|program|debug|bug|typescript|javascript|python|sql|function|api|website|script|repository)\b/.test(
+      query,
+    );
+  const reasoningTask =
+    /\b(analy[sz]e|reason|compare|evaluate|proof|math|calculate|strategy|trade.?off|complex|why|diagnos)\b/.test(
+      query,
+    );
+  const creativeTask =
+    /\b(write|story|creative|poem|rewrite|brand|tagline|marketing|email|tone|draft)\b/.test(query);
+  const multilingualTask =
+    /[\u0600-\u06ff\u0900-\u097f\u4e00-\u9fff]|\b(translate|translation|urdu|arabic|hindi|spanish|french|multilingual)\b/.test(
+      query,
+    );
+  const longTask =
+    prompt.length > 12000 ||
+    /\b(entire|full document|long document|whole book|all files)\b/.test(query);
+  const ranked = rankRouterTargets(targets, density, metrics, strategy, observedMetrics);
+  const scored = ranked.map((target, index) => {
+    const model = target.modelId.toLowerCase();
+    const skill =
+      (codeTask && /coder|codestral|code|starcoder|deepseek-v[23]|qwen.*coder/.test(model)
+        ? 40
+        : 0) +
+      (reasoningTask && /reason|deepseek-r1|qwq|o1|o3|thinking|r1/.test(model) ? 40 : 0) +
+      (creativeTask && /claude|gemini|gpt|command|mistral|llama/.test(model) ? 25 : 0) +
+      (multilingualTask && /qwen|gemini|claude|gpt|llama|aya/.test(model) ? 25 : 0) +
+      (longTask && (target.contextTokens || 0) >= 64000 ? 30 : 0);
+    return { target, index, score: skill - index * 0.001 };
+  });
+  scored.sort((a, b) => b.score - a.score || a.index - b.index);
+  const chosen: T[] = [];
+  const used = new Set<string>();
+  const add = (candidate: (typeof scored)[number]) => {
+    const key = `${candidate.target.providerId}::${candidate.target.modelId}`;
+    if (!used.has(key)) {
+      used.add(key);
+      chosen.push(candidate.target);
+    }
+  };
+  // Prefer a diverse provider set, then use the next-best eligible models to fill the ensemble.
+  const providers = new Set<string>();
+  for (const candidate of scored) {
+    if (providers.has(candidate.target.providerId)) continue;
+    providers.add(candidate.target.providerId);
+    add(candidate);
+    if (chosen.length >= limit) return chosen;
+  }
+  for (const candidate of scored) {
+    add(candidate);
+    if (chosen.length >= limit) break;
+  }
+  return chosen;
 }
 
 export function rankRouterTargets<T extends RouterTarget>(

@@ -25,24 +25,41 @@ const targetSchema = z.object({
 const schema = z
   .object({
     ...targetSchema.shape,
-    strategy: z.enum(['auto', 'fusion']),
+    strategy: z.enum(['auto', 'fallback', 'fusion', 'auto-fusion']),
     autoPick: z.boolean().default(false),
-    fusionModels: z.array(targetSchema).max(4).default([]),
+    fallbackChain: z.array(targetSchema).max(3).default([]),
+    fusionModels: z.array(targetSchema).max(3).default([]),
   })
   .superRefine((input, context) => {
+    if (input.strategy === 'fallback' && !input.fallbackChain.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['fallbackChain'],
+        message: 'Choose at least one fallback model.',
+      });
+    }
     if (input.strategy === 'fusion' && !input.fusionModels.length) {
       context.addIssue({
         code: 'custom',
         path: ['fusionModels'],
-        message: 'Add at least one synthesis model.',
+        message: 'Choose at least one additional model to fuse.',
       });
     }
-    for (const [index, target] of [input, ...input.fusionModels].entries()) {
+    const targets = [input, ...input.fallbackChain, ...input.fusionModels];
+    const keys = targets.map((target) => `${target.providerId}::${target.modelId}`);
+    if (new Set(keys).size !== keys.length)
+      context.addIssue({ code: 'custom', message: 'Each routing model must be unique.' });
+    for (const [index, target] of targets.entries()) {
       const provider = getRouterProvider(target.providerId);
       if (!provider || provider.category !== 'models') {
         context.addIssue({
           code: 'custom',
-          path: [index === 0 ? 'providerId' : 'fusionModels', index || 0],
+          path:
+            index === 0
+              ? ['providerId']
+              : index <= input.fallbackChain.length
+                ? ['fallbackChain', index - 1]
+                : ['fusionModels', index - input.fallbackChain.length - 1],
           message: 'Select a chat-model provider.',
         });
       }
@@ -52,9 +69,7 @@ const schema = z
 export async function GET() {
   try {
     const principal = await guard();
-    const raw = await readConnection<RouterSelection & { fallbackChain?: unknown }>(
-      'router-selection',
-    );
+    const raw = await readConnection<RouterSelection>('router-selection');
     if (principal.role === 'user' && principal.plan === 'premium')
       return Response.json(
         { selection: raw ? { modelId: raw.modelId } : null },
@@ -63,11 +78,11 @@ export async function GET() {
     if (!raw) return Response.json({ selection: null });
     const selection = {
       ...raw,
-      strategy: raw.strategy === 'fusion' ? ('fusion' as const) : ('auto' as const),
-      autoPick: raw.autoPick ?? true,
-      fusionModels: raw.fusionModels || [],
-    } as RouterSelection & { fallbackChain?: unknown };
-    delete selection.fallbackChain;
+      strategy: raw.strategy || 'auto',
+      autoPick: raw.autoPick ?? (raw.strategy === 'auto' || raw.strategy === 'auto-fusion'),
+      fallbackChain: (raw.fallbackChain || []).slice(0, 3),
+      fusionModels: (raw.fusionModels || []).slice(0, 3),
+    } as RouterSelection;
     return Response.json({ selection });
   } catch (error) {
     return errorResponse(error);
@@ -83,7 +98,7 @@ export async function POST(request: Request) {
     if (principal.role === 'user') {
       const catalog = await filterCatalogForPrincipal(await discoverRouterCatalog(), principal);
       const blocked = await getUsageBlockedTargets();
-      for (const target of [selection, ...selection.fusionModels]) {
+      for (const target of [selection, ...selection.fallbackChain, ...selection.fusionModels]) {
         if (!(await canUserUseTarget(principal, target as RouterTarget)))
           throw new Error('That model is not enabled for this account.');
         if (blocked.has(`${target.providerId}::${target.modelId}`))
@@ -119,6 +134,7 @@ export async function POST(request: Request) {
       selection = {
         ...selection,
         ...normalize(selection),
+        fallbackChain: selection.fallbackChain.map((target) => normalize(target)),
         fusionModels: selection.fusionModels.map((target) => normalize(target)),
       };
     }

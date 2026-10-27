@@ -6,6 +6,8 @@ import {
   hasPositiveAccountCredits,
   rankRouterTargets,
   selectRouterCandidates,
+  selectFallbackCandidates,
+  selectAutoFusionTargets,
   routerModelIds,
   routerProviders,
 } from '../lib/model-router';
@@ -271,6 +273,44 @@ test('an explicitly selected model is pinned while Auto-pick may use the ranked 
     selectRouterCandidates(ranked, { providerId: 'ovh', modelId: 'gone' }, false),
     [],
   );
+});
+
+test('fallback chains keep the user order, skip unavailable models and deduplicate entries', () => {
+  const available = [
+    { providerId: 'openrouter' as const, modelId: 'primary', availableTokens: 800 },
+    { providerId: 'kilo' as const, modelId: 'backup-a', availableTokens: 700 },
+    { providerId: 'ovh' as const, modelId: 'backup-b', availableTokens: 600 },
+    { providerId: 'agnes' as const, modelId: 'depleted', availableTokens: 0 },
+  ];
+  assert.deepEqual(
+    selectFallbackCandidates(available, available[0], [
+      available[2],
+      { providerId: 'openrouter', modelId: 'missing' },
+      available[1],
+      available[2],
+      available[3],
+    ]).map((target) => target.modelId),
+    ['primary', 'backup-b', 'backup-a'],
+  );
+});
+
+test('Auto Fusion chooses prompt-relevant, eligible models and diversifies providers', () => {
+  const targets = [
+    { providerId: 'openrouter' as const, modelId: 'general-chat', availableTokens: 900 },
+    { providerId: 'kilo' as const, modelId: 'qwen-coder', availableTokens: 400 },
+    { providerId: 'ovh' as const, modelId: 'deepseek-r1-reasoner', availableTokens: 300 },
+    { providerId: 'agnes' as const, modelId: 'claude-sonnet', availableTokens: 200 },
+    { providerId: 'routeway' as const, modelId: 'depleted-coder', availableTokens: 0 },
+    { providerId: 'openrouter' as const, modelId: 'secondary-chat', availableTokens: 100 },
+  ];
+  const selected = selectAutoFusionTargets(
+    'Debug this TypeScript function and explain why it fails.',
+    targets,
+  );
+  assert.equal(selected.length, 4);
+  assert.ok(selected.some((target) => target.modelId === 'qwen-coder'));
+  assert.ok(selected.every((target) => target.modelId !== 'depleted-coder'));
+  assert.equal(new Set(selected.map((target) => target.providerId)).size, 4);
 });
 
 test('identical model ids merge case-insensitively without stripping vendor namespaces', () => {
