@@ -15,6 +15,7 @@ A self-hostable, **single-owner** AI agent built with Next.js 16, React 19, Type
 - Approval is required for every email send, spreadsheet write and GitHub code push. GitHub changes go to a new branch; Relay never changes the default branch directly.
 - **Personalized appearance:** eight balanced light/dark and softly tinted themes, a color picker, eight font families and custom WOFF2/WOFF/TTF/OTF font uploads.
 - **Chat-first workspace:** readable assistant/user layout, automatic model selection, image generation, Firecrawl web search with sources, and Relay answers creator questions with “Faizan made me.”
+- **Generated code bundles:** ask Relay for code or a website to receive a downloadable ZIP. A self-contained `index.html` can be opened in a five-minute, isolated browser preview; this is not a public URL or deployment.
 - Database health checks, visible save status, conflict protection and a downloadable backup when syncing fails.
 
 Without `DATABASE_URL`, Relay still works with browser-local history and encrypted HTTP-only cookies for saved connections. There are no bundled AI keys, Google accounts or simulated successful actions.
@@ -248,6 +249,12 @@ The deployment owner completes the Google setup once: enable **Gmail API** and *
 After that, a user opens **Connections**, clicks **Sign in with Google**, chooses an account, and approves the requested access. One login enables both Gmail and Sheets. Requested scopes are `openid`, `email`, `gmail.readonly`, `gmail.send`, and `spreadsheets`. Email sends and sheet writes still require approval in chat. Gmail scopes may require verification for public distribution; Google's testing-mode refresh tokens may expire after seven days.
 
 With PostgreSQL configured, Google account tokens are encrypted in the database; otherwise, they are kept in encrypted HTTP-only cookies for up to 30 days. Disconnect removes the saved account tokens. To revoke the grant completely, remove Relay in your Google account's third-party access settings.
+
+## ZIP downloads and temporary website previews
+
+Ask the chat agent to create code/files or build a website. It packages up to 30 text files (300 KB total) into a ZIP that you can download from the response. If the bundle includes a standalone root `index.html`, choose **Preview site · 5 min** to render it locally in your browser. The preview timer begins when opened; close it or wait five minutes to end that preview session. Open it again to start another session.
+
+The preview is deliberately sandboxed: generated scripts cannot access the Relay page or its storage, and network requests, external assets, forms and popups are blocked. Use inline styles/scripts and embedded data assets for the preview. It does not install dependencies, run a server/build, create a public preview URL, or deploy the project. For full repository changes, use the reviewed GitHub branch flow below; for hosted Vercel deployments, use Vercel's normal Git integration after reviewing the branch.
 
 ## GitHub code generation and Vercel previews
 

@@ -3,6 +3,7 @@ import { databaseLabel } from '@/lib/database-label';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity as ActivityIcon,
+  Archive,
   BarChart3,
   ArrowRight,
   ArrowUp,
@@ -13,6 +14,9 @@ import {
   ChevronRight,
   CircleHelp,
   Cpu,
+  Clock3,
+  Download,
+  Eye,
   ExternalLink,
   FileSpreadsheet,
   FileText,
@@ -47,6 +51,8 @@ import {
 } from 'lucide-react';
 import type { AIDensity, RouterModel, RouterTarget, RoutingStrategy } from '@/lib/model-router';
 import { isImageGenerationPrompt } from '@/lib/media-intent';
+import type { GeneratedArtifact } from '@/lib/generated-files';
+import { createZip } from '@/lib/zip';
 import type {
   Activity,
   Attachment,
@@ -91,6 +97,19 @@ const navigation = [
 const uid = () => crypto.randomUUID();
 const friendlyDate = (date: string) =>
   new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const previewCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">`;
+function sandboxedPreviewDocument(html: string) {
+  const head = html.match(/<head\b[^>]*>/i);
+  if (head?.index !== undefined)
+    return `${html.slice(0, head.index + head[0].length)}${previewCsp}${html.slice(head.index + head[0].length)}`;
+  const root = html.match(/<html\b[^>]*>/i);
+  if (root?.index !== undefined)
+    return `${html.slice(0, root.index + root[0].length)}<head>${previewCsp}</head>${html.slice(root.index + root[0].length)}`;
+  const doctype = html.match(/^\s*<!doctype\s+html[^>]*>/i);
+  if (doctype)
+    return `${doctype[0]}<html><head>${previewCsp}</head><body>${html.slice(doctype[0].length)}</body></html>`;
+  return `<!doctype html><html><head>${previewCsp}</head><body>${html}</body></html>`;
+}
 
 export default function Workspace() {
   const [page, setPage] = useState<Page>('chat');
@@ -119,6 +138,11 @@ export default function Workspace() {
   const [busy, setBusy] = useState(false);
   const [approving, setApproving] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+  const [previewSession, setPreviewSession] = useState<{
+    artifact: GeneratedArtifact;
+    expiresAt: number;
+  } | null>(null);
+  const [previewSeconds, setPreviewSeconds] = useState(0);
   const [modal, setModal] = useState<'search' | 'workflow' | 'help' | 'clear' | null>(null);
   const [sidebar, setSidebar] = useState(false);
   const [query, setQuery] = useState('');
@@ -132,8 +156,39 @@ export default function Workspace() {
   const fileRequest = useRef(0);
   const active = conversations.find((c) => c.id === currentId);
   const messages = active?.messages || [];
+  const previewHtml = previewSession?.artifact.files.find(
+    (file) => file.path === 'index.html',
+  )?.content;
   const notify = useCallback((message: string) => setToast(message), []);
   const closeModal = useCallback(() => setModal(null), []);
+  const downloadArtifact = useCallback(
+    (artifact: GeneratedArtifact) => {
+      try {
+        const archive = createZip(artifact.files);
+        const url = URL.createObjectURL(new Blob([archive], { type: 'application/zip' }));
+        const link = document.createElement('a');
+        const filename = artifact.name.trim().replace(/[^a-zA-Z0-9._-]+/g, '-');
+        link.href = url;
+        link.download = `${filename || 'relay-project'}.zip`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      } catch (error) {
+        notify((error as Error).message || 'Could not create the ZIP file.');
+      }
+    },
+    [notify],
+  );
+  const startPreview = useCallback(
+    (artifact: GeneratedArtifact) => {
+      if (!artifact.files.some((file) => file.path === 'index.html')) {
+        notify('This bundle does not contain a root index.html for preview.');
+        return;
+      }
+      setPreviewSeconds(300);
+      setPreviewSession({ artifact, expiresAt: Date.now() + 5 * 60 * 1000 });
+    },
+    [notify],
+  );
   const refresh = useCallback(async () => {
     try {
       const response = await fetch('/api/status');
@@ -252,6 +307,20 @@ export default function Workspace() {
     const timeout = setTimeout(() => setToast(''), 6500);
     return () => clearTimeout(timeout);
   }, [toast]);
+  useEffect(() => {
+    if (!previewSession) return;
+    const updateCountdown = () => {
+      const remaining = Math.max(0, Math.ceil((previewSession.expiresAt - Date.now()) / 1000));
+      setPreviewSeconds(remaining);
+      if (remaining === 0) {
+        setPreviewSession(null);
+        notify('The five-minute website preview has expired. Open it again for a fresh preview.');
+      }
+    };
+    updateCountdown();
+    const interval = window.setInterval(updateCountdown, 1000);
+    return () => window.clearInterval(interval);
+  }, [previewSession, notify]);
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, busy]);
@@ -1235,6 +1304,56 @@ export default function Workspace() {
                         <div className={`message-content ${message.error ? 'message-error' : ''}`}>
                           {message.content}
                         </div>
+                        {message.artifacts?.map((artifact) => {
+                          const hasPreview = artifact.files.some(
+                            (file) => file.path === 'index.html',
+                          );
+                          return (
+                            <section className="generated-artifact" key={artifact.id}>
+                              <div className="generated-artifact-heading">
+                                <span className="generated-artifact-icon">
+                                  <Archive size={19} />
+                                </span>
+                                <span>
+                                  <strong>{artifact.name}.zip</strong>
+                                  <small>{artifact.files.length} files · ready to download</small>
+                                </span>
+                              </div>
+                              <div className="generated-artifact-actions">
+                                <button
+                                  className="button small"
+                                  onClick={() => downloadArtifact(artifact)}
+                                >
+                                  <Download size={14} /> Download ZIP
+                                </button>
+                                {hasPreview && (
+                                  <button
+                                    className="button small"
+                                    onClick={() => startPreview(artifact)}
+                                  >
+                                    <Eye size={14} /> Preview site · 5 min
+                                  </button>
+                                )}
+                              </div>
+                              <details className="generated-artifact-files">
+                                <summary>Files in this bundle</summary>
+                                <ul>
+                                  {artifact.files.map((file) => (
+                                    <li key={file.path}>
+                                      <code>{file.path}</code>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </details>
+                              {hasPreview && (
+                                <p className="generated-artifact-note">
+                                  The preview is isolated in your browser. It is not a public URL or
+                                  deployment.
+                                </p>
+                              )}
+                            </section>
+                          );
+                        })}
                         {message.media?.type === 'image' && (
                           <div className="message-image-results" aria-label="Generated images">
                             {message.media.urls
@@ -1760,6 +1879,26 @@ export default function Workspace() {
             >
               <RefreshCw size={14} /> Refresh list
             </button>
+          </div>
+        </Modal>
+      )}
+      {previewSession && previewHtml && (
+        <Modal
+          wide
+          title={previewSession.artifact.name}
+          subtitle={`Isolated website preview · expires in ${Math.floor(previewSeconds / 60)}:${String(previewSeconds % 60).padStart(2, '0')}`}
+          onClose={() => setPreviewSession(null)}
+        >
+          <iframe
+            className="website-preview-frame"
+            title={`${previewSession.artifact.name} website preview`}
+            srcDoc={sandboxedPreviewDocument(previewHtml)}
+            sandbox="allow-scripts"
+            referrerPolicy="no-referrer"
+          />
+          <div className="website-preview-footnote">
+            <Clock3 size={14} /> Preview expires after five minutes. Scripts run in a browser
+            sandbox with network access disabled.
           </div>
         </Modal>
       )}

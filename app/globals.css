@@ -6111,3 +6111,106 @@ body {
     margin-left: auto;
   }
 }
+
+.generated-artifact {
+  display: grid;
+  gap: 13px;
+  max-width: 720px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--surface-raised, var(--surface));
+}
+.generated-artifact-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.generated-artifact-icon {
+  display: grid;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--green);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.generated-artifact-heading > span:last-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.generated-artifact-heading strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 14px;
+}
+.generated-artifact-heading small,
+.generated-artifact-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+.generated-artifact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.generated-artifact-files {
+  color: var(--muted);
+  font-size: 12px;
+}
+.generated-artifact-files summary {
+  width: fit-content;
+  cursor: pointer;
+}
+.generated-artifact-files ul {
+  display: grid;
+  gap: 5px;
+  margin: 9px 0 0;
+  padding-left: 19px;
+}
+.generated-artifact-files code {
+  color: var(--body);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.generated-artifact-note {
+  margin: 0;
+  line-height: 1.55;
+}
+.website-preview-frame {
+  display: block;
+  width: 100%;
+  height: min(68vh, 650px);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+}
+.website-preview-footnote {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.website-preview-footnote svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+@media (max-width: 600px) {
+  .generated-artifact {
+    padding: 13px;
+  }
+  .generated-artifact-actions .button {
+    flex: 1 1 auto;
+  }
+  .website-preview-frame {
+    height: 64vh;
+  }
+}

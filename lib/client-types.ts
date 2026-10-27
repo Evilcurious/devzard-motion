@@ -1,4 +1,5 @@
 import type { WriteAction } from './tools';
+import type { GeneratedArtifact } from './generated-files';
 export type Page =
   'chat' | 'workflows' | 'models' | 'connections' | 'activity' | 'analytics' | 'settings';
 export type Status = {
@@ -46,6 +47,7 @@ export type Message = {
   role: 'user' | 'assistant';
   content: string;
   attachment?: Attachment;
+  artifacts?: GeneratedArtifact[];
   proposals?: Proposal[];
   steps?: string[];
   modelUsed?: { modelId: string; providerId: string; providerName: string };

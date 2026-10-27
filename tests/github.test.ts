@@ -48,19 +48,22 @@ test('GitHub code proposals reject traversal, workflows, secrets, duplicates and
   );
 });
 
-test('chat receives only integration tools that the user has connected', () => {
-  assert.deepEqual(toolsForConnections(false, false), []);
+test('chat always gets file-bundle creation and only connected integration tools', () => {
+  assert.deepEqual(
+    toolsForConnections(false, false).map((tool) => tool.function.name),
+    ['create_file_bundle'],
+  );
   assert.deepEqual(
     toolsForConnections(false, false, true).map((tool) => tool.function.name),
-    ['list_vercel_projects', 'list_vercel_deployments'],
+    ['create_file_bundle', 'list_vercel_projects', 'list_vercel_deployments'],
   );
   assert.deepEqual(
     toolsForConnections(true, false).map((tool) => tool.function.name),
-    ['search_emails', 'read_email', 'send_email', 'append_to_sheet'],
+    ['search_emails', 'read_email', 'send_email', 'append_to_sheet', 'create_file_bundle'],
   );
   assert.deepEqual(
     toolsForConnections(false, true).map((tool) => tool.function.name),
-    ['github_push_files'],
+    ['github_push_files', 'create_file_bundle'],
   );
 });
 

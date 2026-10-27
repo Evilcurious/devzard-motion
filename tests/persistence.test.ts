@@ -59,6 +59,13 @@ test('workspace persistence strips approval tokens and rejects malformed message
             id: 'message',
             role: 'assistant',
             content: 'Review this email.',
+            artifacts: [
+              {
+                id: 'artifact',
+                name: 'tiny-site',
+                files: [{ path: 'index.html', content: '<!doctype html><h1>Hello</h1>' }],
+              },
+            ],
             media: {
               type: 'image',
               urls: ['https://cdn.example.com/generated.png'],
@@ -116,6 +123,7 @@ test('workspace persistence strips approval tokens and rejects malformed message
     'https://cdn.example.com/generated.png',
   );
   assert.equal(result.conversations[0].messages[0].sources?.[0].title, 'Example source');
+  assert.equal(result.conversations[0].messages[0].artifacts?.[0].files[0].path, 'index.html');
   assert.equal(result.theme, 'blue');
   assert.equal(workspaceSchema.parse({ ...data, theme: 'dark' }).theme, 'dark');
   assert.equal(workspaceSchema.safeParse({ ...data, theme: 'unknown' }).success, false);

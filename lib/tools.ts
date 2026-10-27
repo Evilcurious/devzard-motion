@@ -63,6 +63,7 @@ export function toolsForConnections(google: boolean, github: boolean, vercel = f
   const vercelNames = new Set(['list_vercel_projects', 'list_vercel_deployments']);
   return tools.filter((tool) => {
     const name = tool.function.name;
+    if (name === 'create_file_bundle') return true;
     if (googleNames.has(name)) return google;
     if (name === 'github_push_files') return github;
     if (vercelNames.has(name)) return vercel;
@@ -165,6 +166,36 @@ export const tools = [
           },
         },
         required: ['commitMessage', 'files'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_file_bundle',
+      description:
+        'Create a downloadable ZIP file when the user explicitly asks for a file bundle, code project, or website. Return complete UTF-8 text files (maximum 30 files and 300 KB total). Use safe relative paths; never include secrets, .env files, credentials, private keys, .git, node_modules, or build output. For a website preview, include a complete standalone root index.html with inline CSS and JavaScript and no external network dependencies. The preview is opened by the user in an isolated browser sandbox for five minutes; do not claim code was executed on a server or publicly deployed.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Short project name used for the ZIP filename.' },
+          files: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 30,
+            items: {
+              type: 'object',
+              properties: {
+                path: { type: 'string', description: 'Safe relative file path, e.g. index.html.' },
+                content: { type: 'string', description: 'Complete UTF-8 text file contents.' },
+              },
+              required: ['path', 'content'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['name', 'files'],
         additionalProperties: false,
       },
     },
