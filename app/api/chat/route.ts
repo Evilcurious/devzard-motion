@@ -53,6 +53,7 @@ import {
   needsDynamicModelRouting,
   shouldLoadRepositoryContext,
   shouldPersistAutoSelectedTarget,
+  shouldRouteTurnThroughCandidates,
 } from '@/lib/chat-performance';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -584,9 +585,7 @@ export async function POST(request: Request) {
       if (timeLeft < 1500) throw new Error('The model took too long. Try a shorter request.');
       let answer: ModelMessage | undefined;
       if (
-        turn === 0 &&
-        (fileBundleRequest ||
-          (config.strategy !== 'fusion' && config.strategy !== 'auto-fusion')) &&
+        shouldRouteTurnThroughCandidates(turn, config.strategy, fileBundleRequest) &&
         dynamicModelRouting &&
         (inferredRouterProviderId || config.strategy === 'fallback')
       ) {

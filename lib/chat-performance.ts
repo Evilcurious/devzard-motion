@@ -27,6 +27,17 @@ export async function attemptTargetsSequentially<TTarget, TResult>(
   return { ok: false, error: lastError, attemptsMade };
 }
 
+export function shouldRouteTurnThroughCandidates(
+  turn: number,
+  strategy: string | undefined,
+  fileBundleRequest: boolean,
+) {
+  return (
+    strategy === 'fallback' ||
+    (turn === 0 && (fileBundleRequest || (strategy !== 'fusion' && strategy !== 'auto-fusion')))
+  );
+}
+
 export function shouldPersistAutoSelectedTarget(
   strategy: string | undefined,
   autoPick: boolean,

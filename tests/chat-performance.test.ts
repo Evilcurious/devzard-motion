@@ -7,6 +7,7 @@ import {
   needsDynamicModelRouting,
   shouldLoadRepositoryContext,
   shouldPersistAutoSelectedTarget,
+  shouldRouteTurnThroughCandidates,
 } from '../lib/chat-performance';
 
 test('a timed-out primary advances through configured fallback candidates in order', async () => {
@@ -32,6 +33,15 @@ test('a timed-out primary advances through configured fallback candidates in ord
     index: 1,
     attemptsMade: 2,
   });
+});
+
+test('fallback candidates are available for every follow-up after a tool round trip', () => {
+  assert.equal(shouldRouteTurnThroughCandidates(0, 'fallback', false), true);
+  assert.equal(shouldRouteTurnThroughCandidates(1, 'fallback', false), true);
+  assert.equal(shouldRouteTurnThroughCandidates(3, 'fallback', false), true);
+  assert.equal(shouldRouteTurnThroughCandidates(1, 'auto', false), false);
+  assert.equal(shouldRouteTurnThroughCandidates(0, 'auto', true), true);
+  assert.equal(shouldRouteTurnThroughCandidates(0, 'fusion', false), false);
 });
 
 test('fallback success never rewrites the saved chain as a one-model auto selection', () => {
