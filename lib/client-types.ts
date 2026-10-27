@@ -1,9 +1,17 @@
 import type { WriteAction } from './tools';
 import type { GeneratedArtifact } from './generated-files';
 export type Page =
-  'chat' | 'workflows' | 'models' | 'connections' | 'activity' | 'analytics' | 'settings';
+  'chat' | 'workflows' | 'models' | 'connections' | 'activity' | 'analytics' | 'settings' | 'users';
 export type Status = {
   authenticated: boolean;
+  role?: 'admin' | 'user';
+  accountId?: string;
+  username?: string;
+  providerMode?: 'managed' | 'both' | null;
+  allowedModels?: Array<{ providerId: string; modelId: string; name: string }>;
+  monthlyTokenLimit?: number | null;
+  usedTokens?: number | null;
+  remainingTokens?: number | null;
   setupRequired?: boolean;
   passwordProtected?: boolean;
   provider?: string;

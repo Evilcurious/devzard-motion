@@ -26,7 +26,7 @@ export type GitHubAppSettings = {
 };
 
 export async function githubAppConfig() {
-  const saved = await readConnection<GitHubAppSettings>('github_app');
+  const saved = await readConnection<GitHubAppSettings>('github_app', 'owner');
   return {
     appId: saved?.appId || process.env.GITHUB_APP_ID || '',
     slug: saved?.slug || process.env.GITHUB_APP_SLUG || '',

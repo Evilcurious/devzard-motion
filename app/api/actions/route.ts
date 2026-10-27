@@ -12,6 +12,7 @@ import { guard, errorResponse, readJson, seal, unseal, cookieOptions } from '@/l
 const used = new Map<string, number>();
 type Approval = {
   id: string;
+  accountId: string;
   action: WriteAction;
   email?: string;
   installationId?: number;
@@ -19,11 +20,13 @@ type Approval = {
 };
 export async function POST(request: Request) {
   try {
-    await guard(request);
+    const principal = await guard(request);
     const { token } = await readJson(request, 1_100_000);
     if (typeof token !== 'string' || token.length > 1_000_000) throw new Error('Invalid approval.');
     const proposal = unseal<Approval>(token);
     if (!proposal) throw new Error('This approval has expired. Ask the agent to prepare it again.');
+    if (proposal.accountId !== principal.id)
+      throw new Error('This approval belongs to another account.');
     const action = validateAction(proposal.action.name, proposal.action.args);
     let account: string;
     if (action.name === 'github_push_files') {

@@ -11,7 +11,9 @@ import {
 } from '../lib/model-router';
 
 test('model provider registry uses fixed HTTPS hosts and separates search services', () => {
-  assert.equal(routerProviders.length, 16);
+  assert.equal(routerProviders.length, 17);
+  assert.equal(getRouterProvider('openai')?.baseURL, 'https://api.openai.com/v1');
+  assert.equal(getRouterProvider('openai')?.keyRequired, true);
   assert.equal(getRouterProvider('gemini')?.name, 'Google Gemini API');
   assert.equal(
     getRouterProvider('gemini')?.baseURL,

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { guard, errorResponse, readJson } from '@/lib/security';
+import { requireAdmin, errorResponse, readJson } from '@/lib/security';
 import { readConnection, saveConnection, removeConnection } from '@/lib/connection-store';
 import { aiConfig, type ModelSettings } from '@/lib/ai';
 import { validateEndpoint } from '@/lib/endpoint';
@@ -12,7 +12,7 @@ const schema = z.object({
 });
 export async function GET() {
   try {
-    await guard();
+    await requireAdmin();
     const config = await aiConfig();
     return Response.json({
       provider: config.provider,
@@ -27,7 +27,7 @@ export async function GET() {
 }
 export async function POST(request: Request) {
   try {
-    await guard(request);
+    await requireAdmin(request);
     const input = schema.parse(await readJson(request, 3000));
     const previous = await readConnection<ModelSettings>('model');
     const settings: ModelSettings = {
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 }
 export async function DELETE(request: Request) {
   try {
-    await guard(request);
+    await requireAdmin(request);
     await removeConnection('model');
     await removeConnection('router-selection');
     return Response.json({ ok: true });

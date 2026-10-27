@@ -248,7 +248,7 @@ function BreakdownTable({
   );
 }
 
-export function Analytics({ onOpenStorage }: { onOpenStorage: () => void }) {
+export function Analytics({ onOpenStorage }: { onOpenStorage?: () => void }) {
   const [range, setRange] = useState<Range>('7d');
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [busy, setBusy] = useState(true);
@@ -360,13 +360,15 @@ export function Analytics({ onOpenStorage }: { onOpenStorage: () => void }) {
           <div>
             <strong>Analytics storage is not ready</strong>
             <p>
-              {data.error || 'Initialize the Relay tables before loading usage metrics.'} Your
-              requests will continue to work; analytics are not persisted until the hosted migration
-              is complete.
+              {onOpenStorage
+                ? `${data.error || 'Initialize the Relay tables before loading usage metrics.'} Your requests will continue to work; analytics are not persisted until the hosted migration is complete.`
+                : 'The shared workspace analytics database is not ready. Contact the administrator to restore analytics.'}
             </p>
-            <button className="button small" onClick={onOpenStorage}>
-              Open Settings → Database
-            </button>
+            {onOpenStorage && (
+              <button className="button small" onClick={onOpenStorage}>
+                Open Settings → Database
+              </button>
+            )}
           </div>
         </div>
       )}

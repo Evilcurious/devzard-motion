@@ -1,11 +1,11 @@
 # Relay — your personal AI workspace
 
-A self-hostable, **single-owner** AI agent built with Next.js 16, React 19, TypeScript and optional **Neon Postgres** (hosted PostgreSQL). Run it on your laptop, a Node.js host, or Vercel. Connect Ollama, OpenAI, OpenRouter’s unified model API or another OpenAI-compatible API.
+An owner-managed AI workspace built with Next.js 16, React 19, TypeScript and **Neon Postgres** (hosted PostgreSQL). The owner keeps full control and can invite isolated user accounts. Relay can run on Vercel or another Node.js host. Connect Ollama, OpenAI, OpenRouter’s unified model API or another OpenAI-compatible API.
 
 ## What's included
 
 - Chat, searchable history, PDF/text uploads and reusable, manually triggered workflows.
-- **Neon Postgres persistence:** conversations, document text, workflows, activity and theme survive browser changes.
+- **Neon Postgres persistence:** owner and invited-user conversations, activity, settings and encrypted credentials are separated by account; browser drafts are namespaced by account.
 - **Encrypted connections:** AI API keys, Google OAuth client secrets and access/refresh tokens, and Vercel access tokens are encrypted at rest in PostgreSQL. Saved secrets are never returned by the settings API.
 - **Multi-provider model router:** discover eligible models, pin an explicitly selected model to every reply, or auto-select and fail over only while Auto-pick is enabled.
 - **Models & providers:** provider, model, API key and editable endpoint; save, reset and test the saved connection.
@@ -16,6 +16,9 @@ A self-hostable, **single-owner** AI agent built with Next.js 16, React 19, Type
 - **Personalized appearance:** eight balanced light/dark and softly tinted themes, a color picker, eight font families and custom WOFF2/WOFF/TTF/OTF font uploads.
 - **Chat-first workspace:** readable assistant/user layout, automatic model selection, image generation, Firecrawl web search with sources, and Relay answers creator questions with “Faizan made me.”
 - **Generated code bundles:** ask Relay for code or a website to receive a downloadable ZIP. A self-contained `index.html` can be opened in a five-minute, isolated browser preview; this is not a public URL or deployment.
+- **Invited accounts:** the owner chooses allowed models and a monthly token allowance; each invitee chooses their own username and password. Capped users are served only when the provider reports actual token usage; unknown usage is never estimated or charged against the cap.
+- **Private provider access:** users may be limited to admin-assigned models or, when enabled, add their own provider keys. Admin-owned keys and provider settings are never shown to users.
+- **Account-scoped analytics:** each user sees their own reported token usage; the owner can review account usage and manage access.
 - Database health checks, visible save status, conflict protection and a downloadable backup when syncing fails.
 
 Without `DATABASE_URL`, Relay still works with browser-local history and encrypted HTTP-only cookies for saved connections. There are no bundled AI keys, Google accounts or simulated successful actions.
@@ -85,7 +88,7 @@ npm run dev
 
 For production mode, stop the old server, run `npm run build`, then `npm start`.
 
-The migration is safe to rerun; it does not delete existing data or move data from a different database. It creates `relay_settings`, `relay_workspace`, and `relay_action_claims`.
+The migration is safe to rerun; it does not delete existing data or move data from a different database. It creates the Relay settings, workspace, action, analytics, user, and invitation tables, and adds account ownership to existing analytics rows without replacing them.
 
 ### 4. Verify
 
@@ -100,6 +103,14 @@ Important behavior:
 - If the database is unavailable, the app shows an error; it does **not** pretend to save or silently fall back to cookie-based credentials. A browser copy of history is retained for recovery.
 - Activity → Clear workspace data removes shared chat/history/workflows after the next successful database save. It leaves API credentials intact.
 - Back up PostgreSQL **and** `SESSION_SECRET`. Changing the secret makes stored credentials unreadable. Restore the original secret or remove and re-enter saved connections.
+
+## Owner and invited user accounts
+
+Keep the existing owner `APP_PASSWORD`, stable `SESSION_SECRET`, and shared Neon `DATABASE_URL` configured on the Vercel project. Initialize or repair the Relay schema from **Settings → Database** before creating users. The migration is idempotent and preserves existing workspace history and settings.
+
+As the owner, open **Settings → Accounts** to create a one-time invitation. Choose whether the user may use admin-assigned models only or may also add personal providers, select the assigned models, and set a monthly token allowance. Share the generated link privately; it expires after 24 hours and can be redeemed only once. The invitee chooses a unique username and password. Disabling an account revokes its sessions.
+
+Each account has its own Neon workspace row, encrypted connection namespace, analytics scope, and browser-draft namespace. Users do not configure or connect a database. Users with a monthly cap can receive responses only from providers that report both input and output token usage; responses with unknown usage are blocked and do not consume a guessed amount. Personal OpenAI keys are billed by OpenAI separately from Relay’s token allowance. Reported usage from blocked over-limit responses is retained because the provider may have charged for it.
 
 ## Connect an AI
 

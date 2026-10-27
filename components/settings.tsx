@@ -15,6 +15,7 @@ export function Settings({
   theme,
   onThemeChange,
   initialTab = 'appearance',
+  isAdmin = true,
   appearance,
   onAppearanceChange,
 }: {
@@ -26,38 +27,43 @@ export function Settings({
   refresh: () => Promise<void>;
   notify: (text: string) => void;
   initialTab?: string;
+  isAdmin?: boolean;
 }) {
-  const [tab, setTab] = useState(initialTab === 'storage' ? 'storage' : 'appearance');
+  const [tab, setTab] = useState(isAdmin && initialTab === 'storage' ? 'storage' : 'appearance');
   return (
     <div className="page-content settings-page">
       <div className="page-heading">
         <div className="eyebrow">A QUIETER, CLEARER WORKSPACE</div>
         <h1>Settings</h1>
         <p>
-          Manage your workspace preferences, data, providers, integrations, and tools in one place.
+          {isAdmin
+            ? 'Manage workspace preferences, data, providers, integrations, and tools in one place.'
+            : 'Manage your personal appearance preferences.'}
         </p>
       </div>
-      <div className="tabs settings-tabs" role="tablist" aria-label="Workspace settings">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'appearance'}
-          className={tab === 'appearance' ? 'active' : ''}
-          onClick={() => setTab('appearance')}
-        >
-          <Palette size={15} /> Appearance
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'storage'}
-          className={tab === 'storage' ? 'active' : ''}
-          onClick={() => setTab('storage')}
-        >
-          <Database size={15} /> Database
-        </button>
-      </div>
-      {tab === 'appearance' ? (
+      {isAdmin && (
+        <div className="tabs settings-tabs" role="tablist" aria-label="Workspace settings">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'appearance'}
+            className={tab === 'appearance' ? 'active' : ''}
+            onClick={() => setTab('appearance')}
+          >
+            <Palette size={15} /> Appearance
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'storage'}
+            className={tab === 'storage' ? 'active' : ''}
+            onClick={() => setTab('storage')}
+          >
+            <Database size={15} /> Database
+          </button>
+        </div>
+      )}
+      {tab === 'appearance' || !isAdmin ? (
         <AppearanceSettings
           theme={theme}
           onChange={onThemeChange}

@@ -10,7 +10,7 @@ import {
 import { databaseConfigured } from '@/lib/db';
 import { isOpenRouterEndpoint } from '@/lib/ai-errors';
 import type { ModelSettings } from '@/lib/ai';
-import { addProviderKey, getProviderKeys, removeProviderKey } from '@/lib/provider-credentials';
+import { addProviderKey, getOwnProviderKeys, removeProviderKey } from '@/lib/provider-credentials';
 
 const saveSchema = z.object({
   providerId: z.string().min(1).max(40),
@@ -26,7 +26,7 @@ export async function GET() {
     await guard();
     const providers = await Promise.all(
       routerProviders.map(async (provider) => {
-        const keys = await getProviderKeys(provider.id);
+        const keys = await getOwnProviderKeys(provider.id);
         const legacy =
           provider.id === 'openrouter' ? await readConnection<ModelSettings>('model') : null;
         const legacyKey =
@@ -56,7 +56,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await guard(request);
+    const principal = await guard(request);
+    if (principal.role === 'user' && principal.providerMode !== 'both')
+      throw new Error('Your administrator has not enabled personal providers for this account.');
     const input = saveSchema.parse(await readJson(request, 1000));
     const provider = getRouterProvider(input.providerId);
     if (!provider) return Response.json({ error: 'Unknown provider.' }, { status: 400 });
@@ -65,7 +67,7 @@ export async function POST(request: Request) {
     }
     const keyCount = input.apiKey?.trim()
       ? await addProviderKey(provider.id, input.apiKey)
-      : (await getProviderKeys(provider.id)).length;
+      : (await getOwnProviderKeys(provider.id)).length;
     return Response.json({ ok: true, providerId: provider.id, keyCount });
   } catch (error) {
     return errorResponse(error);
@@ -74,7 +76,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    await guard(request);
+    const principal = await guard(request);
+    if (principal.role === 'user' && principal.providerMode !== 'both')
+      throw new Error('Your administrator has not enabled personal providers for this account.');
     const input = deleteSchema.parse(await readJson(request, 500));
     const provider = getRouterProvider(input.providerId);
     if (!provider) return Response.json({ error: 'Unknown provider.' }, { status: 400 });
@@ -110,5 +114,5 @@ export async function DELETE(request: Request) {
 }
 
 export function isRouterProviderId(id: string): id is RouterProviderId {
-  return routerProviders.some((provider) => provider.id === id);
+  return id === 'managed' || routerProviders.some((provider) => provider.id === id);
 }

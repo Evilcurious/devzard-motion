@@ -38,11 +38,13 @@ export async function databaseHealth() {
     provider = config.provider;
     pooled = config.pooled;
     const result = await dbQuery(
-      "SELECT to_regclass('relay_settings') AS settings, to_regclass('relay_workspace') AS workspace, to_regclass('relay_action_claims') AS claims, to_regclass('relay_analytics') AS analytics",
+      "SELECT to_regclass('relay_settings') AS settings, to_regclass('relay_workspace') AS workspace, to_regclass('relay_users') AS users, to_regclass('relay_invites') AS invites, to_regclass('relay_action_claims') AS claims, to_regclass('relay_analytics') AS analytics",
     );
     if (
       !result.rows[0]?.settings ||
       !result.rows[0]?.workspace ||
+      !result.rows[0]?.users ||
+      !result.rows[0]?.invites ||
       !result.rows[0]?.claims ||
       !result.rows[0]?.analytics
     )

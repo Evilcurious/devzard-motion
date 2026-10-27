@@ -14,7 +14,9 @@ export type RouterProviderId =
   | 'firecrawl'
   | 'parallel'
   | 'keenable'
-  | 'gemini';
+  | 'gemini'
+  | 'openai'
+  | 'managed';
 export type RouterProviderCategory = 'models' | 'search';
 export type RouterProvider = {
   id: RouterProviderId;
@@ -32,6 +34,15 @@ export type RouterProvider = {
 // user-supplied destination. Unknown providers can be added as reviewed
 // templates in this registry; editable URLs continue to use AI_ALLOWED_ORIGINS.
 export const routerProviders: RouterProvider[] = [
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    category: 'models',
+    baseURL: 'https://api.openai.com/v1',
+    keyRequired: true,
+    docsURL: 'https://platform.openai.com/api-keys',
+    note: 'Personal OpenAI keys are billed by OpenAI. Capped accounts require provider-reported token usage.',
+  },
   {
     id: 'gemini',
     name: 'Google Gemini API',
@@ -319,6 +330,15 @@ export function rankRouterTargets<T extends RouterTarget>(
 }
 
 export function getRouterProvider(id: string): RouterProvider | undefined {
+  if (id === 'managed')
+    return {
+      id: 'managed',
+      name: 'Admin-managed model',
+      category: 'models',
+      baseURL: null,
+      keyRequired: false,
+      docsURL: '',
+    };
   return routerProviders.find((provider) => provider.id === id);
 }
 

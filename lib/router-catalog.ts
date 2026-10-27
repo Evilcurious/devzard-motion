@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { getProviderKeys } from './provider-credentials';
+import { getProviderKeys, getOwnProviderKeys } from './provider-credentials';
+import { getPrincipal } from './security';
 import {
   canonicalModelKey,
   getRouterProvider,
@@ -32,7 +33,7 @@ type ProviderLoad = {
   models: ProviderModel[];
 };
 type CachedCatalog = typeof globalThis & {
-  relayRouterCatalog?: { at: number; result: RouterCatalog };
+  relayRouterCatalogs?: Map<string, { at: number; result: RouterCatalog }>;
 };
 const catalogCache = globalThis as CachedCatalog;
 type CooldownGlobal = typeof globalThis & { relayRouterCooldowns?: Map<string, number> };
@@ -105,16 +106,19 @@ export function applyOllamaCloudBalance(
   }));
 }
 
-export function markRouterTargetDepleted(target: {
-  providerId: RouterProviderId;
-  modelId: string;
-}) {
+export function markRouterTargetDepleted(
+  target: { providerId: RouterProviderId; modelId: string },
+  accountId = 'owner',
+) {
   const cooldowns = (cooldownCache.relayRouterCooldowns ||= new Map());
-  cooldowns.set(`${target.providerId}::${target.modelId}`, Date.now() + 5 * 60_000);
+  cooldowns.set(`${accountId}::${target.providerId}::${target.modelId}`, Date.now() + 5 * 60_000);
 }
 
-export function isRouterTargetDepleted(target: { providerId: RouterProviderId; modelId: string }) {
-  const key = `${target.providerId}::${target.modelId}`;
+export function isRouterTargetDepleted(
+  target: { providerId: RouterProviderId; modelId: string },
+  accountId = 'owner',
+) {
+  const key = `${accountId}::${target.providerId}::${target.modelId}`;
   const cooldowns = cooldownCache.relayRouterCooldowns;
   const until = cooldowns?.get(key);
   if (!until) return false;
@@ -303,11 +307,14 @@ export async function discoverGeminiProvider(
   }
 }
 
-async function discoverProvider(providerId: RouterProviderId): Promise<ProviderLoad> {
+async function discoverProvider(
+  providerId: RouterProviderId,
+  credentials?: string[],
+): Promise<ProviderLoad> {
   const provider = getRouterProvider(providerId);
   if (!provider || provider.category !== 'models' || !provider.baseURL)
     return { providerId, error: null, models: [] };
-  const keys = await getProviderKeys(provider.id);
+  const keys = credentials ?? (await getProviderKeys(provider.id));
   if (provider.keyRequired && !keys.length) return { providerId, error: null, models: [] };
   if (provider.id === 'ollama-cloud') {
     const results = await Promise.all(
@@ -415,11 +422,12 @@ async function openRouterPaidAccess(apiKey: string): Promise<boolean> {
   }
 }
 
-function withoutDepletedModels(result: RouterCatalog): RouterCatalog {
+function withoutDepletedModels(result: RouterCatalog, accountId: string): RouterCatalog {
   const counts = new Map<string, number>();
   const models = result.models.flatMap((model) => {
     const providers = model.providers.filter(
-      (provider) => !isRouterTargetDepleted({ providerId: provider.id, modelId: provider.modelId }),
+      (provider) =>
+        !isRouterTargetDepleted({ providerId: provider.id, modelId: provider.modelId }, accountId),
     );
     for (const provider of providers) counts.set(provider.id, (counts.get(provider.id) || 0) + 1);
     return providers.length ? [{ ...model, providers }] : [];
@@ -435,15 +443,29 @@ function withoutDepletedModels(result: RouterCatalog): RouterCatalog {
 }
 
 export async function discoverRouterCatalog(forceRefresh = false): Promise<RouterCatalog> {
-  const cached = catalogCache.relayRouterCatalog;
+  const principal = await getPrincipal();
+  const accountId = principal?.id || 'owner';
+  const catalogs =
+    catalogCache.relayRouterCatalogs || (catalogCache.relayRouterCatalogs = new Map());
+  const cached = catalogs.get(accountId);
   if (!forceRefresh && cached && Date.now() - cached.at < CACHE_MS)
-    return withoutDepletedModels(cached.result);
+    return withoutDepletedModels(cached.result, accountId);
 
   const providerIds = routerProviders
     .filter((provider) => provider.category === 'models')
     .map((provider) => provider.id);
-  const settled = await Promise.all(providerIds.map(discoverProvider));
-  const openRouterKeys = await getProviderKeys('openrouter');
+  const settled = await Promise.all(
+    providerIds.map(async (providerId) =>
+      discoverProvider(
+        providerId,
+        principal?.role === 'user' ? await getOwnProviderKeys(providerId) : undefined,
+      ),
+    ),
+  );
+  const openRouterKeys =
+    principal?.role === 'user'
+      ? await getOwnProviderKeys('openrouter')
+      : await getProviderKeys('openrouter');
   const openRouterPaid = (await Promise.all(openRouterKeys.map(openRouterPaidAccess))).some(
     Boolean,
   );
@@ -455,16 +477,19 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
       // Only keep models the authenticated catalog explicitly marks free or reports
       // positive model-specific tokens for. OpenRouter paid access is additionally
       // bounded by its live account and API-key credit limits.
-      if (isRouterTargetDepleted({ providerId: model.providerId, modelId: model.id })) continue;
+      if (isRouterTargetDepleted({ providerId: model.providerId, modelId: model.id }, accountId))
+        continue;
       const free = model.isFree === true;
       const hasTokens = model.availableTokens !== null && model.availableTokens > 0;
       const accountCredits =
         model.accountCreditsAvailable === true && result.providerId !== 'openrouter';
+      const personalOpenAI = principal?.role === 'user' && result.providerId === 'openai';
       if (
         !free &&
         !hasTokens &&
         !accountCredits &&
-        !(result.providerId === 'openrouter' && openRouterPaid)
+        !(result.providerId === 'openrouter' && openRouterPaid) &&
+        !personalOpenAI
       )
         continue;
       if (model.availableTokens === 0) continue;
@@ -507,6 +532,42 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
       }
     }
   }
+  if (principal?.role === 'user') {
+    for (const allowed of principal.allowedModels) {
+      const providerId = allowed.providerId as RouterProviderId;
+      const provider = getRouterProvider(providerId);
+      if (!provider || provider.category !== 'models') continue;
+      const key = canonicalModelKey(allowed.modelId);
+      const existing = grouped.get(key);
+      const providerEntry = {
+        id: providerId,
+        name: 'Admin-managed model',
+        modelId: allowed.modelId,
+        contextTokens: null,
+        availableTokens: null,
+        supportsTools: null,
+        isFree: false,
+      };
+      if (existing) {
+        if (
+          !existing.providers.some(
+            (item) => item.id === providerId && item.modelId === allowed.modelId,
+          )
+        )
+          existing.providers.push(providerEntry);
+      } else {
+        grouped.set(key, {
+          key,
+          id: allowed.modelId,
+          name: allowed.name || allowed.modelId,
+          providers: [providerEntry],
+          contextTokens: null,
+          availableTokens: null,
+          isFree: false,
+        });
+      }
+    }
+  }
   const result: RouterCatalog = {
     models: [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name)),
     providers: settled.map(({ providerId, error, models }) => ({
@@ -519,6 +580,6 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
     metricsNote:
       'Only authenticated model listings explicitly marked free, reporting positive per-model quota, documenting Ollama free-usage-credit eligibility, or carrying a positive account-credit signal are shown. Account credit signals are read from common explicit remaining/balance fields in provider responses; OpenRouter and Ollama also use their official balance endpoints. Ollama included credits apply only to its documented free-usage models, while purchased credits apply to account-listed models. Provider quota errors temporarily remove a model.',
   };
-  catalogCache.relayRouterCatalog = { at: Date.now(), result };
-  return withoutDepletedModels(result);
+  catalogs.set(accountId, { at: Date.now(), result });
+  return withoutDepletedModels(result, accountId);
 }

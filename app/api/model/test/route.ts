@@ -1,9 +1,9 @@
-import { guard, errorResponse } from '@/lib/security';
+import { requireAdmin, errorResponse } from '@/lib/security';
 import { aiConfig } from '@/lib/ai';
 import { providerError } from '@/lib/ai-errors';
 export async function POST(request: Request) {
   try {
-    await guard(request);
+    await requireAdmin(request);
     const config = await aiConfig();
     if (!config.configured) throw new Error('Configure a model before testing the connection.');
     const response = await fetch(`${config.baseURL}/chat/completions`, {

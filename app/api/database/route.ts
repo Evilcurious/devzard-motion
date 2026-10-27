@@ -1,11 +1,11 @@
-import { guard, errorResponse } from '@/lib/security';
+import { requireAdmin, errorResponse } from '@/lib/security';
 import { databaseConfigured, databaseHealth, dbQuery } from '@/lib/db';
 import { schemaSql } from '@/lib/schema-sql';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    await guard();
+    await requireAdmin();
     return Response.json(await databaseHealth(), {
       headers: { 'Cache-Control': 'private, no-store' },
     });
@@ -19,7 +19,7 @@ export async function GET() {
 // CREATE IF NOT EXISTS and INSERT ... ON CONFLICT preserve existing data.
 export async function POST(request: Request) {
   try {
-    await guard(request);
+    await requireAdmin(request);
     if (!databaseConfigured()) {
       return Response.json(
         { error: 'DATABASE_URL is not configured for this deployment.' },

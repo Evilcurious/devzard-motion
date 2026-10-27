@@ -18,8 +18,8 @@ const empty = (): WorkspaceData => ({
   theme: 'light',
   appearance: defaultAppearance,
 });
-function localData(): WorkspaceData {
-  const saved = JSON.parse(localStorage.getItem('relay.workspace.v1') || '{}');
+function localData(key: string): WorkspaceData {
+  const saved = JSON.parse(localStorage.getItem(key) || '{}');
   return {
     conversations: Array.isArray(saved.conversations) ? saved.conversations : [],
     activities: Array.isArray(saved.activities) ? saved.activities : [],
@@ -64,6 +64,10 @@ export function useWorkspaceStorage(
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const authenticated = status?.authenticated;
   const database = !!status?.databaseConfigured;
+  const localStorageKey =
+    status?.accountId && status.accountId !== 'owner'
+      ? `relay.workspace.user.${status.accountId}.v1`
+      : 'relay.workspace.v1';
   useEffect(() => {
     const id = ++generation.current;
     let disposed = false;
@@ -88,9 +92,9 @@ export function useWorkspaceStorage(
             data = result.data;
             saved.current = JSON.stringify(sanitized(data));
           } else {
-            data = localData();
+            data = localData(localStorageKey);
           } // First connection only: import browser history into an empty database.
-        } else data = localData();
+        } else data = localData(localStorageKey);
         if (disposed) return;
         load.current(data);
         setError('');
@@ -103,7 +107,7 @@ export function useWorkspaceStorage(
         setSyncState('error');
         // Keep an offline draft available. Never write it over a database that failed to load.
         try {
-          load.current(localData());
+          load.current(localData(localStorageKey));
         } catch {
           load.current(empty());
         }
@@ -115,12 +119,12 @@ export function useWorkspaceStorage(
       disposed = true;
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [authenticated, database]);
+  }, [authenticated, database, localStorageKey]);
   useEffect(() => {
     if (!hydrated || !authenticated) return;
     const snapshot = sanitized(value);
     try {
-      localStorage.setItem('relay.workspace.v1', JSON.stringify(snapshot));
+      localStorage.setItem(localStorageKey, JSON.stringify(snapshot));
     } catch {
       setError('Browser backup could not be saved. Storage may be full.');
       if (!database) setSyncState('error');
@@ -177,7 +181,7 @@ export function useWorkspaceStorage(
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [value, hydrated, authenticated, database, retryCount]);
+  }, [value, hydrated, authenticated, database, localStorageKey, retryCount]);
   // Prevent accidentally losing a write that has not reached PostgreSQL yet.
   useEffect(() => {
     if (syncState !== 'saving') return;

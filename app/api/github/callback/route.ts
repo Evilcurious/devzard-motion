@@ -5,20 +5,27 @@ import {
   getGitHubInstallationToken,
   githubAppConfig,
 } from '@/lib/github';
-import { equal, guard } from '@/lib/security';
+import { equal, guard, unseal } from '@/lib/security';
 
 export async function GET(request: Request) {
   let base = new URL(request.url).origin;
   try {
     const config = await githubAppConfig();
     base = config.appURL || base;
-    await guard();
+    const principal = await guard();
     const params = new URL(request.url).searchParams;
     const jar = await cookies();
-    const expected = jar.get('relay_github_state')?.value;
+    const statePayload = unseal<{ state: string; accountId: string }>(
+      jar.get('relay_github_state')?.value || '',
+    );
     jar.delete('relay_github_state');
     const actual = params.get('state');
-    if (!expected || !actual || !equal(expected, actual))
+    if (
+      !statePayload ||
+      statePayload.accountId !== principal.id ||
+      !actual ||
+      !equal(statePayload.state, actual)
+    )
       throw new Error('GitHub authorization expired. Please try connecting again.');
     const rawId = params.get('installation_id');
     if (!rawId || !/^\d{1,20}$/.test(rawId))

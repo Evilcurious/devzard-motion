@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { databaseConfigured, dbQuery } from './db';
+import { getPrincipal } from './security';
+import { rememberUnpersistedUsage } from './usage-memory';
 
 export type AnalyticsEvent = {
+  accountId?: string;
   providerId: string;
   modelId: string;
   success: boolean;
@@ -22,10 +25,19 @@ function safeTokens(value: unknown): number | null {
 }
 
 export async function recordAnalyticsEvent(
-  event: Omit<AnalyticsEvent, 'createdAt'>,
-): Promise<void> {
+  event: Omit<AnalyticsEvent, 'createdAt' | 'accountId'> & { accountId?: string },
+): Promise<boolean> {
+  let accountId = event.accountId;
+  if (!accountId) {
+    try {
+      accountId = (await getPrincipal())?.id || 'owner';
+    } catch {
+      accountId = 'owner';
+    }
+  }
   const safe: AnalyticsEvent = {
     ...event,
+    accountId,
     providerId: event.providerId.slice(0, 40),
     modelId: event.modelId.slice(0, 200),
     latencyMs: Math.max(0, Math.min(600_000, Math.round(event.latencyMs))),
@@ -38,14 +50,18 @@ export async function recordAnalyticsEvent(
   recent.push(safe);
   if (recent.length > 5000) recent.splice(0, recent.length - 5000);
 
-  if (!databaseConfigured()) return;
+  if (!databaseConfigured()) {
+    rememberUnpersistedUsage(safe.accountId || 'owner', safe.inputTokens, safe.outputTokens);
+    return safe.accountId === 'owner';
+  }
   try {
     await dbQuery(
       `INSERT INTO relay_analytics
-        (id, provider_id, model_id, succeeded, status_code, latency_ms, ttft_ms, input_tokens, output_tokens)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        (id, account_id, provider_id, model_id, succeeded, status_code, latency_ms, ttft_ms, input_tokens, output_tokens)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         randomUUID(),
+        safe.accountId || 'owner',
         safe.providerId,
         safe.modelId,
         safe.success,
@@ -56,14 +72,18 @@ export async function recordAnalyticsEvent(
         safe.outputTokens,
       ],
     );
+    return true;
   } catch {
-    // Analytics must never make model requests fail. The in-memory buffer remains available.
+    // Capped user usage remains in a volatile ledger if the durable insert fails; no response is served.
+    rememberUnpersistedUsage(safe.accountId || 'owner', safe.inputTokens, safe.outputTokens);
+    return false;
   }
 }
 
-export function inMemoryAnalytics(since: number): AnalyticsEvent[] {
+export function inMemoryAnalytics(since: number, accountId?: string): AnalyticsEvent[] {
   return (eventBuffer.relayAnalyticsEvents || []).filter(
-    (event) => Date.parse(event.createdAt) >= since,
+    (event) =>
+      Date.parse(event.createdAt) >= since && (!accountId || event.accountId === accountId),
   );
 }
 
@@ -72,19 +92,23 @@ export type ObservedRoutingMetric = {
   successRate: number;
   averageLatencyMs: number | null;
 };
-let observedRoutingMetricsCache: {
-  at: number;
-  metrics: Map<string, ObservedRoutingMetric>;
-} | null = null;
+const observedRoutingMetricsCache = new Map<
+  string,
+  {
+    at: number;
+    metrics: Map<string, ObservedRoutingMetric>;
+  }
+>();
 const OBSERVED_ROUTING_METRICS_CACHE_MS = 15_000;
 
 export async function observedModelMetricsByTarget(): Promise<Map<string, ObservedRoutingMetric>> {
-  if (
-    observedRoutingMetricsCache &&
-    Date.now() - observedRoutingMetricsCache.at < OBSERVED_ROUTING_METRICS_CACHE_MS
-  )
-    return new Map(observedRoutingMetricsCache.metrics);
-  const recent = inMemoryAnalytics(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const principal = await getPrincipal();
+  const accountId = principal?.role === 'user' ? principal.id : undefined;
+  const cacheKey = accountId || 'all';
+  const cached = observedRoutingMetricsCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < OBSERVED_ROUTING_METRICS_CACHE_MS)
+    return new Map(cached.metrics);
+  const recent = inMemoryAnalytics(Date.now() - 30 * 24 * 60 * 60 * 1000, accountId);
   const totals = new Map<
     string,
     { requests: number; successes: number; latencyTotal: number; latencyCount: number }
@@ -114,18 +138,23 @@ export async function observedModelMetricsByTarget(): Promise<Map<string, Observ
     });
   }
   if (!databaseConfigured()) {
-    observedRoutingMetricsCache = { at: Date.now(), metrics };
+    observedRoutingMetricsCache.set(cacheKey, { at: Date.now(), metrics });
     return new Map(metrics);
   }
   try {
     const result = await dbQuery(
-      `SELECT provider_id, model_id,
-        count(*)::int AS requests,
-        100.0 * count(*) FILTER (WHERE succeeded) / count(*) AS success_rate,
-        avg(latency_ms) FILTER (WHERE succeeded) AS average_latency
-       FROM relay_analytics
-       WHERE created_at >= now() - interval '30 days'
-       GROUP BY provider_id, model_id`,
+      accountId
+        ? `SELECT provider_id, model_id, count(*)::int AS requests,
+             100.0 * count(*) FILTER (WHERE succeeded) / count(*) AS success_rate,
+             avg(latency_ms) FILTER (WHERE succeeded) AS average_latency
+           FROM relay_analytics WHERE account_id = $1 AND created_at >= now() - interval '30 days'
+           GROUP BY provider_id, model_id`
+        : `SELECT provider_id, model_id, count(*)::int AS requests,
+             100.0 * count(*) FILTER (WHERE succeeded) / count(*) AS success_rate,
+             avg(latency_ms) FILTER (WHERE succeeded) AS average_latency
+           FROM relay_analytics WHERE created_at >= now() - interval '30 days'
+           GROUP BY provider_id, model_id`,
+      accountId ? [accountId] : [],
     );
     for (const row of result.rows) {
       const requests = Number(row.requests);
@@ -141,7 +170,7 @@ export async function observedModelMetricsByTarget(): Promise<Map<string, Observ
   } catch {
     // Routing remains available when analytics storage is not initialized.
   }
-  observedRoutingMetricsCache = { at: Date.now(), metrics };
+  observedRoutingMetricsCache.set(cacheKey, { at: Date.now(), metrics });
   return new Map(metrics);
 }
 

@@ -34,7 +34,9 @@ function groupedRows(rows: Record<string, unknown>[], includeModel: boolean) {
 
 export async function GET(request: Request) {
   try {
-    await guard();
+    const principal = await guard();
+    const accountFilter = principal.role === 'user' ? ' AND account_id = $2' : '';
+    const accountParams = principal.role === 'user' ? [principal.id] : [];
     const url = new URL(request.url);
     const range = toAnalyticsRange(url.searchParams.get('range'));
     const config = analyticsRanges[range];
@@ -66,8 +68,8 @@ export async function GET(request: Request) {
           percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_latency_ms,
           avg(ttft_ms) AS average_ttft_ms
         FROM relay_analytics
-        WHERE created_at >= now() - ($1::int * interval '1 hour') AND created_at <= now()`,
-        [config.hours],
+        WHERE created_at >= now() - ($1::int * interval '1 hour') AND created_at <= now()${accountFilter}`,
+        [config.hours, ...accountParams],
       );
       const startAt = Date.now() - config.hours * 60 * 60 * 1000;
       const bucketResult = await dbQuery(
@@ -77,9 +79,9 @@ export async function GET(request: Request) {
           count(*) FILTER (WHERE succeeded)::int AS success,
           count(*) FILTER (WHERE NOT succeeded)::int AS failure
         FROM relay_analytics
-        WHERE created_at >= now() - ($1::int * interval '1 hour') AND created_at <= now()
+        WHERE created_at >= now() - ($1::int * interval '1 hour') AND created_at <= now()${principal.role === 'user' ? ' AND account_id = $4' : ''}
         GROUP BY 1 ORDER BY 1`,
-        [config.hours, config.stepMs, startAt],
+        [config.hours, config.stepMs, startAt, ...accountParams],
       );
       const raw = new Map<number, { success: number; failure: number }>();
       for (const row of bucketResult.rows) {
@@ -107,9 +109,9 @@ export async function GET(request: Request) {
             percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) AS p50_latency_ms,
             percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_latency_ms
           FROM relay_analytics
-          WHERE created_at >= now() - ($1::int * interval '1 hour') AND created_at <= now()
+          WHERE created_at >= now() - ($1::int * interval '1 hour') AND created_at <= now()${accountFilter}
           GROUP BY provider_id ORDER BY requests DESC, provider_id LIMIT 100`,
-          [config.hours],
+          [config.hours, ...accountParams],
         ),
         dbQuery(
           `SELECT provider_id, model_id,
@@ -123,9 +125,9 @@ export async function GET(request: Request) {
             percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) AS p50_latency_ms,
             percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_latency_ms
           FROM relay_analytics
-          WHERE created_at >= now() - ($1::int * interval '1 hour') AND created_at <= now()
+          WHERE created_at >= now() - ($1::int * interval '1 hour') AND created_at <= now()${accountFilter}
           GROUP BY provider_id, model_id ORDER BY requests DESC, provider_id, model_id LIMIT 200`,
-          [config.hours],
+          [config.hours, ...accountParams],
         ),
       ]);
       const row = summaryResult.rows[0] || {};
@@ -160,7 +162,10 @@ export async function GET(request: Request) {
     }
 
     const now = Date.now();
-    const events = inMemoryAnalytics(now - config.hours * 60 * 60 * 1000);
+    const events = inMemoryAnalytics(
+      now - config.hours * 60 * 60 * 1000,
+      principal.role === 'user' ? principal.id : undefined,
+    );
     return Response.json(
       {
         range,

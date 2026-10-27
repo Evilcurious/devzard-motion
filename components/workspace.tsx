@@ -48,6 +48,7 @@ import {
   X,
   RefreshCw,
   Zap,
+  Users,
 } from 'lucide-react';
 import type { AIDensity, RouterModel, RouterTarget, RoutingStrategy } from '@/lib/model-router';
 import { isImageGenerationPrompt } from '@/lib/media-intent';
@@ -71,6 +72,7 @@ import { useWorkspaceStorage, type WorkspaceData } from './use-workspace-storage
 import { type Theme } from '@/lib/themes';
 import { ModelHub } from './model-hub';
 import { Analytics } from './analytics';
+import { AccountAdmin } from './account-admin';
 import {
   defaultAppearance,
   fontOptions,
@@ -86,6 +88,7 @@ const titles: Record<Page, string> = {
   activity: 'Activity',
   analytics: 'Analytics',
   settings: 'Settings',
+  users: 'Accounts',
 };
 const navigation = [{ id: 'chat', icon: MessageSquare, label: 'Chat' }] as const;
 const settingsSections: Array<{
@@ -99,6 +102,7 @@ const settingsSections: Array<{
   { id: 'workflows', icon: WorkflowIcon, label: 'Workflows' },
   { id: 'activity', icon: ActivityIcon, label: 'Activity' },
   { id: 'analytics', icon: BarChart3, label: 'Analytics' },
+  { id: 'users', icon: Users, label: 'Accounts' },
 ];
 const uid = () => crypto.randomUUID();
 const friendlyDate = (date: string) =>
@@ -121,6 +125,7 @@ export default function Workspace() {
   const [page, setPage] = useState<Page>('chat');
   const [settingsTab, setSettingsTab] = useState('appearance');
   const [status, setStatus] = useState<Status | null>(null);
+  const [inviteToken, setInviteToken] = useState('');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -207,6 +212,10 @@ export default function Workspace() {
   useEffect(() => {
     refresh();
     const params = new URLSearchParams(window.location.search);
+    if (params.has('invite')) {
+      setInviteToken(params.get('invite') || '');
+      params.delete('invite');
+    }
     if (params.has('connected')) {
       setPage('connections');
       notify(
@@ -219,8 +228,18 @@ export default function Workspace() {
       setPage('connections');
       notify(params.get('connection_error')!);
     }
-    if (params.has('connected') || params.has('connection_error'))
-      window.history.replaceState({}, '', '/');
+    if (params.has('connected') || params.has('connection_error')) {
+      params.delete('connected');
+      params.delete('connection_error');
+    }
+    if (
+      window.location.search.includes('invite=') ||
+      window.location.search.includes('connected=') ||
+      window.location.search.includes('connection_error=')
+    ) {
+      const query = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+    }
     function keyboard(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
         event.preventDefault();
@@ -337,6 +356,11 @@ export default function Workspace() {
     }
   }, [text]);
   function go(next: Page) {
+    if (status?.role === 'user' && !allowedPage(next)) {
+      setPage('chat');
+      setSidebar(false);
+      return;
+    }
     setPage(next);
     if (next === 'settings') setSettingsTab('appearance');
     setSidebar(false);
@@ -601,6 +625,7 @@ export default function Workspace() {
       setBusy(false);
       busyRef.current = false;
       abortRef.current = null;
+      if (status?.role === 'user') void refresh();
     }
   }
   async function upload(file?: File) {
@@ -821,6 +846,13 @@ export default function Workspace() {
                   (status?.aiConfigured ? status.model : 'Choose a model')}
               <ChevronDown size={13} />
             </button>
+            {mediaMode === 'chat' && !webSearch && (
+              <ChatGitHubRepoPicker
+                status={status}
+                onOpenSettings={() => go('connections')}
+                notify={notify}
+              />
+            )}
             <label className="density-control">
               <span>AI density</span>
               <select
@@ -897,7 +929,11 @@ export default function Workspace() {
   );
 
   if (status && !status.authenticated)
-    return <Login setupRequired={status.setupRequired} onLogin={refresh} />;
+    return inviteToken && !status.setupRequired ? (
+      <InviteSetup token={inviteToken} onComplete={refresh} />
+    ) : (
+      <Login setupRequired={status.setupRequired} onLogin={refresh} />
+    );
   if (!status || (status.authenticated && !hydrated))
     return (
       <div className="workspace-loading">
@@ -910,6 +946,26 @@ export default function Workspace() {
         )}
       </div>
     );
+  const accountSections =
+    status.role === 'user'
+      ? settingsSections
+          .filter(
+            (item) =>
+              ['settings', 'connections', 'analytics'].includes(item.id) ||
+              (item.id === 'models' && status.providerMode === 'both'),
+          )
+          .map((item) => ({
+            ...item,
+            label:
+              item.id === 'settings'
+                ? 'Appearance'
+                : item.id === 'models'
+                  ? 'Providers'
+                  : item.label,
+          }))
+      : settingsSections;
+  const allowedPage = (next: Page) =>
+    accountSections.some((item) => item.id === next) || next === 'chat';
   return (
     <div className="workspace">
       {sidebar && <div className="sidebar-overlay" onClick={() => setSidebar(false)} />}
@@ -979,6 +1035,24 @@ export default function Workspace() {
           )}
         </div>
         <div className="sidebar-bottom">
+          {status.role === 'user' && status.monthlyTokenLimit ? (
+            <div className="sidebar-quota">
+              <div>
+                <strong>Monthly tokens</strong>
+                <span>
+                  {(status.usedTokens || 0).toLocaleString()} /{' '}
+                  {status.monthlyTokenLimit.toLocaleString()}
+                </span>
+              </div>
+              <div className="quota-meter">
+                <span
+                  style={{
+                    width: `${Math.min(100, ((status.usedTokens || 0) / status.monthlyTokenLimit) * 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
           <button
             className={`nav-item ${page !== 'chat' ? 'active' : ''}`}
             onClick={() => go('settings')}
@@ -987,9 +1061,11 @@ export default function Workspace() {
             Settings
           </button>
           <div className="profile">
-            <span className="profile-avatar">Y</span>
+            <span className="profile-avatar">
+              {(status.username || 'Y').slice(0, 1).toUpperCase()}
+            </span>
             <div>
-              Your workspace
+              {status.role === 'user' ? status.username : 'Your workspace'}
               <small>
                 <span className="status-dot" />
                 {status?.deployment === 'vercel' ? 'Hosted on Vercel' : 'Self-hosted & yours'}
@@ -1035,7 +1111,7 @@ export default function Workspace() {
             <span>
               {page === 'chat'
                 ? 'Chat'
-                : `Settings · ${page === 'settings' ? 'General' : titles[page]}`}
+                : `Settings · ${page === 'settings' ? (status.role === 'user' ? 'Appearance' : 'General') : titles[page]}`}
             </span>
             {page === 'chat' && <span className="beta-label">BETA</span>}
           </div>
@@ -1090,12 +1166,16 @@ export default function Workspace() {
             {status?.databaseConfigured && status.databaseReady === false && (
               <>
                 <span>
-                  {status.databaseError ||
-                    'Neon is connected, but Relay tables need initialization.'}
+                  {status.role === 'admin'
+                    ? status.databaseError ||
+                      'Neon is connected, but Relay tables need initialization.'
+                    : 'The shared workspace database needs attention. Please contact the administrator.'}
                 </span>
-                <button className="text-button" onClick={openDatabaseSettings}>
-                  Open Settings → Database
-                </button>
+                {status.role === 'admin' && (
+                  <button className="text-button" onClick={openDatabaseSettings}>
+                    Open Settings → Database
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -1105,7 +1185,7 @@ export default function Workspace() {
         >
           {page !== 'chat' && (
             <nav className="settings-hub-nav" aria-label="Settings sections">
-              {settingsSections.map((item) => (
+              {accountSections.map((item) => (
                 <button
                   type="button"
                   key={item.id}
@@ -1189,10 +1269,12 @@ export default function Workspace() {
                       <span className="small-section-label">A LITTLE INSPIRATION</span>
                       <h2>Start with something simple</h2>
                     </div>
-                    <button className="text-button" onClick={() => go('workflows')}>
-                      Explore workflows
-                      <ArrowRight size={14} />
-                    </button>
+                    {status.role === 'admin' && (
+                      <button className="text-button" onClick={() => go('workflows')}>
+                        Explore workflows
+                        <ArrowRight size={14} />
+                      </button>
+                    )}
                   </div>
                   <div className="workflow-grid">
                     {initialWorkflows.map((workflow) => (
@@ -1369,8 +1451,15 @@ export default function Workspace() {
                           </button>
                         )}
                         {message.error && !status?.aiConfigured && (
-                          <button className="text-button" onClick={() => go('models')}>
-                            Connect your AI model
+                          <button
+                            className="text-button"
+                            onClick={() =>
+                              status.role === 'user' ? void openModelPicker() : go('models')
+                            }
+                          >
+                            {status.role === 'user'
+                              ? 'Choose an available model'
+                              : 'Connect your AI model'}
                             <ArrowRight size={14} />
                           </button>
                         )}
@@ -1514,8 +1603,12 @@ export default function Workspace() {
                 </span>
               </div>
               <div className="integration-settings-grid">
-                {status && <GoogleSettings status={status} refresh={refresh} notify={notify} />}
-                {status && <GitHubAppSettings status={status} refresh={refresh} notify={notify} />}
+                {status?.role === 'admin' && (
+                  <GoogleSettings status={status} refresh={refresh} notify={notify} />
+                )}
+                {status?.role === 'admin' && (
+                  <GitHubAppSettings status={status} refresh={refresh} notify={notify} />
+                )}
               </div>
               <div className="integration-grid">
                 <GitHubConnectionCard status={status} refresh={refresh} notify={notify} />
@@ -1640,7 +1733,10 @@ export default function Workspace() {
               </div>
             </div>
           )}
-          {page === 'analytics' && <Analytics onOpenStorage={openDatabaseSettings} />}
+          {page === 'analytics' && (
+            <Analytics onOpenStorage={status.role === 'admin' ? openDatabaseSettings : undefined} />
+          )}
+          {page === 'users' && status.role === 'admin' && <AccountAdmin notify={notify} />}
           {page === 'models' && <ModelHub onSelect={refresh} notify={notify} />}
           {page === 'settings' && status && (
             <Settings
@@ -1653,6 +1749,7 @@ export default function Workspace() {
               refresh={refresh}
               notify={notify}
               initialTab={settingsTab}
+              isAdmin={status.role === 'admin'}
             />
           )}
         </main>
@@ -2111,6 +2208,103 @@ type GitHubRepositoryOption = {
   defaultBranch: string;
   htmlUrl: string;
 };
+function ChatGitHubRepoPicker({
+  status,
+  onOpenSettings,
+  notify,
+}: {
+  status: Status | null;
+  onOpenSettings: () => void;
+  notify: (message: string) => void;
+}) {
+  const [repositories, setRepositories] = useState<GitHubRepositoryOption[]>([]);
+  const [selection, setSelection] = useState<GitHubRepositoryOption | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (!status?.githubAccount) {
+      setRepositories([]);
+      setSelection(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    api<{
+      repositories: GitHubRepositoryOption[];
+      selection: GitHubRepositoryOption | null;
+    }>('/api/github/repositories', undefined, 'GET')
+      .then((result) => {
+        if (cancelled) return;
+        setRepositories(result.repositories);
+        setSelection(result.selection);
+        setError('');
+      })
+      .catch((e) => {
+        if (!cancelled) setError((e as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [status?.githubAccount]);
+  async function chooseRepository(event: React.ChangeEvent<HTMLSelectElement>) {
+    const repositoryId = Number(event.target.value);
+    if (!repositoryId) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await api<{ selection: GitHubRepositoryOption }>('/api/github/repositories', {
+        repositoryId,
+      });
+      setSelection(result.selection);
+      notify(`Chat will use ${result.selection.fullName} for GitHub proposals.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!status?.githubAccount)
+    return (
+      <button
+        type="button"
+        className="chat-github-connect"
+        onClick={onOpenSettings}
+        title="Set up GitHub and choose a repository in Settings"
+      >
+        <Github size={14} /> GitHub
+      </button>
+    );
+  return (
+    <label
+      className="chat-github-picker"
+      title={error || 'Choose the repository for GitHub code proposals'}
+    >
+      <Github size={14} />
+      <span className="visually-hidden">GitHub repository</span>
+      <select
+        aria-label="GitHub repository for this chat"
+        value={selection?.id || ''}
+        onChange={(event) => void chooseRepository(event)}
+        disabled={loading || busy || !repositories.length}
+      >
+        <option value="">
+          {loading ? 'Loading repos…' : repositories.length ? 'Choose repo' : 'No repos available'}
+        </option>
+        {repositories.map((repository) => (
+          <option key={repository.id} value={repository.id}>
+            {repository.fullName}
+            {repository.private ? ' · Private' : ''}
+          </option>
+        ))}
+      </select>
+      {busy && <LoaderCircle size={13} className="spin" />}
+    </label>
+  );
+}
 function GitHubConnectionCard({
   status,
   refresh,
@@ -2663,6 +2857,7 @@ function Login({
   setupRequired?: boolean;
   onLogin: () => Promise<void>;
 }) {
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -2677,7 +2872,7 @@ function Login({
         <p>
           {setupRequired
             ? `Run npm run setup, then restart Relay. Database-backed and hosted workspaces require APP_PASSWORD and a SESSION_SECRET of at least 32 characters. This keeps your agent and accounts private.`
-            : 'Enter your workspace password to pick up where you left off.'}
+            : 'Sign in with your account. For the administrator account, leave username blank and enter the workspace password.'}
         </p>
         {!setupRequired && (
           <form
@@ -2686,7 +2881,7 @@ function Login({
               setBusy(true);
               setError('');
               try {
-                await api('/api/auth/login', { password });
+                await api('/api/auth/login', { username: username.trim(), password });
                 await onLogin();
               } catch (e) {
                 setError((e as Error).message);
@@ -2696,7 +2891,16 @@ function Login({
             }}
           >
             <label>
-              Workspace password
+              Username <span className="optional">(leave blank for administrator)</span>
+              <input
+                value={username}
+                autoComplete="username"
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Your account username"
+              />
+            </label>
+            <label>
+              Password
               <input
                 required
                 type="password"
@@ -2720,6 +2924,109 @@ function Login({
         <div className="subtle-note">
           <LockKeyhole size={13} />A personal space for your everyday possibilities.
         </div>
+      </div>
+    </div>
+  );
+}
+
+function InviteSetup({ token, onComplete }: { token: string; onComplete: () => Promise<void> }) {
+  const [valid, setValid] = useState<boolean | null>(null);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api<{ valid: boolean }>(`/api/auth/invite?token=${encodeURIComponent(token)}`, undefined, 'GET')
+      .then((result) => setValid(result.valid))
+      .catch(() => setValid(false));
+  }, [token]);
+  async function createAccount(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (password !== confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/auth/invite', { token, username, password });
+      window.history.replaceState({}, '', '/');
+      await onComplete();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="login-page">
+      <div className="login-card">
+        <div className="brand">
+          <Mark />
+          <span>relay.</span>
+        </div>
+        <h1>Create your Relay account.</h1>
+        <p>
+          {valid === false
+            ? 'This setup link is invalid, expired, or already used. Ask the administrator for a new invite.'
+            : 'Choose a username and password. Your workspace will be private to your account.'}
+        </p>
+        {valid && (
+          <form onSubmit={createAccount}>
+            <label>
+              Username
+              <input
+                required
+                minLength={3}
+                maxLength={32}
+                value={username}
+                autoComplete="username"
+                onChange={(event) => setUsername(event.target.value)}
+              />
+            </label>
+            <label>
+              Password
+              <input
+                required
+                type="password"
+                minLength={12}
+                maxLength={256}
+                value={password}
+                autoComplete="new-password"
+                onChange={(event) => setPassword(event.target.value)}
+              />
+              <span>At least 12 characters.</span>
+            </label>
+            <label>
+              Confirm password
+              <input
+                required
+                type="password"
+                minLength={12}
+                maxLength={256}
+                value={confirm}
+                autoComplete="new-password"
+                onChange={(event) => setConfirm(event.target.value)}
+              />
+            </label>
+            {error && (
+              <div className="error-box" role="alert">
+                {error}
+              </div>
+            )}
+            <button className="button primary" disabled={busy || valid === null}>
+              {busy ? <LoaderCircle size={17} className="spin" /> : <ArrowRight size={17} />}
+              Create account
+            </button>
+          </form>
+        )}
+        {valid === null && (
+          <div className="subtle-note">
+            <LoaderCircle size={13} className="spin" />
+            Checking your setup link…
+          </div>
+        )}
       </div>
     </div>
   );

@@ -15,7 +15,7 @@ const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('poll'), token: z.string().min(40).max(2000) }),
 ]);
 
-type ImageJob = { providerId: 'xkiro'; jobId: string; modelId: string };
+type ImageJob = { providerId: 'xkiro'; jobId: string; modelId: string; accountId: string };
 
 function apiError(payload: unknown, fallback: string) {
   if (payload && typeof payload === 'object' && 'error' in payload) {
@@ -72,7 +72,7 @@ async function pollXkiroJob(job: ImageJob, keys: string[]) {
   throw lastError instanceof Error ? lastError : new Error('All saved xKiro keys were rejected.');
 }
 
-async function generateXkiroImage(prompt: string, keys: string[]) {
+async function generateXkiroImage(prompt: string, keys: string[], accountId: string) {
   const provider = getRouterProvider('xkiro')!;
   let lastError: unknown;
   for (const key of keys) {
@@ -106,6 +106,7 @@ async function generateXkiroImage(prompt: string, keys: string[]) {
       if (typeof created?.id !== 'string') throw new Error('xKiro did not return an image job ID.');
       const job: ImageJob = {
         providerId: 'xkiro',
+        accountId,
         jobId: created.id,
         modelId: 'sensenova/sensenova-u1.5-lite',
       };
@@ -157,11 +158,16 @@ async function generateSeptorImage(prompt: string, key: string) {
 
 export async function POST(request: Request) {
   try {
-    await guard(request);
+    const principal = await guard(request);
     const input = schema.parse(await readJson(request, 5000));
     if (input.action === 'poll') {
       const job = unseal<ImageJob>(input.token);
-      if (!job || job.providerId !== 'xkiro' || !/^[\w-]{1,120}$/.test(job.jobId))
+      if (
+        !job ||
+        job.accountId !== principal.id ||
+        job.providerId !== 'xkiro' ||
+        !/^[\w-]{1,120}$/.test(job.jobId)
+      )
         return Response.json(
           { error: 'This image job link is invalid or expired. Start a new image request.' },
           { status: 400 },
@@ -198,7 +204,7 @@ export async function POST(request: Request) {
     let lastError: unknown;
     for (const key of xkiroKeys) {
       try {
-        return Response.json(await generateXkiroImage(input.prompt, [key]));
+        return Response.json(await generateXkiroImage(input.prompt, [key], principal.id));
       } catch (error) {
         lastError = error;
         if (!(error instanceof Error) || !/(401|402|403|429|quota|credit|key)/i.test(error.message))

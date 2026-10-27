@@ -1,7 +1,13 @@
 import { z } from 'zod';
 import { guard, errorResponse, readJson } from '@/lib/security';
 import { readConnection, saveConnection } from '@/lib/connection-store';
-import { getRouterProvider, type RouterSelection } from '@/lib/model-router';
+import { getRouterProvider, type RouterSelection, type RouterTarget } from '@/lib/model-router';
+import {
+  canUserUseTarget,
+  filterCatalogForPrincipal,
+  getUsageBlockedTargets,
+} from '@/lib/account-access';
+import { discoverRouterCatalog } from '@/lib/router-catalog';
 
 const targetSchema = z.object({
   providerId: z.string().min(1).max(40),
@@ -65,8 +71,50 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await guard(request);
-    const selection = schema.parse(await readJson(request, 3000));
+    const principal = await guard(request);
+    let selection = schema.parse(await readJson(request, 3000));
+    if (principal.role === 'user') {
+      const catalog = await filterCatalogForPrincipal(await discoverRouterCatalog(), principal);
+      const blocked = await getUsageBlockedTargets();
+      for (const target of [selection, ...selection.fusionModels]) {
+        if (!(await canUserUseTarget(principal, target as RouterTarget)))
+          throw new Error('That model is not enabled for this account.');
+        if (blocked.has(`${target.providerId}::${target.modelId}`))
+          throw new Error(
+            'That model does not report token usage and cannot be used with your monthly allowance.',
+          );
+        const model = catalog.models.find((item) =>
+          item.providers.some(
+            (provider) => provider.id === target.providerId && provider.modelId === target.modelId,
+          ),
+        );
+        if (!model) throw new Error('That model is not currently available for this account.');
+      }
+      const normalize = (target: z.infer<typeof targetSchema>) => {
+        const model = catalog.models.find((item) =>
+          item.providers.some(
+            (provider) => provider.id === target.providerId && provider.modelId === target.modelId,
+          ),
+        );
+        const provider = model?.providers.find(
+          (item) => item.id === target.providerId && item.modelId === target.modelId,
+        );
+        return provider
+          ? {
+              ...target,
+              availableTokens: provider.availableTokens,
+              contextTokens: provider.contextTokens,
+              supportsTools: provider.supportsTools,
+              isFree: provider.isFree,
+            }
+          : target;
+      };
+      selection = {
+        ...selection,
+        ...normalize(selection),
+        fusionModels: selection.fusionModels.map((target) => normalize(target)),
+      };
+    }
     await saveConnection('router-selection', selection);
     return Response.json({ ok: true, selection });
   } catch (error) {

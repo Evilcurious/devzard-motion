@@ -2,7 +2,13 @@ import { createPrivateKey } from 'node:crypto';
 import { z } from 'zod';
 import { removeConnection, saveConnection } from '@/lib/connection-store';
 import { githubAppConfig, type GitHubAppSettings } from '@/lib/github';
-import { errorResponse, guard, readJson } from '@/lib/security';
+import { databaseConfigured, dbQuery } from '@/lib/db';
+import { errorResponse, requireAdmin, readJson } from '@/lib/security';
+
+async function clearGitHubUserConnections() {
+  if (databaseConfigured())
+    await dbQuery("DELETE FROM relay_settings WHERE key LIKE 'account:%:github' OR key LIKE 'account:%:github_repository'");
+}
 
 const siteURL = z
   .string()
@@ -34,7 +40,7 @@ const schema = z.object({
 
 export async function GET() {
   try {
-    await guard();
+    await requireAdmin();
     const config = await githubAppConfig();
     const secureSettings = (process.env.SESSION_SECRET?.length || 0) >= 32;
     return Response.json({
@@ -58,7 +64,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await guard(request);
+    await requireAdmin(request);
     const input = schema.parse(await readJson(request, 9000));
     const current = await githubAppConfig();
     const privateKey = (
@@ -75,10 +81,9 @@ export async function POST(request: Request) {
       slug: input.slug,
       privateKey,
       appURL: input.appURL.replace(/\/$/, ''),
-    } satisfies GitHubAppSettings);
+    } satisfies GitHubAppSettings, 'owner');
     if (input.appId !== current.appId || input.slug !== current.slug) {
-      await removeConnection('github');
-      await removeConnection('github_repository');
+      await clearGitHubUserConnections();
     }
     return Response.json({ ok: true });
   } catch (error) {
@@ -88,10 +93,11 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    await guard(request);
-    await removeConnection('github_app');
-    await removeConnection('github');
-    await removeConnection('github_repository');
+    await requireAdmin(request);
+    await removeConnection('github_app', 'owner');
+    await clearGitHubUserConnections();
+    await removeConnection('github', 'owner');
+    await removeConnection('github_repository', 'owner');
     return Response.json({ ok: true });
   } catch (error) {
     return errorResponse(error);

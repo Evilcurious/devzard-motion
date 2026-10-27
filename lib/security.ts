@@ -6,6 +6,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import { cookies } from 'next/headers';
+import { getUserPolicy, type UserPolicy } from './accounts';
 
 const developmentKey = randomBytes(32).toString('hex');
 function key() {
@@ -46,29 +47,64 @@ export const cookieOptions = {
   sameSite: 'lax' as const,
   path: '/',
 };
-export async function authorized() {
-  if ((process.env.VERCEL || process.env.DATABASE_URL) && !process.env.APP_PASSWORD) return false;
-  if (process.env.APP_PASSWORD && (process.env.SESSION_SECRET?.length || 0) < 32) return false;
-  if (!process.env.APP_PASSWORD) return true;
+export type AdminPrincipal = {
+  id: 'owner';
+  role: 'admin';
+  username: 'admin';
+};
+export type UserPrincipal = UserPolicy & {
+  role: 'user';
+};
+export type Principal = AdminPrincipal | UserPrincipal;
+type SessionPayload = { fingerprint?: string; userId?: string };
+async function sessionPayload() {
   const token = (await cookies()).get('relay_auth')?.value;
-  const data = token && unseal<{ fingerprint: string }>(token);
-  return (
-    !!data &&
-    equal(data.fingerprint, createHash('sha256').update(process.env.APP_PASSWORD).digest('hex'))
-  );
+  return token ? unseal<SessionPayload>(token) : null;
 }
-export async function guard(request?: Request) {
-  if (!(await authorized())) throw new Error('UNAUTHORIZED');
+export async function getPrincipal(): Promise<Principal | null> {
+  if ((process.env.VERCEL || process.env.DATABASE_URL) && !process.env.APP_PASSWORD) return null;
+  if ((process.env.SESSION_SECRET?.length || 0) < 32 && process.env.APP_PASSWORD) return null;
+  if (!process.env.APP_PASSWORD) return { id: 'owner', role: 'admin', username: 'admin' };
+  const session = await sessionPayload();
+  if (!session) return null;
+  const fingerprint = createHash('sha256').update(process.env.APP_PASSWORD).digest('hex');
+  if (session.fingerprint && equal(session.fingerprint, fingerprint))
+    return { id: 'owner', role: 'admin', username: 'admin' };
+  if (!session.userId) return null;
+  try {
+    const user = await getUserPolicy(session.userId);
+    return user?.enabled ? { ...user, role: 'user' } : null;
+  } catch {
+    return null;
+  }
+}
+export async function sessionAccountId() {
+  const session = await sessionPayload();
+  return session?.userId || 'owner';
+}
+export async function authorized() {
+  return !!(await getPrincipal());
+}
+export async function guard(request?: Request): Promise<Principal> {
+  const principal = await getPrincipal();
+  if (!principal) throw new Error('UNAUTHORIZED');
   if (request && request.method !== 'GET') {
     const origin = request.headers.get('origin');
     const host = request.headers.get('host');
     if (!origin || (new URL(origin).host !== host && origin !== process.env.APP_URL))
       throw new Error('Invalid request origin.');
   }
+  return principal;
+}
+export async function requireAdmin(request?: Request): Promise<AdminPrincipal> {
+  const principal = await guard(request);
+  if (principal.role !== 'admin') throw new Error('ADMIN_REQUIRED');
+  return principal;
 }
 export function errorResponse(error: unknown) {
   const message = error instanceof Error ? error.message : 'Something went wrong.';
-  return Response.json({ error: message }, { status: message === 'UNAUTHORIZED' ? 401 : 400 });
+  const status = message === 'UNAUTHORIZED' ? 401 : message === 'ADMIN_REQUIRED' ? 403 : 400;
+  return Response.json({ error: message }, { status });
 }
 export async function readJson(request: Request, max = 250_000) {
   const text = await request.text();

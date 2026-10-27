@@ -1,17 +1,24 @@
 import { googleClientConfig } from '@/lib/google-config';
 import { cookies } from 'next/headers';
-import { equal, guard } from '@/lib/security';
+import { equal, guard, unseal } from '@/lib/security';
 import { saveGoogle } from '@/lib/google';
 export async function GET(request: Request) {
   const base = process.env.APP_URL || new URL(request.url).origin;
   try {
-    await guard();
+    const principal = await guard();
     const config = await googleClientConfig();
     const params = new URL(request.url).searchParams;
     const jar = await cookies();
-    const expected = jar.get('relay_oauth_state')?.value;
+    const statePayload = unseal<{ state: string; accountId: string }>(
+      jar.get('relay_oauth_state')?.value || '',
+    );
     jar.delete('relay_oauth_state');
-    if (!expected || !params.get('state') || !equal(expected, params.get('state')!))
+    if (
+      !statePayload ||
+      statePayload.accountId !== principal.id ||
+      !params.get('state') ||
+      !equal(statePayload.state, params.get('state')!)
+    )
       throw new Error('Authorization expired. Please try connecting again.');
     if (!params.get('code')) throw new Error('Google connection was cancelled.');
     const response = await fetch('https://oauth2.googleapis.com/token', {
