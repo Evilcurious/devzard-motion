@@ -1,10 +1,53 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  attemptTargetsSequentially,
+  fallbackAttemptTimeout,
   isFileBundleRequest,
   needsDynamicModelRouting,
   shouldLoadRepositoryContext,
+  shouldPersistAutoSelectedTarget,
 } from '../lib/chat-performance';
+
+test('a timed-out primary advances through configured fallback candidates in order', async () => {
+  const attempted: string[] = [];
+  const result = await attemptTargetsSequentially(
+    ['primary', 'backup-one', 'backup-two'],
+    async (target) => {
+      attempted.push(target);
+      if (target === 'primary') {
+        const timeout = new Error('provider timeout');
+        timeout.name = 'TimeoutError';
+        throw timeout;
+      }
+      return `response from ${target}`;
+    },
+  );
+
+  assert.deepEqual(attempted, ['primary', 'backup-one']);
+  assert.deepEqual(result, {
+    ok: true,
+    target: 'backup-one',
+    value: 'response from backup-one',
+    index: 1,
+    attemptsMade: 2,
+  });
+});
+
+test('fallback success never rewrites the saved chain as a one-model auto selection', () => {
+  assert.equal(shouldPersistAutoSelectedTarget('fallback', true, 1, true), false);
+  assert.equal(shouldPersistAutoSelectedTarget('auto', true, 1, true), true);
+  assert.equal(shouldPersistAutoSelectedTarget('auto', true, 0, false), true);
+  assert.equal(shouldPersistAutoSelectedTarget('auto', false, 1, true), false);
+});
+
+test('fallback attempts share remaining time so one timeout cannot consume the entire chain', () => {
+  assert.equal(fallbackAttemptTimeout(52000, 4, 20000), 13000);
+  assert.equal(fallbackAttemptTimeout(22000, 2, 20000), 11000);
+  assert.equal(fallbackAttemptTimeout(5000, 3, 20000), 2000);
+  assert.equal(fallbackAttemptTimeout(500, 2, 20000), 500);
+  assert.equal(fallbackAttemptTimeout(5000, 0, 20000), 0);
+});
 
 test('manual model selection skips automatic provider discovery', () => {
   assert.equal(needsDynamicModelRouting({ strategy: 'auto', autoPick: false }), false);

@@ -31,7 +31,11 @@ import {
   type RouterProviderId,
   type RoutingStrategy,
 } from '@/lib/model-router';
-import { discoverRouterCatalog, markRouterTargetDepleted } from '@/lib/router-catalog';
+import {
+  discoverRouterCatalog,
+  isRouterTargetDepleted,
+  markRouterTargetDepleted,
+} from '@/lib/router-catalog';
 import { getProviderKeys } from '@/lib/provider-credentials';
 import { monthlyTokenUsage } from '@/lib/accounts';
 import { accountDatabaseHealth } from '@/lib/tenant-database';
@@ -43,9 +47,12 @@ import {
 import { generatedFileBundleSchema, type GeneratedArtifact } from '@/lib/generated-files';
 import { normalizeProviderTokenUsage } from '@/lib/provider-usage';
 import {
+  attemptTargetsSequentially,
+  fallbackAttemptTimeout,
   isFileBundleRequest,
   needsDynamicModelRouting,
   shouldLoadRepositoryContext,
+  shouldPersistAutoSelectedTarget,
 } from '@/lib/chat-performance';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -581,16 +588,38 @@ export async function POST(request: Request) {
         (fileBundleRequest ||
           (config.strategy !== 'fusion' && config.strategy !== 'auto-fusion')) &&
         dynamicModelRouting &&
-        inferredRouterProviderId
+        (inferredRouterProviderId || config.strategy === 'fallback')
       ) {
-        const available = await getEligibleTargets();
-        const allRanked = rankRouterTargets(
-          available,
-          density,
-          new Map(),
-          routingStrategy,
-          await getObservedMetrics(),
-        );
+        const fallbackMode = config.strategy === 'fallback';
+        let available: RouterTarget[];
+        if (fallbackMode) {
+          // A configured chain is already validated when saved. Don't block its failover
+          // path on a fresh, potentially slow provider-wide catalog discovery.
+          const configuredChain = 'fallbackChain' in config ? config.fallbackChain || [] : [];
+          // Catalog token snapshots may be stale; actual 402 cooldowns are checked separately.
+          available = [primaryTarget, ...configuredChain].map((target) => ({
+            ...target,
+            availableTokens: target.availableTokens === 0 ? null : target.availableTokens,
+          }));
+          available = available.filter((target) => !isRouterTargetDepleted(target, principal.id));
+          if (quota) {
+            const blocked = await getUsageBlockedTargets();
+            available = available.filter(
+              (target) => !blocked.has(`${target.providerId}::${target.modelId}`),
+            );
+          }
+        } else {
+          available = await getEligibleTargets();
+        }
+        const allRanked = fallbackMode
+          ? available
+          : rankRouterTargets(
+              available,
+              density,
+              new Map(),
+              routingStrategy,
+              await getObservedMetrics(),
+            );
         const ranked = fileBundleRequest
           ? allRanked.filter((target) => target.supportsTools !== false)
           : allRanked;
@@ -599,7 +628,6 @@ export async function POST(request: Request) {
           (target) => `${target.providerId}::${target.modelId}` === selectedKey,
         );
         const autoPick = fileBundleRequest || !('autoPick' in config) || config.autoPick === true;
-        const fallbackMode = config.strategy === 'fallback';
         const candidates = fallbackMode
           ? selectFallbackCandidates(
               ranked,
@@ -617,42 +645,65 @@ export async function POST(request: Request) {
                   ? 'None of your selected fallback models is currently eligible. Check provider access and quota, then update the fallback chain.'
                   : 'Your selected model is no longer eligible or available. Choose another model or switch to Auto-select.',
           );
-        let lastError: unknown;
-        let completed = false;
-        for (const [index, target] of candidates.slice(0, 8).entries()) {
-          if (deadline - Date.now() < 1500) break;
-          try {
+        const attemptTargets = candidates.slice(0, 8);
+        const outcome = await attemptTargetsSequentially(
+          attemptTargets,
+          async (target, index) => {
             const resolved =
               target.providerId === primary.providerId && target.modelId === primary.model
                 ? primary
                 : await resolveRouterTarget(target);
-            const requestBudget = density === 'faster' ? 9000 : density === 'fast' ? 14000 : 20000;
-            answer = await completionWithKeyRotation(
+            const maximumRequestBudget =
+              density === 'faster' ? 9000 : density === 'fast' ? 14000 : 20000;
+            const remainingTime = deadline - Date.now();
+            const requestBudget = fallbackMode
+              ? fallbackAttemptTimeout(
+                  remainingTime,
+                  attemptTargets.length - index,
+                  maximumRequestBudget,
+                )
+              : Math.min(maximumRequestBudget, remainingTime);
+            const response = await completionWithKeyRotation(
               resolved,
               messages,
               connectionTools,
-              Math.min(requestBudget, deadline - Date.now()),
+              requestBudget,
               quota,
             );
-            activeTarget = resolved;
-            if (autoPick && (index > 0 || !selected)) {
-              await persistAutoSelectedTarget(target);
-              selectionAutoPick = true;
-              if (index > 0)
-                steps.push(`Automatically switched to ${resolved.model} after a provider error`);
-            } else if (fallbackMode && index > 0) {
-              steps.push(`Fallback switched to ${resolved.model} after the earlier model failed`);
-            }
-            completed = true;
-            break;
-          } catch (error) {
-            lastError = error;
+            return { response, resolved };
+          },
+          () => deadline - Date.now() >= 1500,
+          (error, target) => {
             if (error instanceof ProviderHttpError && error.statusCode === 402)
               markRouterTargetDepleted(target, principal.id);
+          },
+        );
+        if (!outcome.ok) {
+          if (
+            fallbackMode &&
+            outcome.error instanceof Error &&
+            ['TimeoutError', 'AbortError'].includes(outcome.error.name)
+          ) {
+            const timeout = new Error(
+              `Fallback chain exhausted after ${outcome.attemptsMade} model attempt${outcome.attemptsMade === 1 ? '' : 's'}. The final model timed out; try a shorter prompt or replace a slower backup model.`,
+            );
+            timeout.name = 'TimeoutError';
+            throw timeout;
           }
+          throw outcome.error instanceof Error
+            ? outcome.error
+            : new Error('All eligible models failed.');
         }
-        if (!completed)
-          throw lastError instanceof Error ? lastError : new Error('All eligible models failed.');
+        answer = outcome.value.response;
+        activeTarget = outcome.value.resolved;
+        if (shouldPersistAutoSelectedTarget(config.strategy, autoPick, outcome.index, !!selected)) {
+          await persistAutoSelectedTarget(outcome.target);
+          selectionAutoPick = true;
+          if (outcome.index > 0)
+            steps.push(`Automatically switched to ${activeTarget.model} after a provider error`);
+        } else if (fallbackMode && outcome.index > 0) {
+          steps.push(`Fallback switched to ${activeTarget.model} after the earlier model failed`);
+        }
       } else {
         answer = await completionWithKeyRotation(
           activeTarget,
@@ -809,7 +860,11 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name))
       return Response.json(
-        { error: 'The AI model timed out. Check that it is running and try again.' },
+        {
+          error: error.message.startsWith('Fallback chain exhausted after ')
+            ? error.message
+            : 'The AI model timed out. Check that it is running and try again.',
+        },
         { status: 504 },
       );
     if (

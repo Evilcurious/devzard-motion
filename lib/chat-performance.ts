@@ -3,6 +3,49 @@ type ChatRoutePreference = {
   autoPick?: boolean;
 };
 
+export async function attemptTargetsSequentially<TTarget, TResult>(
+  targets: readonly TTarget[],
+  attempt: (target: TTarget, index: number) => Promise<TResult>,
+  shouldContinue: () => boolean = () => true,
+  onError?: (error: unknown, target: TTarget, index: number) => void | Promise<void>,
+): Promise<
+  | { ok: true; target: TTarget; value: TResult; index: number; attemptsMade: number }
+  | { ok: false; error: unknown; attemptsMade: number }
+> {
+  let lastError: unknown = new Error('All fallback models failed.');
+  let attemptsMade = 0;
+  for (const [index, target] of targets.entries()) {
+    if (!shouldContinue()) break;
+    attemptsMade++;
+    try {
+      return { ok: true, target, value: await attempt(target, index), index, attemptsMade };
+    } catch (error) {
+      lastError = error;
+      await onError?.(error, target, index);
+    }
+  }
+  return { ok: false, error: lastError, attemptsMade };
+}
+
+export function shouldPersistAutoSelectedTarget(
+  strategy: string | undefined,
+  autoPick: boolean,
+  index: number,
+  selected: boolean,
+) {
+  return strategy !== 'fallback' && autoPick && (index > 0 || !selected);
+}
+
+export function fallbackAttemptTimeout(
+  remainingMs: number,
+  attemptsRemaining: number,
+  maximumAttemptMs: number,
+) {
+  if (remainingMs <= 0 || attemptsRemaining <= 0) return 0;
+  const fairShare = Math.floor(remainingMs / attemptsRemaining);
+  return Math.min(remainingMs, maximumAttemptMs, Math.max(2000, fairShare));
+}
+
 export function needsDynamicModelRouting(config: ChatRoutePreference) {
   return (
     config.strategy === 'fallback' ||
