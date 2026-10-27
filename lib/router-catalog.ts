@@ -14,7 +14,12 @@ type ProviderModel = ReturnType<typeof routerModelIds>[number] & {
 };
 export type RouterCatalog = {
   models: RouterModel[];
-  providers: Array<{ providerId: string; modelCount: number; error: string | null }>;
+  providers: Array<{
+    providerId: string;
+    modelCount: number;
+    listedCount: number;
+    error: string | null;
+  }>;
   refreshedAt: string;
   metricsNote: string;
 };
@@ -68,6 +73,54 @@ async function requestJSON(url: string, apiKey: string, timeoutMs = 6000): Promi
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function discoverOllamaCloudProvider(
+  apiKey: string,
+  fetcher: typeof fetch = fetch,
+): Promise<ProviderLoad> {
+  const provider = getRouterProvider('ollama-cloud')!;
+  const models = new Map<string, ProviderModel>();
+  let lastError: unknown;
+  // Ollama Cloud exposes both its OpenAI-compatible model listing and the standard
+  // Ollama tags endpoint. Some account/model configurations populate only one list.
+  for (const endpoint of ['https://ollama.com/v1/models', 'https://ollama.com/api/tags']) {
+    try {
+      const response = await fetcher(endpoint, {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(8000),
+        cache: 'no-store',
+        redirect: 'error',
+      });
+      if (!response.ok) throw new Error(`Ollama Cloud returned HTTP ${response.status}.`);
+      if (!(response.headers.get('content-type') || '').includes('json'))
+        throw new Error('Ollama Cloud returned a non-JSON model list.');
+      const body = await response.json();
+      for (const model of routerModelIds(body)) {
+        const previous = models.get(model.id);
+        models.set(model.id, {
+          ...previous,
+          ...model,
+          contextTokens: model.contextTokens ?? previous?.contextTokens ?? null,
+          availableTokens: model.availableTokens ?? previous?.availableTokens ?? null,
+          supportsTools: model.supportsTools ?? previous?.supportsTools ?? null,
+          isFree: model.isFree || previous?.isFree || false,
+          providerId: 'ollama-cloud',
+          providerName: provider.name,
+        });
+      }
+    } catch (error) {
+      lastError = error;
+      // Do not let a fallback endpoint turn a rejected credential into a successful listing.
+      if (error instanceof Error && /HTTP (401|403)/.test(error.message)) break;
+    }
+  }
+  if (models.size) return { providerId: 'ollama-cloud', error: null, models: [...models.values()] };
+  return {
+    providerId: 'ollama-cloud',
+    error: lastError instanceof Error ? lastError.message.slice(0, 240) : null,
+    models: [],
+  };
 }
 
 export async function discoverGeminiProvider(
@@ -143,6 +196,16 @@ async function discoverProvider(providerId: RouterProviderId): Promise<ProviderL
     return { providerId, error: null, models: [] };
   const keys = await getProviderKeys(provider.id);
   if (provider.keyRequired && !keys.length) return { providerId, error: null, models: [] };
+  if (provider.id === 'ollama-cloud') {
+    const results = await Promise.all(keys.map((key) => discoverOllamaCloudProvider(key)));
+    const models = new Map<string, ProviderModel>();
+    for (const result of results) for (const model of result.models) models.set(model.id, model);
+    return {
+      providerId,
+      error: models.size ? null : results.find((result) => result.error)?.error || null,
+      models: [...models.values()],
+    };
+  }
   if (provider.id === 'gemini') {
     const results = await Promise.all(keys.map((key) => discoverGeminiProvider(key)));
     const models = new Map<string, ProviderModel>();
@@ -309,9 +372,10 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
   }
   const result: RouterCatalog = {
     models: [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name)),
-    providers: settled.map(({ providerId, error }) => ({
+    providers: settled.map(({ providerId, error, models }) => ({
       providerId,
       modelCount: eligibleCounts.get(providerId) || 0,
+      listedCount: models.length,
       error,
     })),
     refreshedAt: new Date().toISOString(),

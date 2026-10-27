@@ -51,7 +51,12 @@ type Strategy = 'auto' | 'fusion';
 type Target = RouterTarget;
 type Catalog = {
   models: Model[];
-  providers: Array<{ providerId: string; modelCount: number; error: string | null }>;
+  providers: Array<{
+    providerId: string;
+    modelCount: number;
+    listedCount?: number;
+    error: string | null;
+  }>;
   refreshedAt: string;
   metricsNote: string;
 };
@@ -471,6 +476,14 @@ export function ModelHub({
         <div className="provider-grid">
           {visibleProviders.map((provider) => {
             const state = catalog?.providers.find((p) => p.providerId === provider.id);
+            const modelStatus =
+              state && state.modelCount > 0
+                ? `${state.modelCount} eligible models`
+                : state && (state.listedCount || 0) > 0
+                  ? `${state.listedCount} listed · 0 eligible`
+                  : state
+                    ? '0 eligible models'
+                    : '… models';
             return (
               <article className="provider-card" key={provider.id}>
                 <div className="provider-card-top">
@@ -486,7 +499,7 @@ export function ModelHub({
                       : provider.connected
                         ? provider.category === 'search'
                           ? 'Connected'
-                          : `${state?.modelCount ?? '…'} models`
+                          : modelStatus
                         : 'Not connected'}
                   </span>
                 </div>
@@ -884,6 +897,9 @@ export function ModelHub({
             const routes = (catalog?.models || []).flatMap((model) =>
               model.providers.filter((provider) => provider.id === providerModelModal),
             );
+            const listedCount =
+              catalog?.providers.find((provider) => provider.providerId === providerModelModal)
+                ?.listedCount || 0;
             return routes.length ? (
               <div className="provider-model-picker">
                 {routes.map((provider) => (
@@ -913,11 +929,15 @@ export function ModelHub({
             ) : (
               <div className="model-empty">
                 <KeyRound size={20} />
-                <strong>No eligible models returned</strong>
+                <strong>
+                  {listedCount
+                    ? `${listedCount} models listed, none eligible yet`
+                    : 'No eligible models returned'}
+                </strong>
                 <span>
-                  The provider key was saved, but its model API did not report any models as
-                  explicitly free or with positive remaining quota. Relay hides models without that
-                  availability evidence.
+                  {listedCount
+                    ? 'The API returned model names, but none had explicit free access or positive remaining quota. Relay keeps them hidden from selection until the provider reports availability.'
+                    : 'The provider key was saved, but no models were returned with explicit free access or positive remaining quota. Check the key and provider access, then refresh.'}
                 </span>
               </div>
             );
