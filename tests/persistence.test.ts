@@ -141,7 +141,7 @@ test('workspace persistence strips approval tokens and rejects malformed message
 test('light, dark and accent themes are supported', () => {
   assert.deepEqual(
     themes.map((theme) => theme.id),
-    ['light', 'dark', 'green', 'black', 'red', 'blue', 'yellow', 'gold'],
+    ['light', 'dark', 'green', 'forest', 'black', 'red', 'blue', 'yellow', 'gold'],
   );
   for (const theme of themes) assert.ok(isTheme(theme.id));
   assert.equal(isTheme('purple'), false);

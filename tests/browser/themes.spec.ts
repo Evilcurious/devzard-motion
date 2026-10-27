@@ -1,18 +1,25 @@
 import { test, expect } from '@playwright/test';
 
-test('all six themes change the app and persist after reload', async ({ page }) => {
+test('workspace themes change immediately and persist globally after saving', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Appearance', exact: true }).click();
+  await page.getByLabel('Choose accent color').fill('#aabbcc');
+  await page.getByRole('button', { name: 'Soft white', exact: true }).click();
+  await expect(page.getByLabel('Choose accent color')).toHaveValue('#34745f');
+  await expect(page.locator('html')).not.toHaveAttribute('style', /--user-accent/);
   const colors = new Set<string>();
   for (const [id, label] of [
-    ['green', 'Green & white'],
-    ['black', 'Black & white'],
-    ['red', 'Red & white'],
-    ['blue', 'Blue & white'],
-    ['yellow', 'Yellow & white'],
-    ['gold', 'Gold & white'],
+    ['light', 'Soft white'],
+    ['dark', 'Midnight'],
+    ['green', 'Sage garden'],
+    ['forest', 'Forest green'],
+    ['black', 'Obsidian black'],
+    ['red', 'Soft rose'],
+    ['blue', 'Ocean mist'],
+    ['yellow', 'Citrus cream'],
+    ['gold', 'Warm sand'],
   ]) {
     await page.getByRole('button', { name: label, exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', id);
@@ -22,7 +29,9 @@ test('all six themes change the app and persist after reload', async ({ page }) 
         .evaluate((element) => getComputedStyle(element).backgroundColor),
     );
   }
-  expect(colors.size).toBe(6);
+  expect(colors.size).toBe(9);
+  await page.getByRole('button', { name: 'Save appearance for everyone' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'saved for everyone' })).toBeVisible();
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'gold');
 });
@@ -48,7 +57,7 @@ test('Google and database settings expose setup without claiming a connection', 
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 });
 
-test('custom accent, eight font choices and uploaded font preferences persist in this workspace', async ({
+test('admin accent and uploaded font preferences persist in the shared workspace appearance', async ({
   page,
 }) => {
   await page.goto('/');
@@ -69,6 +78,8 @@ test('custom accent, eight font choices and uploaded font preferences persist in
   await expect(font).toHaveValue('custom');
   await expect(font.getByRole('option', { name: 'My Legacy Font (uploaded)' })).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Remove uploaded font' })).toBeVisible();
+  await page.getByRole('button', { name: 'Save appearance for everyone' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'saved for everyone' })).toBeVisible();
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Appearance', exact: true }).click();

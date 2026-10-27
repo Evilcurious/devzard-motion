@@ -168,7 +168,12 @@ export async function listGitHubRepositories() {
     const data = await githubApi(`/installation/repositories?per_page=100&page=${page}`, token);
     const items = Array.isArray(data?.repositories) ? data.repositories : [];
     for (const repo of items) {
-      if (!repo.permissions?.push || typeof repo.full_name !== 'string') continue;
+      if (
+        repo.permissions?.push === false ||
+        !Number.isSafeInteger(repo.id) ||
+        typeof repo.full_name !== 'string'
+      )
+        continue;
       repositories.push({
         id: repo.id,
         fullName: repo.full_name,
@@ -238,13 +243,14 @@ export async function pushGitHubFiles(
 export async function uninstallGitHubApp() {
   const installation = await getGitHubInstallation();
   if (!installation) return;
+  const jwt = await appJwt();
   const response = await fetch(
     `https://api.github.com/app/installations/${installation.installationId}`,
     {
       method: 'DELETE',
       headers: {
         Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${appJwt()}`,
+        Authorization: `Bearer ${jwt}`,
         'X-GitHub-Api-Version': '2022-11-28',
       },
       signal: AbortSignal.timeout(20000),

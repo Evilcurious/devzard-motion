@@ -18,6 +18,7 @@ export async function GET() {
     return Response.json({
       connected: !!installation,
       account: installation?.account || null,
+      installationId: installation?.installationId || null,
       repositories,
       selection,
     });

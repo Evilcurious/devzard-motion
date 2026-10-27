@@ -7,7 +7,7 @@ test.skip(
   'Requires a separate PostgreSQL test app and workspace password.',
 );
 
-test('chats, workflows and theme survive in a completely new browser session', async ({
+test('chats, workflows and shared theme survive in a completely new browser session', async ({
   page,
   context,
   browser,
@@ -37,9 +37,10 @@ test('chats, workflows and theme survive in a completely new browser session', a
     .toBe(true);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Appearance', exact: true }).click();
-  await page.getByRole('button', { name: 'Blue & white', exact: true }).click();
+  await page.getByRole('button', { name: 'Ocean mist', exact: true }).click();
+  await page.getByRole('button', { name: 'Save appearance for everyone' }).click();
   await expect
-    .poll(async () => (await (await context.request.get('/api/workspace')).json()).data.theme)
+    .poll(async () => (await (await context.request.get('/api/status')).json()).branding.theme)
     .toBe('blue');
   await page.getByRole('button', { name: 'Workflows', exact: true }).click();
   await page.getByRole('button', { name: 'New workflow', exact: true }).click();

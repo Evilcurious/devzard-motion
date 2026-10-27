@@ -2,21 +2,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Activity, Conversation, Status, Workflow } from '@/lib/client-types';
 import { initialWorkflows } from '@/lib/client-types';
-import { isTheme, type Theme } from '@/lib/themes';
-import { defaultAppearance, normalizeAppearance, type Appearance } from '@/lib/appearance';
 export type WorkspaceData = {
   conversations: Conversation[];
   activities: Activity[];
   workflows: Workflow[];
-  theme: Theme;
-  appearance: Appearance;
 };
 const empty = (): WorkspaceData => ({
   conversations: [],
   activities: [],
   workflows: initialWorkflows,
-  theme: 'light',
-  appearance: defaultAppearance,
 });
 function localData(key: string): WorkspaceData {
   const saved = JSON.parse(localStorage.getItem(key) || '{}');
@@ -24,8 +18,6 @@ function localData(key: string): WorkspaceData {
     conversations: Array.isArray(saved.conversations) ? saved.conversations : [],
     activities: Array.isArray(saved.activities) ? saved.activities : [],
     workflows: Array.isArray(saved.workflows) ? saved.workflows : initialWorkflows,
-    theme: isTheme(saved.theme) ? saved.theme : 'light',
-    appearance: normalizeAppearance(saved.appearance),
   };
 }
 function sanitized(value: WorkspaceData): WorkspaceData {

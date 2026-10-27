@@ -6,18 +6,21 @@ import { databaseHealth } from '@/lib/db';
 import { getGitHubInstallation, githubAppConfig } from '@/lib/github';
 import { getVercelConnection, getVercelProjectSelection } from '@/lib/vercel';
 import { monthlyTokenUsage } from '@/lib/accounts';
+import { getWorkspaceBranding, defaultBranding } from '@/lib/branding';
 export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const principal = await getPrincipal();
+    const branding = await getWorkspaceBranding().catch(() => defaultBranding);
     const setupRequired =
       (!!(process.env.VERCEL || process.env.DATABASE_URL) && !process.env.APP_PASSWORD) ||
       (!!process.env.APP_PASSWORD && (process.env.SESSION_SECRET?.length || 0) < 32);
-    if (!principal) return Response.json({ authenticated: false, setupRequired });
+    if (!principal) return Response.json({ authenticated: false, setupRequired, branding });
     const db = await databaseHealth();
     const secureSettings = (process.env.SESSION_SECRET?.length || 0) >= 32;
     const common = {
       authenticated: true,
+      branding,
       role: principal.role,
       accountId: principal.id,
       username: principal.username,

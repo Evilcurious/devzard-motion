@@ -135,7 +135,7 @@ export const workspaceSchema = z.object({
     )
     .max(200),
   theme: z
-    .enum(['light', 'dark', 'green', 'black', 'red', 'blue', 'yellow', 'gold'])
+    .enum(['light', 'dark', 'green', 'forest', 'black', 'red', 'blue', 'yellow', 'gold'])
     .default('light'),
   appearance: z
     .object({

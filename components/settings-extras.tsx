@@ -9,6 +9,9 @@ import {
   KeyRound,
   LoaderCircle,
   Palette,
+  ImagePlus,
+  LockKeyhole,
+  Save,
   ShieldCheck,
   Unplug,
 } from 'lucide-react';
@@ -24,6 +27,11 @@ export function AppearanceSettings({
   storageName,
   appearance,
   onAppearanceChange,
+  logoDataUrl,
+  onLogoChange,
+  onSave,
+  saving,
+  isAdmin,
 }: {
   theme: Theme;
   onChange: (theme: Theme) => void;
@@ -31,14 +39,96 @@ export function AppearanceSettings({
   storageName: string;
   appearance: Appearance;
   onAppearanceChange: (appearance: Appearance) => void;
+  logoDataUrl: string | null;
+  onLogoChange: (logoDataUrl: string | null) => void;
+  onSave: () => void;
+  saving: boolean;
+  isAdmin: boolean;
 }) {
   const [fontError, setFontError] = useState('');
+  const [logoError, setLogoError] = useState('');
+  if (!isAdmin) {
+    const selected = themes.find((item) => item.id === theme) || themes[0];
+    return (
+      <section className="managed-appearance-card">
+        <span className="managed-appearance-icon">
+          <LockKeyhole size={18} />
+        </span>
+        <div>
+          <h2>Workspace appearance is managed</h2>
+          <p>Only an administrator can change the shared theme, accent color, or logo.</p>
+          <div className="managed-theme-preview">
+            {logoDataUrl ? (
+              <img src={logoDataUrl} alt="Workspace logo" />
+            ) : (
+              <span className="managed-theme-swatch" style={{ background: selected.color }} />
+            )}
+            <strong>{selected.label}</strong>
+            <small>Applied across the workspace</small>
+          </div>
+        </div>
+      </section>
+    );
+  }
   return (
     <section>
       <div className="section-intro">
         <h2>Find your comfortable palette</h2>
         <p>Choose a balanced colour theme. Your selection carries across the whole workspace.</p>
       </div>
+      <section className="branding-logo-card" aria-label="Workspace logo">
+        <div className="branding-logo-preview">
+          {logoDataUrl ? (
+            <img src={logoDataUrl} alt="Current workspace logo" />
+          ) : (
+            <AppIcon type="api" large />
+          )}
+        </div>
+        <div className="branding-logo-copy">
+          <h3>Workspace logo</h3>
+          <p>Use a crisp PNG, JPG, or WebP image. The logo is shown to every account.</p>
+        </div>
+        <label className="button branding-upload-button">
+          <ImagePlus size={15} /> Upload logo
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            aria-label="Upload workspace logo"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              setLogoError('');
+              if (!file) return;
+              if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+                setLogoError('Choose a PNG, JPG, or WebP image.');
+                return;
+              }
+              if (file.size > 256 * 1024) {
+                setLogoError('Choose an image smaller than 256 KB.');
+                return;
+              }
+              const reader = new FileReader();
+              reader.onload = () => {
+                if (typeof reader.result === 'string') onLogoChange(reader.result);
+                else setLogoError('Could not read that image. Please try another file.');
+              };
+              reader.onerror = () =>
+                setLogoError('Could not read that image. Please try another file.');
+              reader.readAsDataURL(file);
+            }}
+          />
+        </label>
+        {logoDataUrl && (
+          <button className="button small" type="button" onClick={() => onLogoChange(null)}>
+            Remove logo
+          </button>
+        )}
+        {logoError && (
+          <div className="error-box branding-logo-error" role="alert">
+            {logoError}
+          </div>
+        )}
+      </section>
       <div className="theme-grid">
         {themes.map((item) => (
           <button
@@ -82,7 +172,7 @@ export function AppearanceSettings({
           <h2>Personalize your palette</h2>
         </div>
         <p className="muted-text">
-          Pick any accent color. It updates buttons, highlights and the chat details.
+          Choose a custom accent, or switch back to automatic so each theme uses its own accent.
         </p>
         <div className="appearance-control-row">
           <label className="color-picker-label" htmlFor="custom-accent-color">
@@ -180,7 +270,7 @@ export function AppearanceSettings({
               });
             }}
           />
-          <span>WOFF2, WOFF, TTF or OTF · max 1 MB · stored with your workspace preferences</span>
+          <span>WOFF2, WOFF, TTF or OTF · max 1 MB · shared across workspace accounts</span>
         </label>
         {fontError && (
           <div className="error-box" role="alert">
@@ -197,11 +287,17 @@ export function AppearanceSettings({
           </button>
         )}
       </section>
-      <div className="subtle-note">
+      <div className="subtle-note branding-save-note">
         <Palette size={15} />
         {database
-          ? `Your theme, color and font settings save to ${storageName} with your workspace.`
-          : 'Your theme, chosen accent and font are remembered in this browser. Connect Neon Postgres to share them between devices.'}
+          ? `Changes are encrypted and saved centrally in ${storageName}.`
+          : 'Without Neon Postgres, appearance is saved only in this browser and cannot be shared with other accounts.'}
+      </div>
+      <div className="branding-save-row">
+        <button className="button primary" type="button" onClick={onSave} disabled={saving}>
+          {saving ? <LoaderCircle size={15} className="spin" /> : <Save size={15} />}
+          {saving ? 'Saving workspace appearance…' : 'Save appearance for everyone'}
+        </button>
       </div>
     </section>
   );

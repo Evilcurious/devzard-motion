@@ -69,7 +69,7 @@ import { AppIcon, EmptyState, Mark, Modal, Steps, WorkflowCard } from './ui';
 import { api, Settings } from './settings';
 import { GoogleSettings, GitHubAppSettings } from './settings-extras';
 import { useWorkspaceStorage, type WorkspaceData } from './use-workspace-storage';
-import { type Theme } from '@/lib/themes';
+import { themes, type Theme } from '@/lib/themes';
 import { ModelHub } from './model-hub';
 import { Analytics } from './analytics';
 import { AccountAdmin } from './account-admin';
@@ -108,6 +108,14 @@ const uid = () => crypto.randomUUID();
 const friendlyDate = (date: string) =>
   new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const previewCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">`;
+function accentInk(color: string) {
+  const channels = color.match(/[0-9a-f]{2}/gi)?.map((value) => parseInt(value, 16) / 255) || [];
+  if (channels.length !== 3) return '#ffffff';
+  const luminance = channels
+    .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
+    .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+  return luminance > 0.36 ? '#18251d' : '#ffffff';
+}
 function sandboxedPreviewDocument(html: string) {
   const head = html.match(/<head\b[^>]*>/i);
   if (head?.index !== undefined)
@@ -130,8 +138,10 @@ export default function Workspace() {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>(initialWorkflows);
-  const [theme, setTheme] = useState<Theme>('light');
+  const [theme, setTheme] = useState<Theme>('green');
   const [appearance, setAppearance] = useState<Appearance>(defaultAppearance);
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+  const [brandingSaving, setBrandingSaving] = useState(false);
   const [text, setText] = useState('');
   const [mediaMode, setMediaMode] = useState<'chat' | 'image' | 'video'>('chat');
   const [webSearch, setWebSearch] = useState(false);
@@ -204,11 +214,33 @@ export default function Workspace() {
     try {
       const response = await fetch('/api/status');
       if (!response.ok) throw new Error();
-      setStatus(await response.json());
+      const nextStatus = (await response.json()) as Status;
+      setStatus(nextStatus);
+      if (nextStatus.branding) {
+        setTheme(nextStatus.branding.theme);
+        setAppearance(normalizeAppearance(nextStatus.branding.appearance));
+        setLogoDataUrl(nextStatus.branding.logoDataUrl);
+      }
     } catch {
       notify('Could not reach your workspace server. Please refresh the page.');
     }
   }, [notify]);
+  const selectTheme = useCallback((next: Theme) => {
+    setTheme(next);
+    setAppearance((current) => ({ ...current, accentColor: null }));
+  }, []);
+  const saveBranding = useCallback(async () => {
+    setBrandingSaving(true);
+    try {
+      await api('/api/branding', { theme, appearance, logoDataUrl });
+      notify('Workspace appearance saved for everyone.');
+      await refresh();
+    } catch (error) {
+      notify((error as Error).message || 'Could not save workspace appearance.');
+    } finally {
+      setBrandingSaving(false);
+    }
+  }, [theme, appearance, logoDataUrl, notify, refresh]);
   useEffect(() => {
     refresh();
     const params = new URLSearchParams(window.location.search);
@@ -281,15 +313,13 @@ export default function Workspace() {
       .catch(() => {});
   }, [status?.authenticated]);
   const snapshot = useMemo(
-    () => ({ conversations, activities, workflows, theme, appearance }),
-    [conversations, activities, workflows, theme, appearance],
+    () => ({ conversations, activities, workflows }),
+    [conversations, activities, workflows],
   );
   const loadWorkspace = useCallback((data: WorkspaceData) => {
     setConversations(data.conversations);
     setActivities(data.activities);
     setWorkflows(data.workflows);
-    setTheme(data.theme);
-    setAppearance(normalizeAppearance(data.appearance));
   }, []);
   const storage = useWorkspaceStorage(status, snapshot, loadWorkspace);
   const hydrated = storage.hydrated;
@@ -298,6 +328,8 @@ export default function Workspace() {
     root.dataset.theme = theme;
     if (appearance.accentColor) root.style.setProperty('--user-accent', appearance.accentColor);
     else root.style.removeProperty('--user-accent');
+    const themeAccent = themes.find((item) => item.id === theme)?.color || themes[0].color;
+    root.style.setProperty('--accent-ink', accentInk(appearance.accentColor || themeAccent));
     const selected = fontOptions.find((font) => font.id === appearance.fontId) || fontOptions[0];
     root.style.setProperty('--font', selected.stack);
     const font = appearance.customFont;
@@ -327,6 +359,15 @@ export default function Workspace() {
       document.fonts.delete(face);
     };
   }, [theme, appearance, notify]);
+  useEffect(() => {
+    const icon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    if (!icon) return;
+    const previous = icon.href;
+    icon.href = logoDataUrl || '/icon.svg';
+    return () => {
+      icon.href = previous;
+    };
+  }, [logoDataUrl]);
   useEffect(() => {
     if (!toast) return;
     const timeout = setTimeout(() => setToast(''), 6500);
@@ -930,14 +971,18 @@ export default function Workspace() {
 
   if (status && !status.authenticated)
     return inviteToken && !status.setupRequired ? (
-      <InviteSetup token={inviteToken} onComplete={refresh} />
+      <InviteSetup token={inviteToken} onComplete={refresh} logoDataUrl={logoDataUrl} />
     ) : (
-      <Login setupRequired={status.setupRequired} onLogin={refresh} />
+      <Login setupRequired={status.setupRequired} onLogin={refresh} logoDataUrl={logoDataUrl} />
     );
   if (!status || (status.authenticated && !hydrated))
     return (
       <div className="workspace-loading">
-        <Mark />
+        {logoDataUrl ? (
+          <img className="workspace-loading-logo" src={logoDataUrl} alt="Relay" />
+        ) : (
+          <Mark />
+        )}
         <p>{toast || 'Loading your workspace…'}</p>
         {toast && (
           <button className="button" onClick={refresh}>
@@ -977,11 +1022,18 @@ export default function Workspace() {
             e.preventDefault();
             newChat();
           }}
+          aria-label="Start a new Relay conversation"
         >
-          <Mark />
-          <span>
-            relay<span className="brand-period">.</span>
-          </span>
+          {logoDataUrl ? (
+            <img className="brand-logo-image" src={logoDataUrl} alt="Relay" />
+          ) : (
+            <>
+              <Mark />
+              <span>
+                relay<span className="brand-period">.</span>
+              </span>
+            </>
+          )}
         </a>
         <button className="new-chat" onClick={() => newChat()}>
           <Plus size={17} />
@@ -1208,7 +1260,11 @@ export default function Workspace() {
                     YOUR EVERYDAY, A LITTLE EASIER
                   </div>
                   <div className="hero-mark">
-                    <Mark />
+                    {logoDataUrl ? (
+                      <img className="hero-logo-image" src={logoDataUrl} alt="" />
+                    ) : (
+                      <Mark />
+                    )}
                     <span className="mark-spark spark-one" />
                     <span className="mark-spark spark-two" />
                   </div>
@@ -1343,7 +1399,15 @@ export default function Workspace() {
                   {messages.map((message) => (
                     <div key={message.id} className={`message ${message.role}`}>
                       <div className="message-avatar">
-                        {message.role === 'assistant' ? <Mark small /> : <span>Y</span>}
+                        {message.role === 'assistant' ? (
+                          logoDataUrl ? (
+                            <img className="assistant-logo-image" src={logoDataUrl} alt="" />
+                          ) : (
+                            <Mark small />
+                          )
+                        ) : (
+                          <span>Y</span>
+                        )}
                       </div>
                       <div className="message-main">
                         <div className="message-author">
@@ -1479,7 +1543,11 @@ export default function Workspace() {
                   {busy && (
                     <div className="message assistant">
                       <div className="message-avatar">
-                        <Mark small />
+                        {logoDataUrl ? (
+                          <img className="assistant-logo-image" src={logoDataUrl} alt="" />
+                        ) : (
+                          <Mark small />
+                        )}
                       </div>
                       <div className="message-main">
                         <div className="message-author">Relay</div>
@@ -1743,9 +1811,13 @@ export default function Workspace() {
               key={`${status.provider}-${status.model}`}
               status={status}
               theme={theme}
-              onThemeChange={setTheme}
+              onThemeChange={selectTheme}
               appearance={appearance}
               onAppearanceChange={setAppearance}
+              logoDataUrl={logoDataUrl}
+              onLogoChange={setLogoDataUrl}
+              onSaveBranding={() => void saveBranding()}
+              brandingSaving={brandingSaving}
               refresh={refresh}
               notify={notify}
               initialTab={settingsTab}
@@ -2219,37 +2291,39 @@ function ChatGitHubRepoPicker({
 }) {
   const [repositories, setRepositories] = useState<GitHubRepositoryOption[]>([]);
   const [selection, setSelection] = useState<GitHubRepositoryOption | null>(null);
+  const [installationId, setInstallationId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const loadRepositories = useCallback(async () => {
+    if (!status?.githubAccount) return;
+    setLoading(true);
+    setError('');
+    try {
+      const result = await api<{
+        installationId: number | null;
+        repositories: GitHubRepositoryOption[];
+        selection: GitHubRepositoryOption | null;
+      }>('/api/github/repositories', undefined, 'GET');
+      setInstallationId(result.installationId);
+      setRepositories(result.repositories);
+      setSelection(result.selection);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [status?.githubAccount]);
   useEffect(() => {
     if (!status?.githubAccount) {
       setRepositories([]);
       setSelection(null);
+      setInstallationId(null);
+      setError('');
       return;
     }
-    let cancelled = false;
-    setLoading(true);
-    api<{
-      repositories: GitHubRepositoryOption[];
-      selection: GitHubRepositoryOption | null;
-    }>('/api/github/repositories', undefined, 'GET')
-      .then((result) => {
-        if (cancelled) return;
-        setRepositories(result.repositories);
-        setSelection(result.selection);
-        setError('');
-      })
-      .catch((e) => {
-        if (!cancelled) setError((e as Error).message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [status?.githubAccount]);
+    void loadRepositories();
+  }, [status?.githubAccount, loadRepositories]);
   async function chooseRepository(event: React.ChangeEvent<HTMLSelectElement>) {
     const repositoryId = Number(event.target.value);
     if (!repositoryId) return;
@@ -2277,6 +2351,35 @@ function ChatGitHubRepoPicker({
       >
         <Github size={14} /> GitHub
       </button>
+    );
+  if (!loading && !repositories.length)
+    return (
+      <div className="chat-github-empty" title={error || undefined}>
+        <Github size={14} />
+        <span>{error ? 'GitHub needs attention' : 'No writable repos'}</span>
+        <button type="button" onClick={() => void loadRepositories()} disabled={busy || loading}>
+          <RefreshCw size={12} /> Refresh
+        </button>
+        {installationId ? (
+          <a
+            href={`https://github.com/settings/installations/${installationId}`}
+            target="_blank"
+            rel="noreferrer"
+            title="Grant Relay access to repositories"
+          >
+            Manage access
+          </a>
+        ) : (
+          <button type="button" onClick={onOpenSettings}>
+            Settings
+          </button>
+        )}
+        {error && (
+          <span className="chat-github-error" role="status">
+            {error}
+          </span>
+        )}
+      </div>
     );
   return (
     <label
@@ -2316,6 +2419,7 @@ function GitHubConnectionCard({
 }) {
   const [repositories, setRepositories] = useState<GitHubRepositoryOption[]>([]);
   const [selection, setSelection] = useState<GitHubRepositoryOption | null>(null);
+  const [installationId, setInstallationId] = useState<number | null>(null);
   const [account, setAccount] = useState<string | null>(status?.githubAccount || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -2327,10 +2431,12 @@ function GitHubConnectionCard({
       const data = await api<{
         connected: boolean;
         account: string | null;
+        installationId: number | null;
         repositories: GitHubRepositoryOption[];
         selection: GitHubRepositoryOption | null;
       }>('/api/github/repositories', undefined, 'GET');
       setAccount(data.account);
+      setInstallationId(data.installationId);
       setRepositories(data.repositories);
       setSelection(data.selection);
     } catch (e) {
@@ -2383,6 +2489,7 @@ function GitHubConnectionCard({
       setAccount(null);
       setRepositories([]);
       setSelection(null);
+      setInstallationId(null);
       await refresh();
       notify('GitHub disconnected from Relay.');
     } catch (e) {
@@ -2411,22 +2518,56 @@ function GitHubConnectionCard({
             <span className="status-dot" />
             Connected as {account}
           </div>
-          <label className="github-repository-select">
-            <span>Repository Relay can use</span>
-            <select
-              value={selection?.id || ''}
-              onChange={(event) => void selectRepository(event)}
-              disabled={loading || busy || !repositories.length}
-            >
-              <option value="">{loading ? 'Loading repositories…' : 'Choose a repository'}</option>
-              {repositories.map((repository) => (
-                <option key={repository.id} value={repository.id}>
-                  {repository.fullName}
-                  {repository.private ? ' · Private' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
+          {repositories.length ? (
+            <label className="github-repository-select">
+              <span>Repository Relay can use</span>
+              <select
+                value={selection?.id || ''}
+                onChange={(event) => void selectRepository(event)}
+                disabled={loading || busy}
+              >
+                <option value="">Choose a repository</option>
+                {repositories.map((repository) => (
+                  <option key={repository.id} value={repository.id}>
+                    {repository.fullName}
+                    {repository.private ? ' · Private' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="github-empty-state">
+              <div>
+                <strong>
+                  {loading ? 'Checking repository access…' : 'No writable repositories found'}
+                </strong>
+                <p>
+                  {error ||
+                    'Grant Relay access to at least one repository with Contents: Read and write permissions.'}
+                </p>
+              </div>
+              <div className="github-empty-actions">
+                <button
+                  className="button small"
+                  type="button"
+                  onClick={() => void load()}
+                  disabled={loading}
+                >
+                  <RefreshCw size={13} /> Refresh
+                </button>
+                {installationId && (
+                  <a
+                    className="button small"
+                    href={`https://github.com/settings/installations/${installationId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <ExternalLink size={13} /> Manage access
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
           {selection && (
             <div className="github-branch-note">
               New code is proposed on a separate <code>relay/…</code> branch from{' '}
@@ -2853,9 +2994,11 @@ function WorkflowModal({
 function Login({
   setupRequired,
   onLogin,
+  logoDataUrl,
 }: {
   setupRequired?: boolean;
   onLogin: () => Promise<void>;
+  logoDataUrl: string | null;
 }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -2864,9 +3007,15 @@ function Login({
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="brand">
-          <Mark />
-          <span>relay.</span>
+        <div className="brand login-brand">
+          {logoDataUrl ? (
+            <img className="brand-logo-image" src={logoDataUrl} alt="Relay" />
+          ) : (
+            <>
+              <Mark />
+              <span>relay.</span>
+            </>
+          )}
         </div>
         <h1>{setupRequired ? 'One more thing to feel at home.' : 'Your workspace is waiting.'}</h1>
         <p>
@@ -2929,7 +3078,15 @@ function Login({
   );
 }
 
-function InviteSetup({ token, onComplete }: { token: string; onComplete: () => Promise<void> }) {
+function InviteSetup({
+  token,
+  onComplete,
+  logoDataUrl,
+}: {
+  token: string;
+  onComplete: () => Promise<void>;
+  logoDataUrl: string | null;
+}) {
   const [valid, setValid] = useState<boolean | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -2962,9 +3119,15 @@ function InviteSetup({ token, onComplete }: { token: string; onComplete: () => P
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="brand">
-          <Mark />
-          <span>relay.</span>
+        <div className="brand login-brand">
+          {logoDataUrl ? (
+            <img className="brand-logo-image" src={logoDataUrl} alt="Relay" />
+          ) : (
+            <>
+              <Mark />
+              <span>relay.</span>
+            </>
+          )}
         </div>
         <h1>Create your Relay account.</h1>
         <p>

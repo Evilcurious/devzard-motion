@@ -1,5 +1,6 @@
 import type { WriteAction } from './tools';
 import type { GeneratedArtifact } from './generated-files';
+import type { WorkspaceBranding } from './branding';
 export type Page =
   'chat' | 'workflows' | 'models' | 'connections' | 'activity' | 'analytics' | 'settings' | 'users';
 export type Status = {
@@ -35,6 +36,7 @@ export type Status = {
   connectionError?: string;
   baseURL?: string;
   keySaved?: boolean;
+  branding?: WorkspaceBranding;
 };
 export type Attachment = { name: string; text: string; pages?: number; truncated?: boolean };
 export type Proposal = WriteAction & {

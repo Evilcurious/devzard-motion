@@ -18,12 +18,20 @@ export function Settings({
   isAdmin = true,
   appearance,
   onAppearanceChange,
+  logoDataUrl,
+  onLogoChange,
+  onSaveBranding,
+  brandingSaving,
 }: {
   status: Status;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
   appearance: Appearance;
   onAppearanceChange: (appearance: Appearance) => void;
+  logoDataUrl: string | null;
+  onLogoChange: (logoDataUrl: string | null) => void;
+  onSaveBranding: () => void;
+  brandingSaving: boolean;
   refresh: () => Promise<void>;
   notify: (text: string) => void;
   initialTab?: string;
@@ -37,8 +45,8 @@ export function Settings({
         <h1>Settings</h1>
         <p>
           {isAdmin
-            ? 'Manage workspace preferences, data, providers, integrations, and tools in one place.'
-            : 'Manage your personal appearance preferences.'}
+            ? 'Set the shared workspace theme, brand, integrations, and data controls.'
+            : 'Your workspace appearance is managed centrally by an administrator.'}
         </p>
       </div>
       {isAdmin && (
@@ -69,6 +77,11 @@ export function Settings({
           onChange={onThemeChange}
           appearance={appearance}
           onAppearanceChange={onAppearanceChange}
+          logoDataUrl={logoDataUrl}
+          onLogoChange={onLogoChange}
+          onSave={onSaveBranding}
+          saving={brandingSaving}
+          isAdmin={isAdmin}
           database={!!status.databaseConfigured}
           storageName={databaseLabel(status)}
         />
