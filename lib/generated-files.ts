@@ -59,3 +59,12 @@ export const generatedArtifactSchema = z
 
 export type GeneratedFile = z.infer<typeof generatedFileSchema>;
 export type GeneratedArtifact = z.infer<typeof generatedArtifactSchema>;
+
+export function findHtmlPreviewFile(files: GeneratedFile[]) {
+  const htmlFiles = files.filter((file) => /\.html?$/i.test(file.path));
+  return (
+    htmlFiles.find((file) => file.path.toLowerCase() === 'index.html') ||
+    htmlFiles.find((file) => /(?:^|\/)index\.html$/i.test(file.path)) ||
+    htmlFiles[0]
+  );
+}

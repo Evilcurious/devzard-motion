@@ -60,7 +60,7 @@ import type {
   RoutingStrategy,
 } from '@/lib/model-router';
 import { isImageGenerationPrompt } from '@/lib/media-intent';
-import type { GeneratedArtifact } from '@/lib/generated-files';
+import { findHtmlPreviewFile, type GeneratedArtifact } from '@/lib/generated-files';
 import { createZip } from '@/lib/zip';
 import type {
   Activity,
@@ -189,9 +189,9 @@ export default function Workspace() {
   const fileRequest = useRef(0);
   const active = conversations.find((c) => c.id === currentId);
   const messages = active?.messages || [];
-  const previewHtml = previewSession?.artifact.files.find(
-    (file) => file.path === 'index.html',
-  )?.content;
+  const previewHtml = previewSession
+    ? findHtmlPreviewFile(previewSession.artifact.files)?.content
+    : undefined;
   const notify = useCallback((message: string) => setToast(message), []);
   const closeModal = useCallback(() => setModal(null), []);
   const downloadArtifact = useCallback(
@@ -213,8 +213,8 @@ export default function Workspace() {
   );
   const startPreview = useCallback(
     (artifact: GeneratedArtifact) => {
-      if (!artifact.files.some((file) => file.path === 'index.html')) {
-        notify('This bundle does not contain a root index.html for preview.');
+      if (!findHtmlPreviewFile(artifact.files)) {
+        notify('This bundle does not contain an HTML file to preview.');
         return;
       }
       setPreviewSeconds(300);
@@ -724,6 +724,12 @@ export default function Workspace() {
         if (typeof result.autoPick === 'boolean') setRouterAutoPick(result.autoPick);
       }
       updateMessages(id, (old) => [...old, { id: uid(), role: 'assistant', ...assistantResult }]);
+      if (mode === 'chat' && Array.isArray(result.artifacts)) {
+        const htmlArtifact = (result.artifacts as GeneratedArtifact[]).find((artifact) =>
+          findHtmlPreviewFile(artifact.files),
+        );
+        if (htmlArtifact) startPreview(htmlArtifact);
+      }
     } catch (error) {
       const aborted = error instanceof Error && error.name === 'AbortError';
       updateMessages(id, (old) => [
@@ -1529,9 +1535,7 @@ export default function Workspace() {
                           {message.content}
                         </div>
                         {message.artifacts?.map((artifact) => {
-                          const hasPreview = artifact.files.some(
-                            (file) => file.path === 'index.html',
-                          );
+                          const hasPreview = !!findHtmlPreviewFile(artifact.files);
                           return (
                             <section className="generated-artifact" key={artifact.id}>
                               <div className="generated-artifact-heading">
@@ -1555,7 +1559,7 @@ export default function Workspace() {
                                     className="button small"
                                     onClick={() => startPreview(artifact)}
                                   >
-                                    <Eye size={14} /> Preview site · 5 min
+                                    <Eye size={14} /> Preview HTML · 5 min
                                   </button>
                                 )}
                               </div>
@@ -2203,12 +2207,12 @@ export default function Workspace() {
         <Modal
           wide
           title={previewSession.artifact.name}
-          subtitle={`Isolated website preview · expires in ${Math.floor(previewSeconds / 60)}:${String(previewSeconds % 60).padStart(2, '0')}`}
+          subtitle={`Sandboxed HTML preview · expires in ${Math.floor(previewSeconds / 60)}:${String(previewSeconds % 60).padStart(2, '0')}`}
           onClose={() => setPreviewSession(null)}
         >
           <iframe
             className="website-preview-frame"
-            title={`${previewSession.artifact.name} website preview`}
+            title={`${previewSession.artifact.name} HTML preview`}
             srcDoc={sandboxedPreviewDocument(previewHtml)}
             sandbox="allow-scripts"
             referrerPolicy="no-referrer"

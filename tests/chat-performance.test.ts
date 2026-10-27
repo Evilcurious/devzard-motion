@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { needsDynamicModelRouting, shouldLoadRepositoryContext } from '../lib/chat-performance';
+import {
+  isFileBundleRequest,
+  needsDynamicModelRouting,
+  shouldLoadRepositoryContext,
+} from '../lib/chat-performance';
 
 test('manual model selection skips automatic provider discovery', () => {
   assert.equal(needsDynamicModelRouting({ strategy: 'auto', autoPick: false }), false);
@@ -9,6 +13,30 @@ test('manual model selection skips automatic provider discovery', () => {
   assert.equal(needsDynamicModelRouting({ strategy: 'auto-fusion', autoPick: false }), true);
   assert.equal(needsDynamicModelRouting({ strategy: 'auto', autoPick: true }), true);
   assert.equal(needsDynamicModelRouting({ strategy: 'auto' }), true);
+});
+
+test('explicit ZIP and website creation requests are routed through the file bundle tool', () => {
+  assert.equal(
+    isFileBundleRequest([{ role: 'user', content: 'Create a ZIP file of a todo app.' }]),
+    true,
+  );
+  assert.equal(
+    isFileBundleRequest([{ role: 'user', content: 'Build me a website for my bakery.' }]),
+    true,
+  );
+  assert.equal(
+    isFileBundleRequest([{ role: 'user', content: 'I need a ZIP file of my project.' }]),
+    true,
+  );
+  assert.equal(isFileBundleRequest([{ role: 'user', content: 'Create a small todo app.' }]), true);
+  assert.equal(
+    isFileBundleRequest([{ role: 'user', content: 'Explain how ZIP compression works.' }]),
+    false,
+  );
+  assert.equal(
+    isFileBundleRequest([{ role: 'user', content: 'My agent is not making ZIP files.' }]),
+    false,
+  );
 });
 
 test('repository context is only requested for recent repository-oriented chats', () => {

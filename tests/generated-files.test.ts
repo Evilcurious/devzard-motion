@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generatedFileBundleSchema } from '../lib/generated-files';
+import { findHtmlPreviewFile, generatedFileBundleSchema } from '../lib/generated-files';
 import { createZip } from '../lib/zip';
 
 test('generated bundles accept safe source files and website previews', () => {
@@ -45,6 +45,19 @@ test('generated bundles reject traversal, secret paths, duplicates, and oversize
     }).success,
     false,
   );
+});
+
+test('HTML preview selection prefers root or nested index.html, then any HTML file', () => {
+  const files = [
+    { path: 'pages/demo.html', content: '<h1>Demo</h1>' },
+    { path: 'site/index.html', content: '<h1>Site</h1>' },
+  ];
+  assert.equal(findHtmlPreviewFile(files)?.path, 'site/index.html');
+  assert.equal(
+    findHtmlPreviewFile([{ path: 'preview.htm', content: '<h1>Preview</h1>' }])?.path,
+    'preview.htm',
+  );
+  assert.equal(findHtmlPreviewFile([{ path: 'README.md', content: 'No preview' }]), undefined);
 });
 
 test('ZIP writer creates valid UTF-8 stored entries with a central directory', () => {
