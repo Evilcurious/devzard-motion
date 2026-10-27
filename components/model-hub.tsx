@@ -37,6 +37,7 @@ type ModelProvider = {
   availableTokens: number | null;
   supportsTools: boolean | null;
   isFree: boolean;
+  accountCreditsAvailable?: boolean;
 };
 type Model = {
   key: string;
@@ -82,6 +83,21 @@ const providerNames: Record<string, string> = {
 const targetKey = (target: Target) => `${target.providerId}::${target.modelId}`;
 const formatTokens = (n: number | null) =>
   n === null ? 'Not reported' : `${n.toLocaleString()} tokens`;
+const availabilityLabel = (
+  providerId: string,
+  isFree: boolean,
+  tokens: number | null,
+  accountCreditsAvailable = false,
+) =>
+  isFree
+    ? providerId === 'ollama-cloud'
+      ? 'Free usage credits'
+      : 'Free'
+    : tokens !== null
+      ? formatTokens(tokens)
+      : accountCreditsAvailable
+        ? 'Account credits available'
+        : 'Not reported';
 const catalogTargets = (models: Model[]): Target[] =>
   models.flatMap((model) =>
     model.providers.map((provider) => ({
@@ -91,6 +107,7 @@ const catalogTargets = (models: Model[]): Target[] =>
       contextTokens: provider.contextTokens,
       supportsTools: provider.supportsTools,
       isFree: provider.isFree,
+      accountCreditsAvailable: provider.accountCreditsAvailable,
     })),
   );
 const enrichTarget = (target: Target, models: Model[]): Target =>
@@ -184,7 +201,7 @@ export function ModelHub({
           setAutoPick(true);
         } else
           setError(
-            'No models are currently marked free, reporting positive remaining tokens, or (for OpenRouter) backed by positive account/key credits. Refresh model lists or check API access.',
+            'No models currently meet the eligibility checks: explicit free access, positive model quota, positive account-credit metadata, or Ollama’s documented free-usage models. Refresh model lists or check API access.',
           );
       }
       return result;
@@ -229,6 +246,7 @@ export function ModelHub({
       contextTokens: provider.contextTokens,
       supportsTools: provider.supportsTools,
       isFree: provider.isFree,
+      accountCreditsAvailable: provider.accountCreditsAvailable,
     };
     setBusy('provider-model');
     setError('');
@@ -317,7 +335,7 @@ export function ModelHub({
     const best = rankRouterTargets(catalogTargets(catalog?.models || []), 'auto')[0];
     if (!best) {
       setError(
-        'No eligible models were found. Only API-listed models marked free, reporting positive remaining tokens, or (for OpenRouter) backed by positive account/key credits are shown. Refresh the catalog or connect another provider.',
+        'No eligible models were found. Relay checks explicit free access, positive model quota, positive account-credit metadata, and Ollama’s documented free-usage models. Refresh the catalog or connect another provider.',
       );
       return;
     }
@@ -671,6 +689,7 @@ export function ModelHub({
                       availableTokens: model.providers[0].availableTokens,
                       contextTokens: model.providers[0].contextTokens,
                       supportsTools: model.providers[0].supportsTools,
+                      accountCreditsAvailable: model.providers[0].accountCreditsAvailable,
                     });
                     setAutoPick(false);
                   }}
@@ -697,10 +716,16 @@ export function ModelHub({
                     <small>Availability</small>
                     <strong>
                       {model.isFree
-                        ? 'Free'
+                        ? availabilityLabel(
+                            model.providers.find((provider) => provider.isFree)?.id || '',
+                            true,
+                            model.availableTokens,
+                          )
                         : model.availableTokens !== null
                           ? formatTokens(model.availableTokens)
-                          : 'Account credits available'}
+                          : model.providers.some((provider) => provider.accountCreditsAvailable)
+                            ? 'Account credits available'
+                            : 'Not reported'}
                     </strong>
                   </span>
                   <span className="model-check">
@@ -729,6 +754,7 @@ export function ModelHub({
                             availableTokens: p.availableTokens,
                             contextTokens: p.contextTokens,
                             supportsTools: p.supportsTools,
+                            accountCreditsAvailable: p.accountCreditsAvailable,
                           });
                           setAutoPick(false);
                         }}
@@ -818,9 +844,10 @@ export function ModelHub({
         </div>
         {strategy === 'auto' && (
           <p className="route-quota-note">
-            Only API-listed models marked free or reporting positive remaining tokens are available;
-            OpenRouter paid models also require positive account and API-key credits. A failed or
-            exhausted model is skipped for the next eligible choice.
+            Only API-listed models with explicit free access, positive model quota, or positive
+            account-credit metadata are available. Ollama’s documented free-usage models and
+            OpenRouter’s live account/key credits are also checked. A failed or exhausted model is
+            skipped for the next eligible choice.
           </p>
         )}
         {strategy === 'fusion' && (
@@ -838,6 +865,7 @@ export function ModelHub({
                     contextTokens: provider.contextTokens,
                     supportsTools: provider.supportsTools,
                     isFree: provider.isFree,
+                    accountCreditsAvailable: provider.accountCreditsAvailable,
                   };
                   const checked = fusionModels.some(
                     (item) => targetKey(item) === targetKey(target),
@@ -856,7 +884,12 @@ export function ModelHub({
                       <span>{provider.name}</span>
                       <small>{provider.modelId}</small>
                       <small>
-                        {provider.isFree ? 'Free' : formatTokens(provider.availableTokens)}
+                        {availabilityLabel(
+                          provider.id,
+                          provider.isFree,
+                          provider.availableTokens,
+                          provider.accountCreditsAvailable,
+                        )}
                       </small>
                     </label>
                   );
@@ -917,7 +950,12 @@ export function ModelHub({
                     <span className="model-metric">
                       <small>Availability</small>
                       <strong>
-                        {provider.isFree ? 'Free' : formatTokens(provider.availableTokens)}
+                        {availabilityLabel(
+                          provider.id,
+                          provider.isFree,
+                          provider.availableTokens,
+                          provider.accountCreditsAvailable,
+                        )}
                       </strong>
                     </span>
                     <span className="button small">
@@ -936,8 +974,8 @@ export function ModelHub({
                 </strong>
                 <span>
                   {listedCount
-                    ? 'The API returned model names, but none had explicit free access or positive remaining quota. Relay keeps them hidden from selection until the provider reports availability.'
-                    : 'The provider key was saved, but no models were returned with explicit free access or positive remaining quota. Check the key and provider access, then refresh.'}
+                    ? 'The API returned model names, but none had explicit free access, positive per-model quota, positive account-credit metadata, or a documented Ollama free-usage allowance. Relay keeps them out of selection until an availability signal is found.'
+                    : 'The provider key was saved, but no eligible models were returned. Check the key and provider access, then refresh.'}
                 </span>
               </div>
             );

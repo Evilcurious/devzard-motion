@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   canonicalModelKey,
   getRouterProvider,
+  hasPositiveAccountCredits,
   rankRouterTargets,
   selectRouterCandidates,
   routerModelIds,
@@ -88,6 +89,49 @@ test('catalog normalizer accepts bounded OpenAI arrays and wrapper shapes withou
   assert.equal(JSON.stringify(result).includes('secret'), false);
   assert.equal(routerModelIds({ models: [{ id: 'model-y' }] })[0]?.id, 'model-y');
   assert.equal(routerModelIds('not json').length, 0);
+});
+
+test('model normalization recognizes quota metadata nested across provider response formats', () => {
+  assert.deepEqual(
+    routerModelIds({
+      results: [
+        {
+          model: 'vendor/allocated-model',
+          metadata: { context_window: '64000' },
+          quota: { remaining_tokens: '1250' },
+          availability: { supportsTools: true },
+        },
+      ],
+    }),
+    [
+      {
+        id: 'vendor/allocated-model',
+        name: 'vendor/allocated-model',
+        contextTokens: 64000,
+        availableTokens: 1250,
+        supportsTools: true,
+        isFree: false,
+      },
+    ],
+  );
+});
+
+test('provider account availability requires an explicit positive balance or remaining-quota signal', () => {
+  assert.equal(hasPositiveAccountCredits({ usage: { credits_remaining: 12.5 } }), true);
+  assert.equal(hasPositiveAccountCredits({ free_usage: { used_percent: 3.6 } }), true);
+  assert.equal(hasPositiveAccountCredits({ quota: { tokens_remaining: 42 } }), true);
+  assert.equal(
+    hasPositiveAccountCredits({ data: { total_credits: '10', total_usage: '2' } }),
+    true,
+  );
+  assert.equal(hasPositiveAccountCredits({ quota: { remaining_percent: 0 } }), false);
+  assert.equal(hasPositiveAccountCredits({ usage: { used_percent: 100 } }), false);
+  assert.equal(hasPositiveAccountCredits({ usage: { percent_used: 3.6 } }), true);
+  assert.equal(
+    hasPositiveAccountCredits({ data: [{ id: 'model', quota: { remaining_tokens: 100 } }] }),
+    false,
+    'per-model quota must not be promoted to an account-wide balance',
+  );
 });
 
 test('routing excludes reported zero quota and ranks only from provider or observed metrics', () => {

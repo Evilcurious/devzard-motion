@@ -2,6 +2,7 @@ import { getProviderKeys } from './provider-credentials';
 import {
   canonicalModelKey,
   getRouterProvider,
+  hasPositiveAccountCredits,
   routerModelIds,
   routerProviders,
   type RouterModel,
@@ -11,6 +12,7 @@ import {
 type ProviderModel = ReturnType<typeof routerModelIds>[number] & {
   providerId: RouterProviderId;
   providerName: string;
+  accountCreditsAvailable?: boolean;
 };
 export type RouterCatalog = {
   models: RouterModel[];
@@ -35,6 +37,22 @@ const catalogCache = globalThis as CachedCatalog;
 type CooldownGlobal = typeof globalThis & { relayRouterCooldowns?: Map<string, number> };
 const cooldownCache = globalThis as CooldownGlobal;
 const CACHE_MS = 45_000;
+const OLLAMA_FREE_USAGE_MODELS = new Set([
+  'beam',
+  'gemma4:31b',
+  'gpt-oss:120b',
+  'gpt-oss:20b',
+  'nemotron-3-nano:30b',
+  'nemotron-3-super',
+  'nemotron-3-ultra',
+]);
+
+function isOllamaFreeUsageModel(modelId: string) {
+  const id = canonicalModelKey(modelId).replace(/^library\//, '');
+  return (
+    OLLAMA_FREE_USAGE_MODELS.has(id) || OLLAMA_FREE_USAGE_MODELS.has(id.replace(/:latest$/, ''))
+  );
+}
 
 export function markRouterTargetDepleted(target: {
   providerId: RouterProviderId;
@@ -96,6 +114,7 @@ export async function discoverOllamaCloudProvider(
       if (!(response.headers.get('content-type') || '').includes('json'))
         throw new Error('Ollama Cloud returned a non-JSON model list.');
       const body = await response.json();
+      const accountCreditsAvailable = hasPositiveAccountCredits(body);
       for (const model of routerModelIds(body)) {
         const previous = models.get(model.id);
         models.set(model.id, {
@@ -104,7 +123,12 @@ export async function discoverOllamaCloudProvider(
           contextTokens: model.contextTokens ?? previous?.contextTokens ?? null,
           availableTokens: model.availableTokens ?? previous?.availableTokens ?? null,
           supportsTools: model.supportsTools ?? previous?.supportsTools ?? null,
-          isFree: model.isFree || previous?.isFree || false,
+          // Ollama documents these seven models as eligible for its free usage credits.
+          // The authenticated account model listing confirms the model is accessible;
+          // provider 402 errors still trigger the existing depletion cooldown.
+          isFree: model.isFree || previous?.isFree || isOllamaFreeUsageModel(model.id) || false,
+          accountCreditsAvailable:
+            accountCreditsAvailable || previous?.accountCreditsAvailable || false,
           providerId: 'ollama-cloud',
           providerName: provider.name,
         });
@@ -145,6 +169,7 @@ export async function discoverGeminiProvider(
       if (!(response.headers.get('content-type') || '').includes('json'))
         throw new Error('Google Gemini API returned a non-JSON model list.');
       const body = await response.json();
+      const accountCreditsAvailable = hasPositiveAccountCredits(body);
       const entries = Array.isArray(body?.models) ? body.models : [];
       for (const item of entries.slice(0, 2000)) {
         if (!item || typeof item !== 'object') continue;
@@ -173,7 +198,12 @@ export async function discoverGeminiProvider(
           ],
         })[0];
         if (normalized)
-          models.push({ ...normalized, providerId: 'gemini', providerName: provider.name });
+          models.push({
+            ...normalized,
+            providerId: 'gemini',
+            providerName: provider.name,
+            accountCreditsAvailable,
+          });
       }
       if (typeof body?.nextPageToken !== 'string' || !body.nextPageToken) break;
       if (body.nextPageToken.length > 4096)
@@ -240,10 +270,12 @@ async function discoverProvider(providerId: RouterProviderId): Promise<ProviderL
       if (!contentType.includes('json'))
         throw new Error(`${provider.name} returned a non-JSON model list.`);
       const body = await response.json();
+      const accountCreditsAvailable = hasPositiveAccountCredits(body);
       const models = routerModelIds(body).map((model) => ({
         ...model,
         providerId: provider.id,
         providerName: provider.name,
+        accountCreditsAvailable,
       }));
       return { providerId, error: null, models };
     } catch (error) {
@@ -332,7 +364,15 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
       if (isRouterTargetDepleted({ providerId: model.providerId, modelId: model.id })) continue;
       const free = model.isFree === true;
       const hasTokens = model.availableTokens !== null && model.availableTokens > 0;
-      if (!free && !hasTokens && !(result.providerId === 'openrouter' && openRouterPaid)) continue;
+      const accountCredits =
+        model.accountCreditsAvailable === true && result.providerId !== 'openrouter';
+      if (
+        !free &&
+        !hasTokens &&
+        !accountCredits &&
+        !(result.providerId === 'openrouter' && openRouterPaid)
+      )
+        continue;
       if (model.availableTokens === 0) continue;
       eligibleCounts.set(result.providerId, (eligibleCounts.get(result.providerId) || 0) + 1);
       const key = canonicalModelKey(model.id);
@@ -345,6 +385,9 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
         availableTokens: model.availableTokens,
         supportsTools: model.supportsTools,
         isFree: model.isFree,
+        accountCreditsAvailable:
+          (model.accountCreditsAvailable === true && result.providerId !== 'openrouter') ||
+          (result.providerId === 'openrouter' && openRouterPaid),
       };
       if (existing) {
         existing.providers.push(providerEntry);
@@ -380,7 +423,7 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
     })),
     refreshedAt: new Date().toISOString(),
     metricsNote:
-      'Only authenticated model listings explicitly marked free, reporting positive remaining tokens, or (for OpenRouter) backed by positive account/key credits are shown. Token and credit values are provider-reported snapshots.',
+      'Only authenticated model listings explicitly marked free, reporting positive per-model quota, documenting Ollama free-usage-credit eligibility, or carrying a positive account-credit signal are shown. Account credit signals are read from common explicit remaining/balance fields in provider responses; OpenRouter is also checked through its live balance and key endpoints. Ollama free-usage credits are account-level and can be exhausted; provider quota errors temporarily remove a model.',
   };
   catalogCache.relayRouterCatalog = { at: Date.now(), result };
   return withoutDepletedModels(result);

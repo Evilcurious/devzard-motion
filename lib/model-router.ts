@@ -58,6 +58,7 @@ export const routerProviders: RouterProvider[] = [
     baseURL: 'https://ollama.com/v1',
     keyRequired: true,
     docsURL: 'https://ollama.com/settings/keys',
+    note: 'Recognizes Ollama’s documented free-usage-credit models when listed for your key; those models consume account free credits.',
   },
   {
     id: 'kilo',
@@ -188,6 +189,7 @@ export type RouterModel = {
     availableTokens: number | null;
     supportsTools: boolean | null;
     isFree: boolean;
+    accountCreditsAvailable?: boolean;
   }>;
   contextTokens: number | null;
   availableTokens: number | null;
@@ -202,6 +204,7 @@ export type RouterTarget = {
   contextTokens?: number | null;
   supportsTools?: boolean | null;
   isFree?: boolean;
+  accountCreditsAvailable?: boolean;
 };
 export type RouterSelection = RouterTarget & {
   strategy: RouterStrategy;
@@ -290,6 +293,119 @@ export function canonicalModelKey(modelId: string): string {
   return modelId.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
 }
 
+const POSITIVE_CREDIT_FIELDS = new Set([
+  'availablebalance',
+  'availablecredits',
+  'availabletokens',
+  'balance',
+  'creditsavailable',
+  'creditsremaining',
+  'limitremaining',
+  'quotaavailable',
+  'quotaremaining',
+  'remainingbalance',
+  'remainingcredits',
+  'remainingquota',
+  'remainingtokens',
+  'tokensremaining',
+]);
+const POSITIVE_REMAINING_PERCENT_FIELDS = new Set([
+  'creditsremainingpercent',
+  'remainingpercent',
+  'remainingpercentage',
+  'quotaremainingpercent',
+  'quotaremainingpercentage',
+]);
+const ACCOUNT_QUOTA_CONTAINERS = new Set([
+  'account',
+  'balance',
+  'billing',
+  'credits',
+  'data',
+  'freecredits',
+  'freeusage',
+  'limit',
+  'limits',
+  'meta',
+  'metadata',
+  'plan',
+  'quota',
+  'usage',
+]);
+
+function finiteNumber(value: unknown) {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Detect explicit positive provider/account credit fields across common response wrappers. */
+export function hasPositiveAccountCredits(body: unknown): boolean {
+  const pending: Array<{ value: unknown; depth: number; quotaContext: boolean }> = [
+    { value: body, depth: 0, quotaContext: false },
+  ];
+  const seen = new Set<object>();
+  while (pending.length) {
+    const current = pending.pop()!;
+    if (!current.value || typeof current.value !== 'object' || Array.isArray(current.value))
+      continue;
+    if (seen.has(current.value)) continue;
+    seen.add(current.value);
+    const record = current.value as Record<string, unknown>;
+    const normalizedKeys = new Map(
+      Object.entries(record).map(([key, value]) => [
+        key.toLowerCase().replace(/[^a-z0-9]/g, ''),
+        value,
+      ]),
+    );
+    for (const [key, value] of normalizedKeys) {
+      const number = finiteNumber(value);
+      if (number !== null && POSITIVE_CREDIT_FIELDS.has(key) && number > 0) return true;
+      if (
+        number !== null &&
+        POSITIVE_REMAINING_PERCENT_FIELDS.has(key) &&
+        number > 0 &&
+        number <= 100
+      )
+        return true;
+    }
+    const totalCredits = finiteNumber(normalizedKeys.get('totalcredits'));
+    const totalUsage = finiteNumber(normalizedKeys.get('totalusage'));
+    if (totalCredits !== null && totalUsage !== null && totalCredits - totalUsage > 0) return true;
+    if (current.quotaContext) {
+      const usagePercent = finiteNumber(
+        normalizedKeys.get('usagepercent') ??
+          normalizedKeys.get('usedpercent') ??
+          normalizedKeys.get('percentused') ??
+          normalizedKeys.get('percentageused') ??
+          normalizedKeys.get('usagepercentage'),
+      );
+      if (usagePercent !== null && usagePercent >= 0 && usagePercent < 100) return true;
+      const remaining = finiteNumber(normalizedKeys.get('remaining'));
+      const limit = finiteNumber(normalizedKeys.get('limit'));
+      const used = finiteNumber(normalizedKeys.get('used'));
+      const total = finiteNumber(normalizedKeys.get('total'));
+      if (remaining !== null && remaining > 0) return true;
+      if (limit !== null && used !== null && limit - used > 0) return true;
+      if (total !== null && used !== null && total - used > 0) return true;
+    }
+    if (current.depth < 4)
+      for (const [key, value] of normalizedKeys)
+        if (
+          ACCOUNT_QUOTA_CONTAINERS.has(key) &&
+          value &&
+          typeof value === 'object' &&
+          !Array.isArray(value)
+        )
+          pending.push({
+            value,
+            depth: current.depth + 1,
+            quotaContext: current.quotaContext || key !== 'data',
+          });
+  }
+  return false;
+}
+
 export function routerModelIds(body: unknown): Array<{
   id: string;
   name: string;
@@ -298,13 +414,13 @@ export function routerModelIds(body: unknown): Array<{
   supportsTools: boolean | null;
   isFree: boolean;
 }> {
-  const entries = Array.isArray(body)
-    ? body
-    : body && typeof body === 'object' && 'data' in body && Array.isArray(body.data)
-      ? body.data
-      : body && typeof body === 'object' && 'models' in body && Array.isArray(body.models)
-        ? body.models
-        : [];
+  const wrappedEntries =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? ['data', 'models', 'items', 'results', 'model_list', 'modelList']
+          .map((key) => (body as Record<string, unknown>)[key])
+          .find(Array.isArray)
+      : null;
+  const entries = Array.isArray(body) ? body : Array.isArray(wrappedEntries) ? wrappedEntries : [];
   const output = new Map<
     string,
     {
@@ -318,40 +434,55 @@ export function routerModelIds(body: unknown): Array<{
   >();
   for (const item of entries.slice(0, 2000)) {
     if (!item || typeof item !== 'object') continue;
-    const rawId = 'id' in item ? item.id : 'name' in item ? item.name : undefined;
+    const itemRecord = item as Record<string, unknown>;
+    const rawId =
+      typeof itemRecord.id === 'string'
+        ? itemRecord.id
+        : typeof itemRecord.name === 'string'
+          ? itemRecord.name
+          : itemRecord.model;
     if (typeof rawId !== 'string') continue;
     const id = rawId.trim();
     if (!id || id.length > 200 || !/^[\w./:-]+$/.test(id)) continue;
-    const rawContext =
-      'context_length' in item
-        ? item.context_length
-        : 'context_window' in item
-          ? item.context_window
-          : 'contextWindow' in item
-            ? item.contextWindow
-            : null;
+    const nestedRecords = [
+      itemRecord,
+      itemRecord.metadata,
+      itemRecord.quota,
+      itemRecord.limits,
+      itemRecord.usage,
+      itemRecord.availability,
+      itemRecord.entitlement,
+    ].filter(
+      (value): value is Record<string, unknown> =>
+        !!value && typeof value === 'object' && !Array.isArray(value),
+    );
+    const findField = (keys: string[]) => {
+      for (const record of nestedRecords)
+        for (const key of keys)
+          if (key in record && record[key] !== undefined && record[key] !== null)
+            return record[key];
+      return null;
+    };
+    const rawContext = findField(['context_length', 'context_window', 'contextWindow']);
+    const context = finiteNumber(rawContext);
     const contextTokens =
-      typeof rawContext === 'number' && Number.isSafeInteger(rawContext) && rawContext > 0
-        ? rawContext
-        : null;
-    const rawAvailable =
-      'available_tokens' in item
-        ? item.available_tokens
-        : 'remaining_tokens' in item
-          ? item.remaining_tokens
-          : 'monthly_tokens_remaining' in item
-            ? item.monthly_tokens_remaining
-            : null;
+      context !== null && Number.isSafeInteger(context) && context > 0 ? context : null;
+    const rawAvailable = findField([
+      'available_tokens',
+      'remaining_tokens',
+      'monthly_tokens_remaining',
+      'tokens_remaining',
+      'quota_remaining',
+      'remaining_quota',
+      'free_tokens_remaining',
+      'limit_remaining',
+    ]);
+    const available = finiteNumber(rawAvailable);
     const availableTokens =
-      typeof rawAvailable === 'number' && Number.isSafeInteger(rawAvailable) && rawAvailable >= 0
-        ? rawAvailable
-        : null;
-    const supportsTools =
-      'supports_tools' in item && typeof item.supports_tools === 'boolean'
-        ? item.supports_tools
-        : null;
-    const itemRecord = item as Record<string, unknown>;
-    const pricing = itemRecord.pricing;
+      available !== null && Number.isSafeInteger(available) && available >= 0 ? available : null;
+    const rawSupportsTools = findField(['supports_tools', 'supportsTools', 'tool_calling']);
+    const supportsTools = typeof rawSupportsTools === 'boolean' ? rawSupportsTools : null;
+    const pricing = findField(['pricing', 'cost']);
     const prices =
       pricing && typeof pricing === 'object'
         ? ['prompt', 'completion', 'input', 'output']
@@ -361,8 +492,14 @@ export function routerModelIds(body: unknown): Array<{
         : [];
     const isFree =
       id.toLowerCase().endsWith(':free') ||
-      itemRecord.free === true ||
-      itemRecord.is_free === true ||
+      nestedRecords.some(
+        (record) =>
+          record.free === true ||
+          record.is_free === true ||
+          record.isFree === true ||
+          record.free_tier === true ||
+          record.free_usage_eligible === true,
+      ) ||
       (prices.length >= 2 && prices.every((value) => typeof value === 'number' && value === 0));
     if (!output.has(id))
       output.set(id, {

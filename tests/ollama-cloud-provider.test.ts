@@ -55,6 +55,37 @@ test('Ollama Cloud model discovery checks both authenticated model-list APIs and
   assert.equal(JSON.stringify(result).includes('must not leak'), false);
 });
 
+test('Ollama documented free-usage models are eligible only when returned by the account model list', async () => {
+  const listedModels = [
+    'beam:latest',
+    'gemma4:31b',
+    'gpt-oss:120b',
+    'gpt-oss:20b',
+    'nemotron-3-nano:30b',
+    'nemotron-3-super',
+    'nemotron-3-ultra',
+    'another-cloud-model',
+  ];
+  const result = await discoverOllamaCloudProvider('test-ollama-key', async (input) => {
+    if (String(input).endsWith('/api/tags')) return Response.json({ models: [] });
+    return Response.json({ data: listedModels.map((id) => ({ id })) });
+  });
+
+  assert.deepEqual(
+    result.models.map((model) => [model.id, model.isFree]),
+    [
+      ['beam:latest', true],
+      ['gemma4:31b', true],
+      ['gpt-oss:120b', true],
+      ['gpt-oss:20b', true],
+      ['nemotron-3-nano:30b', true],
+      ['nemotron-3-super', true],
+      ['nemotron-3-ultra', true],
+      ['another-cloud-model', false],
+    ],
+  );
+});
+
 test('Ollama Cloud errors do not expose upstream bodies or bypass rejected credentials', async () => {
   let requestCount = 0;
   const result = await discoverOllamaCloudProvider('test-ollama-key', async () => {
