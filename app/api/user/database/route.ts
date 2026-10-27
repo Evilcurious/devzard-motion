@@ -1,8 +1,15 @@
 import { z } from 'zod';
 import { guard, errorResponse, readJson } from '@/lib/security';
-import { accountDatabaseHealth, configureAccountDatabase } from '@/lib/tenant-database';
+import {
+  accountDatabaseHealth,
+  configureAccountDatabase,
+  replaceAccountDatabase,
+} from '@/lib/tenant-database';
 
-const inputSchema = z.object({ connectionString: z.string().trim().min(20).max(2000) });
+const inputSchema = z.object({
+  connectionString: z.string().trim().min(20).max(2000),
+  replace: z.boolean().optional(),
+});
 export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
@@ -22,8 +29,12 @@ export async function POST(request: Request) {
     if (principal.role !== 'user' || principal.plan !== 'free')
       throw new Error('Personal database setup is only available on Free accounts.');
     const input = inputSchema.parse(await readJson(request, 3000));
-    await configureAccountDatabase(principal.id, input.connectionString);
-    return Response.json({ ok: true, configured: true, ready: true });
+    if (input.replace) await replaceAccountDatabase(principal.id, input.connectionString);
+    else await configureAccountDatabase(principal.id, input.connectionString);
+    return Response.json(
+      { ok: true, configured: true, ready: true },
+      { headers: { 'Cache-Control': 'private, no-store' } },
+    );
   } catch (error) {
     return errorResponse(error);
   }

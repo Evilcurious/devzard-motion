@@ -229,6 +229,52 @@ export async function configureAccountDatabase(accountId: string, raw: string) {
     await endTenantQuery(accountId);
   }
 }
+export async function replaceAccountDatabase(accountId: string, raw: string) {
+  const policy = await getUserPolicy(accountId);
+  if (!policy || policy.plan !== 'free')
+    throw new Error('Only Free accounts can connect a personal PostgreSQL database.');
+  await beginTenantQuery(accountId);
+  let replacement: Pool | null = null;
+  try {
+    const currentPolicy = await getUserPolicy(accountId);
+    if (!currentPolicy || currentPolicy.plan !== 'free')
+      throw new Error('Only Free accounts can connect a personal PostgreSQL database.');
+    if (!(await readTenantUrl(accountId)))
+      throw new Error('No database is currently connected. Use the standard connect flow instead.');
+    const config = await safeTenantConfig(raw);
+    replacement = new Pool({
+      connectionString: config.connectionString,
+      enableChannelBinding: config.enableChannelBinding,
+      connectionTimeoutMillis: config.connectionTimeoutMillis,
+      max: 1,
+      idleTimeoutMillis: 10000,
+      statement_timeout: 10000,
+    });
+    await replacement.query('SELECT 1');
+    await replacement.query(tenantSchema);
+    const encrypted = encryptSecret(raw.trim(), TENANT_PURPOSE(accountId));
+    const updated = await dbQuery(
+      `UPDATE relay_tenant_databases SET encrypted_url=$2, updated_at=now()
+       WHERE account_id=$1 RETURNING account_id`,
+      [accountId, encrypted],
+    );
+    if (!updated.rowCount) throw new Error('The saved database connection was not found.');
+    const previous = pools.get(accountId);
+    pools.set(accountId, replacement);
+    replacement = null;
+    await previous?.end().catch(() => {});
+  } catch (error) {
+    await replacement?.end().catch(() => {});
+    if ((error as Error).message.includes('No database is currently connected')) throw error;
+    if ((error as Error).message.includes('Only Free accounts')) throw error;
+    if ((error as Error).message.includes('saved database connection was not found')) throw error;
+    throw new Error(
+      'Could not connect to that PostgreSQL database or initialize Relay tables. The previous database URL and its data were left unchanged.',
+    );
+  } finally {
+    await endTenantQuery(accountId);
+  }
+}
 export async function accountDatabaseHealth(accountId: string) {
   const configured = await accountDatabaseConfigured(accountId);
   if (!configured) return { configured: false, ready: false };

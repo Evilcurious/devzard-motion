@@ -1015,6 +1015,7 @@ export default function Workspace() {
         onComplete={refresh}
         logoDataUrl={logoDataUrl}
         configured={!!status.accountDatabaseConfigured}
+        ready={!!status.databaseReady}
       />
     );
   const accountSections =
@@ -3201,24 +3202,40 @@ function AccountDatabaseSetup({
   onComplete,
   logoDataUrl,
   configured,
+  ready,
 }: {
   onComplete: () => Promise<void>;
   logoDataUrl: string | null;
   configured: boolean;
+  ready: boolean;
 }) {
   const [connectionString, setConnectionString] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  async function connect(event: React.FormEvent<HTMLFormElement>) {
+  const [changing, setChanging] = useState(false);
+  async function connect(event: React.FormEvent<HTMLFormElement>, replace = false) {
     event.preventDefault();
     setBusy(true);
     setError('');
     try {
-      await api('/api/user/database', { connectionString });
+      await api('/api/user/database', { connectionString, replace });
       setConnectionString('');
+      setChanging(false);
       await onComplete();
     } catch (caught) {
       setError((caught as Error).message || 'Could not connect this database.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function signOut() {
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/auth/logout');
+      await onComplete();
+    } catch (caught) {
+      setError((caught as Error).message || 'Could not sign out. Please refresh and try again.');
     } finally {
       setBusy(false);
     }
@@ -3243,12 +3260,18 @@ function AccountDatabaseSetup({
             ? 'Relay cannot currently reach the PostgreSQL database connected to this account. Check that it is online and allows secure connections, then refresh.'
             : 'Free accounts store chat history, settings, provider keys and usage in a PostgreSQL database you control. Relay encrypts the connection URL and never displays it to the administrator.'}
         </p>
-        {configured ? (
-          <button type="button" className="button primary" onClick={() => void onComplete()}>
+        {configured && !ready && (
+          <button
+            type="button"
+            className="button"
+            onClick={() => void onComplete()}
+            disabled={busy}
+          >
             <ArrowRight size={16} /> Check connection again
           </button>
-        ) : (
-          <form onSubmit={connect}>
+        )}
+        {(!configured || changing) && (
+          <form onSubmit={(event) => void connect(event, configured)}>
             <label>
               PostgreSQL connection URL
               <input
@@ -3261,21 +3284,38 @@ function AccountDatabaseSetup({
                 placeholder="postgresql://user:password@host/database?sslmode=require"
               />
               <span>
-                Use a public Neon or Supabase PostgreSQL URL with TLS. Localhost/private hosts are
-                blocked.
+                Use a public hosted PostgreSQL URL with TLS. Localhost/private hosts are blocked.
+                Replacing this URL will not delete or copy data from the previous database.
               </span>
             </label>
-            {error && (
-              <div className="error-box" role="alert">
-                {error}
-              </div>
-            )}
             <button className="button primary" disabled={busy}>
               {busy ? <LoaderCircle size={16} className="spin" /> : <Database size={16} />}
-              {busy ? 'Testing and connecting…' : 'Test and connect database'}
+              {busy
+                ? 'Testing and connecting…'
+                : configured
+                  ? 'Test and replace database URL'
+                  : 'Test and connect database'}
             </button>
           </form>
         )}
+        {configured && !changing && (
+          <button type="button" className="text-button" onClick={() => setChanging(true)}>
+            Enter a different database URL
+          </button>
+        )}
+        {error && (
+          <div className="error-box" role="alert">
+            {error}
+          </div>
+        )}
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => void signOut()}
+          disabled={busy}
+        >
+          Sign out
+        </button>
         <div className="subtle-note">
           <LockKeyhole size={13} /> Premium accounts use Relay’s admin-managed database; its
           connection details are never shown.
