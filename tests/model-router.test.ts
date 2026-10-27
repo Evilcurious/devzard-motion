@@ -10,7 +10,13 @@ import {
 } from '../lib/model-router';
 
 test('model provider registry uses fixed HTTPS hosts and separates search services', () => {
-  assert.equal(routerProviders.length, 15);
+  assert.equal(routerProviders.length, 16);
+  assert.equal(getRouterProvider('gemini')?.name, 'Google Gemini API');
+  assert.equal(
+    getRouterProvider('gemini')?.baseURL,
+    'https://generativelanguage.googleapis.com/v1beta/openai',
+  );
+  assert.equal(getRouterProvider('gemini')?.keyRequired, true);
   assert.equal(getRouterProvider('openrouter')?.baseURL, 'https://openrouter.ai/api/v1');
   assert.equal(getRouterProvider('kilo')?.baseURL, 'https://api.kilo.ai/api/gateway/v1');
   assert.equal(getRouterProvider('aihorde')?.keyRequired, false);

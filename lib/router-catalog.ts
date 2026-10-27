@@ -70,12 +70,89 @@ async function requestJSON(url: string, apiKey: string, timeoutMs = 6000): Promi
   }
 }
 
+export async function discoverGeminiProvider(
+  apiKey: string,
+  fetcher: typeof fetch = fetch,
+): Promise<ProviderLoad> {
+  const provider = getRouterProvider('gemini')!;
+  const models: ProviderModel[] = [];
+  let pageToken = '';
+  try {
+    for (let page = 0; page < 10; page++) {
+      const url = new URL('https://generativelanguage.googleapis.com/v1beta/models');
+      url.searchParams.set('pageSize', '1000');
+      if (pageToken) url.searchParams.set('pageToken', pageToken);
+      const response = await fetcher(url, {
+        headers: { Accept: 'application/json', 'x-goog-api-key': apiKey },
+        signal: AbortSignal.timeout(8000),
+        cache: 'no-store',
+        redirect: 'error',
+      });
+      if (!response.ok) throw new Error(`Google Gemini API returned HTTP ${response.status}.`);
+      if (!(response.headers.get('content-type') || '').includes('json'))
+        throw new Error('Google Gemini API returned a non-JSON model list.');
+      const body = await response.json();
+      const entries = Array.isArray(body?.models) ? body.models : [];
+      for (const item of entries.slice(0, 2000)) {
+        if (!item || typeof item !== 'object') continue;
+        const name = typeof item.name === 'string' ? item.name : '';
+        const id = name.replace(/^models\//, '');
+        if (
+          !/^gemini-[\w.-]{1,180}$/.test(id) ||
+          !Array.isArray(item.supportedGenerationMethods) ||
+          !item.supportedGenerationMethods.includes('generateContent')
+        )
+          continue;
+        const normalized = routerModelIds({
+          models: [
+            {
+              id,
+              name: typeof item.displayName === 'string' ? item.displayName : id,
+              context_length: item.inputTokenLimit,
+              available_tokens:
+                item.availableTokens ??
+                item.available_tokens ??
+                item.remainingTokens ??
+                item.remaining_tokens,
+              is_free: item.isFree === true || item.is_free === true || item.free === true,
+              pricing: item.pricing,
+            },
+          ],
+        })[0];
+        if (normalized)
+          models.push({ ...normalized, providerId: 'gemini', providerName: provider.name });
+      }
+      if (typeof body?.nextPageToken !== 'string' || !body.nextPageToken) break;
+      if (body.nextPageToken.length > 4096)
+        throw new Error('Google returned an invalid page token.');
+      pageToken = body.nextPageToken;
+    }
+    return { providerId: 'gemini', error: null, models };
+  } catch (error) {
+    return {
+      providerId: 'gemini',
+      error: error instanceof Error ? error.message.slice(0, 240) : 'Could not load Google models.',
+      models: [],
+    };
+  }
+}
+
 async function discoverProvider(providerId: RouterProviderId): Promise<ProviderLoad> {
   const provider = getRouterProvider(providerId);
   if (!provider || provider.category !== 'models' || !provider.baseURL)
     return { providerId, error: null, models: [] };
   const keys = await getProviderKeys(provider.id);
   if (provider.keyRequired && !keys.length) return { providerId, error: null, models: [] };
+  if (provider.id === 'gemini') {
+    const results = await Promise.all(keys.map((key) => discoverGeminiProvider(key)));
+    const models = new Map<string, ProviderModel>();
+    for (const result of results) for (const model of result.models) models.set(model.id, model);
+    return {
+      providerId,
+      error: models.size ? null : results.find((result) => result.error)?.error || null,
+      models: [...models.values()],
+    };
+  }
 
   const endpoint = provider.modelsPath
     ? new URL(provider.modelsPath, provider.baseURL).toString()

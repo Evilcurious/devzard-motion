@@ -13,7 +13,8 @@ export type RouterProviderId =
   | 'septorlabs'
   | 'firecrawl'
   | 'parallel'
-  | 'keenable';
+  | 'keenable'
+  | 'gemini';
 export type RouterProviderCategory = 'models' | 'search';
 export type RouterProvider = {
   id: RouterProviderId;
@@ -31,6 +32,16 @@ export type RouterProvider = {
 // user-supplied destination. Unknown providers can be added as reviewed
 // templates in this registry; editable URLs continue to use AI_ALLOWED_ORIGINS.
 export const routerProviders: RouterProvider[] = [
+  {
+    id: 'gemini',
+    name: 'Google Gemini API',
+    category: 'models',
+    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    modelsPath: '/v1beta/models?pageSize=1000',
+    keyRequired: true,
+    docsURL: 'https://aistudio.google.com/app/apikey',
+    note: 'Only models with API-reported free access or positive remaining quota are selectable.',
+  },
   {
     id: 'openrouter',
     name: 'OpenRouter',

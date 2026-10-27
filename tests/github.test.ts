@@ -51,6 +51,10 @@ test('GitHub code proposals reject traversal, workflows, secrets, duplicates and
 test('chat receives only integration tools that the user has connected', () => {
   assert.deepEqual(toolsForConnections(false, false), []);
   assert.deepEqual(
+    toolsForConnections(false, false, true).map((tool) => tool.function.name),
+    ['list_vercel_projects', 'list_vercel_deployments'],
+  );
+  assert.deepEqual(
     toolsForConnections(true, false).map((tool) => tool.function.name),
     ['search_emails', 'read_email', 'send_email', 'append_to_sheet'],
   );

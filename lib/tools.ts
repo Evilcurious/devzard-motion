@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { googleFetch } from './google';
 import { validateGitHubCommitMessage, validateGitHubFiles, type GitHubPushAction } from './github';
+import {
+  getVercelConnection,
+  getVercelProjectSelection,
+  listVercelDeployments,
+  listVercelProjects,
+} from './vercel';
 
 const noNewline = z
   .string()
@@ -52,12 +58,14 @@ export function validateAction(name: string, args: unknown): WriteAction {
   }
   throw new Error('Unknown action.');
 }
-export function toolsForConnections(google: boolean, github: boolean) {
+export function toolsForConnections(google: boolean, github: boolean, vercel = false) {
   const googleNames = new Set(['search_emails', 'read_email', 'send_email', 'append_to_sheet']);
+  const vercelNames = new Set(['list_vercel_projects', 'list_vercel_deployments']);
   return tools.filter((tool) => {
     const name = tool.function.name;
     if (googleNames.has(name)) return google;
     if (name === 'github_push_files') return github;
+    if (vercelNames.has(name)) return vercel;
     return false;
   });
 }
@@ -161,6 +169,24 @@ export const tools = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'list_vercel_projects',
+      description:
+        'List projects visible to the connected Vercel account. Read-only; never returns the access token.',
+      parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_vercel_deployments',
+      description:
+        'Show recent deployments for the Vercel project selected in Connections. Read-only; do not claim to deploy or change settings.',
+      parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
+    },
+  },
 ];
 function decode(s: string) {
   return Buffer.from(s, 'base64url').toString('utf8');
@@ -171,6 +197,23 @@ function emailText(part: Part): string {
   return (part.parts || []).map(emailText).filter(Boolean).join('\n');
 }
 export async function readTool(name: string, args: Record<string, unknown>) {
+  if (name === 'list_vercel_projects') {
+    const connection = await getVercelConnection();
+    if (!connection) throw new Error('Connect Vercel in Connections first.');
+    return { projects: await listVercelProjects(connection) };
+  }
+  if (name === 'list_vercel_deployments') {
+    const [connection, project] = await Promise.all([
+      getVercelConnection(),
+      getVercelProjectSelection(),
+    ]);
+    if (!connection) throw new Error('Connect Vercel in Connections first.');
+    if (!project) throw new Error('Choose a Vercel project in Connections first.');
+    return {
+      project: { name: project.name, framework: project.framework },
+      deployments: await listVercelDeployments(connection, project),
+    };
+  }
   if (name === 'search_emails') {
     const query = z.string().max(500).parse(args.query);
     const data = await googleFetch(

@@ -2399,8 +2399,8 @@ function VercelConnectionCard({
       <h2>Vercel</h2>
       <h3>Keep an eye on your live projects.</h3>
       <p>
-        Connect a Vercel account to choose a project and check its latest preview and production
-        deployments.
+        Connect a Vercel account to choose a project, check its latest preview and production
+        deployments, and ask your agent to inspect project/deployment status in chat.
       </p>
       {connected ? (
         <>

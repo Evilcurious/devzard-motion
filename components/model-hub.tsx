@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/client-api';
+import { Modal } from './ui';
 import { rankRouterTargets, type RouterProviderId, type RouterTarget } from '@/lib/model-router';
 import {
   Check,
@@ -71,6 +72,7 @@ const providerNames: Record<string, string> = {
   firecrawl: 'Firecrawl',
   parallel: 'Parallel',
   keenable: 'KeenAble',
+  gemini: 'Google Gemini API',
 };
 const targetKey = (target: Target) => `${target.providerId}::${target.modelId}`;
 const formatTokens = (n: number | null) =>
@@ -107,13 +109,15 @@ export function ModelHub({
   const [quickProviderId, setQuickProviderId] = useState('openrouter');
   const [quickKey, setQuickKey] = useState('');
   const [filter, setFilter] = useState('');
+  const [providerFilter, setProviderFilter] = useState('all');
+  const [providerModelModal, setProviderModelModal] = useState<string | null>(null);
   const [category, setCategory] = useState<'all' | 'models' | 'search'>('all');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const selected =
     selection || rankRouterTargets(catalogTargets(catalog?.models || []), 'auto')[0] || null;
 
-  async function loadProviders() {
+  async function loadProviders(): Promise<Provider[]> {
     const response = await api<{ providers: Provider[] }>(
       '/api/router/providers',
       undefined,
@@ -127,6 +131,7 @@ export function ModelHub({
           response.providers.find((provider) => provider.category === 'models')?.id ||
           '',
     );
+    return response.providers;
   }
   async function loadSelection() {
     const response = await api<{
@@ -157,7 +162,7 @@ export function ModelHub({
     }
     return response.selection;
   }
-  async function discover(autoSelect = false) {
+  async function discover(autoSelect = false): Promise<Catalog | null> {
     setBusy('discover');
     setError('');
     try {
@@ -177,8 +182,10 @@ export function ModelHub({
             'No models are currently marked free, reporting positive remaining tokens, or (for OpenRouter) backed by positive account/key credits. Refresh model lists or check API access.',
           );
       }
+      return result;
     } catch (e) {
       setError((e as Error).message);
+      return null;
     } finally {
       setBusy('');
     }
@@ -197,9 +204,45 @@ export function ModelHub({
       setKey('');
       setQuickKey('');
       setConnectId('');
-      await loadProviders();
-      await discover();
-      notify(`${providerNames[providerId] || providerId} connection saved securely.`);
+      const savedProviders = await loadProviders();
+      const refreshed = await discover();
+      const provider = savedProviders.find((item) => item.id === providerId);
+      if (provider?.category === 'models') setProviderModelModal(providerId);
+      else if (refreshed)
+        notify(`${providerNames[providerId] || providerId} connection saved securely.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy('');
+    }
+  }
+  async function chooseProviderModel(provider: ModelProvider) {
+    const target: Target = {
+      providerId: provider.id,
+      modelId: provider.modelId,
+      availableTokens: provider.availableTokens,
+      contextTokens: provider.contextTokens,
+      supportsTools: provider.supportsTools,
+      isFree: provider.isFree,
+    };
+    setBusy('provider-model');
+    setError('');
+    try {
+      await api('/api/router/selection', {
+        ...target,
+        strategy: 'auto',
+        autoPick: false,
+        fusionModels: [],
+      });
+      setSelection(target);
+      setStrategy('auto');
+      setAutoPick(false);
+      setFusionModels([]);
+      setProviderModelModal(null);
+      await onSelect();
+      notify(
+        `${target.modelId} · ${providerNames[target.providerId] || target.providerId} is now active.`,
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -285,12 +328,36 @@ export function ModelHub({
   const visibleProviders = providers.filter((p) => category === 'all' || p.category === category);
   const visibleModels = useMemo(
     () =>
-      (catalog?.models || []).filter((model) => {
+      (catalog?.models || []).flatMap((model) => {
+        const routes =
+          providerFilter === 'all'
+            ? model.providers
+            : model.providers.filter((provider) => provider.id === providerFilter);
+        if (!routes.length) return [];
         const haystack =
-          `${model.name} ${model.id} ${model.providers.map((p) => p.name).join(' ')}`.toLowerCase();
-        return haystack.includes(filter.toLowerCase());
+          `${model.name} ${model.id} ${routes.map((p) => p.name).join(' ')}`.toLowerCase();
+        if (!haystack.includes(filter.toLowerCase())) return [];
+        if (providerFilter === 'all') return [model];
+        const knownQuotas = routes.map((route) => route.availableTokens);
+        return [
+          {
+            ...model,
+            providers: routes,
+            contextTokens: routes.reduce<number | null>(
+              (largest, route) =>
+                route.contextTokens === null
+                  ? largest
+                  : Math.max(largest ?? 0, route.contextTokens),
+              null,
+            ),
+            availableTokens: knownQuotas.some((quota) => quota === null)
+              ? null
+              : knownQuotas.reduce<number>((sum, quota) => sum + (quota || 0), 0),
+            isFree: routes.some((route) => route.isFree),
+          },
+        ];
       }),
-    [catalog, filter],
+    [catalog, filter, providerFilter],
   );
   const providerErrors = catalog?.providers.filter((provider) => provider.error) || [];
   const allModelRoutes = (catalog?.models || []).flatMap((model) => model.providers);
@@ -543,6 +610,23 @@ export function ModelHub({
               placeholder="Search models or providers"
             />
           </label>
+          <label className="model-provider-filter">
+            <span>Provider</span>
+            <select
+              aria-label="Filter models by provider"
+              value={providerFilter}
+              onChange={(event) => setProviderFilter(event.target.value)}
+            >
+              <option value="all">All providers</option>
+              {providers
+                .filter((provider) => provider.category === 'models')
+                .map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </option>
+                ))}
+            </select>
+          </label>
           <button
             className="button small"
             onClick={() => discover()}
@@ -789,6 +873,57 @@ export function ModelHub({
           </button>
         </div>
       </section>
+      {providerModelModal && (
+        <Modal
+          title={`${providerNames[providerModelModal] || providerModelModal} models`}
+          subtitle="Only models this API lists as free or with positive remaining quota are available to select."
+          onClose={() => setProviderModelModal(null)}
+          wide
+        >
+          {(() => {
+            const routes = (catalog?.models || []).flatMap((model) =>
+              model.providers.filter((provider) => provider.id === providerModelModal),
+            );
+            return routes.length ? (
+              <div className="provider-model-picker">
+                {routes.map((provider) => (
+                  <button
+                    className="provider-model-option"
+                    type="button"
+                    key={`${provider.id}::${provider.modelId}`}
+                    onClick={() => void chooseProviderModel(provider)}
+                    disabled={!!busy}
+                  >
+                    <span>
+                      <strong>{provider.modelId}</strong>
+                      <small>{provider.name}</small>
+                    </span>
+                    <span className="model-metric">
+                      <small>Availability</small>
+                      <strong>
+                        {provider.isFree ? 'Free' : formatTokens(provider.availableTokens)}
+                      </strong>
+                    </span>
+                    <span className="button small">
+                      {busy === 'provider-model' ? 'Saving…' : 'Use model'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="model-empty">
+                <KeyRound size={20} />
+                <strong>No eligible models returned</strong>
+                <span>
+                  The provider key was saved, but its model API did not report any models as
+                  explicitly free or with positive remaining quota. Relay hides models without that
+                  availability evidence.
+                </span>
+              </div>
+            );
+          })()}
+        </Modal>
+      )}
     </div>
   );
 }
