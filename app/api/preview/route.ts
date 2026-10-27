@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { guard, errorResponse, readJson } from '@/lib/security';
-import { generatedFileBundleSchema } from '@/lib/generated-files';
+import { generatedArtifactSchema } from '@/lib/generated-files';
 import { compilePreviewProject } from '@/lib/preview-compiler';
 
 export const runtime = 'nodejs';
@@ -9,7 +9,7 @@ export const maxDuration = 15;
 const previewRequestSchema = z
   .object({
     htmlPath: z.string().min(1).max(240),
-    artifact: generatedFileBundleSchema,
+    artifact: generatedArtifactSchema,
   })
   .strict();
 

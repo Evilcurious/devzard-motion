@@ -36,6 +36,8 @@ type ModelProvider = {
   contextTokens: number | null;
   availableTokens: number | null;
   supportsTools: boolean | null;
+  supportsVision?: boolean | null;
+  monthlyTokenBudget?: string | null;
   isFree: boolean;
   accountCreditsAvailable?: boolean;
 };
@@ -71,6 +73,8 @@ type Catalog = {
     error: string | null;
   }>;
   refreshedAt: string;
+  sourceCatalog?: { version: string; generatedAt: string; tier: 'live' | 'monthly' } | null;
+  sourceCatalogError?: string | null;
   metricsNote: string;
 };
 
@@ -92,6 +96,42 @@ const providerNames: Record<string, string> = {
   parallel: 'Parallel',
   keenable: 'KeenAble',
   gemini: 'Google Gemini API',
+  speka: 'Speka',
+  kenari: 'Kenari',
+  kiosapi: 'KiosAPI',
+  typhoon: 'Typhoon',
+  plugsky: 'Plugsky',
+  inferbase: 'Inferbase',
+  simplellm: 'SimpleLLM',
+  llmtr: 'LLMTR',
+  gizmo: 'Gizmo',
+  blockrun: 'BlockRun',
+  experiential: 'Experiential Labs',
+  router9: 'Router9',
+  clod: 'CLōD',
+  blaze: 'BlazeAPI',
+  lucidity: 'Lucidity',
+  airforce: 'Api.Airforce',
+  dreamprompting: 'DreamPrompting',
+  waterfall: 'Waterfall',
+  logfare: 'Logfare',
+  apinex: 'APINex',
+  onomeo: 'Onomeo',
+  iteracompute: 'IteraCompute',
+  bai: 'B.AI',
+  anyapi: 'AnyAPI',
+  llm7: 'LLM7',
+  ainative: 'AINative Studio',
+  aion: 'Aion Labs',
+  navy: 'NavyAI',
+  nara: 'NaraRouter',
+  sealion: 'SEA-LION',
+  orcarouter: 'OrcaRouter',
+  unorouter: 'UnoRouter',
+  qianfan: 'Baidu Qianfan',
+  volcengine: 'Volcengine Ark',
+  longcat: 'LongCat',
+  xfyun: 'iFlytek Spark',
 };
 const targetKey = (target: Target) => `${target.providerId}::${target.modelId}`;
 const formatTokens = (n: number | null) =>
@@ -203,6 +243,8 @@ export function ModelHub({
   const [quickProviderId, setQuickProviderId] = useState('openrouter');
   const [quickKey, setQuickKey] = useState('');
   const [filter, setFilter] = useState('');
+  const [filterVision, setFilterVision] = useState(false);
+  const [filterTools, setFilterTools] = useState(false);
   const [providerFilter, setProviderFilter] = useState('all');
   const [providerModelModal, setProviderModelModal] = useState<string | null>(null);
   const [category, setCategory] = useState<'all' | 'models' | 'search'>('all');
@@ -448,17 +490,22 @@ export function ModelHub({
           providerFilter === 'all'
             ? model.providers
             : model.providers.filter((provider) => provider.id === providerFilter);
-        if (!routes.length) return [];
+        const matchingRoutes = routes.filter(
+          (route) =>
+            (!filterVision || route.supportsVision === true) &&
+            (!filterTools || route.supportsTools === true),
+        );
+        if (!matchingRoutes.length) return [];
         const haystack =
-          `${model.name} ${model.id} ${routes.map((p) => p.name).join(' ')}`.toLowerCase();
-        if (!haystack.includes(filter.toLowerCase())) return [];
-        if (providerFilter === 'all') return [model];
-        const knownQuotas = routes.map((route) => route.availableTokens);
+          `${model.name} ${model.id} ${matchingRoutes.map((p) => `${p.id} ${p.name}`).join(' ')}`.toLowerCase();
+        if (!haystack.includes(filter.trim().toLowerCase())) return [];
+        if (providerFilter === 'all' && !filterVision && !filterTools) return [model];
+        const knownQuotas = matchingRoutes.map((route) => route.availableTokens);
         return [
           {
             ...model,
-            providers: routes,
-            contextTokens: routes.reduce<number | null>(
+            providers: matchingRoutes,
+            contextTokens: matchingRoutes.reduce<number | null>(
               (largest, route) =>
                 route.contextTokens === null
                   ? largest
@@ -468,11 +515,11 @@ export function ModelHub({
             availableTokens: knownQuotas.some((quota) => quota === null)
               ? null
               : knownQuotas.reduce<number>((sum, quota) => sum + (quota || 0), 0),
-            isFree: routes.some((route) => route.isFree),
+            isFree: matchingRoutes.some((route) => route.isFree),
           },
         ];
       }),
-    [catalog, filter, providerFilter],
+    [catalog, filter, filterTools, filterVision, providerFilter],
   );
   const providerErrors = catalog?.providers.filter((provider) => provider.error) || [];
   const allModelRoutes = (catalog?.models || []).flatMap((model) => model.providers);
@@ -481,6 +528,9 @@ export function ModelHub({
     (sum, provider) => sum + (provider.availableTokens !== null ? provider.availableTokens : 0),
     0,
   );
+  const routesWithPublishedBudgets = allModelRoutes.filter(
+    (provider) => !!provider.monthlyTokenBudget,
+  ).length;
   const quickProvider = providers.find((provider) => provider.id === quickProviderId);
 
   return (
@@ -728,10 +778,21 @@ export function ModelHub({
             <strong>{totalReportedTokens.toLocaleString()}</strong> reported remaining tokens
           </span>
           <small>
-            Token total sums only provider-reported per-model quotas; unknown quotas and
+            Token total sums only provider-reported per-model remaining quotas; unknown quotas and
             account-wide credits are omitted, and shared account limits may make totals overlap.
           </small>
+          <small>
+            {catalog?.sourceCatalog
+              ? `FreeLLMAPI signed catalog ${catalog.sourceCatalog.version} · ${routesWithPublishedBudgets} connected routes have published monthly-budget metadata. This is a budget label, not live remaining tokens.`
+              : catalog?.sourceCatalogError || 'Loading signed model-budget metadata…'}
+          </small>
         </div>
+        {catalog?.sourceCatalogError && (
+          <div className="model-hub-warning" role="status">
+            {catalog.sourceCatalogError} Live provider model lists and their reported token balances
+            remain available.
+          </div>
+        )}
         <div className="model-tools">
           <label className="model-search">
             <Search size={16} />
@@ -758,6 +819,22 @@ export function ModelHub({
                 ))}
             </select>
           </label>
+          <button
+            className={`button small ${filterVision ? 'primary' : ''}`}
+            type="button"
+            aria-pressed={filterVision}
+            onClick={() => setFilterVision((value) => !value)}
+          >
+            Vision
+          </button>
+          <button
+            className={`button small ${filterTools ? 'primary' : ''}`}
+            type="button"
+            aria-pressed={filterTools}
+            onClick={() => setFilterTools((value) => !value)}
+          >
+            Tools
+          </button>
           <button
             className="button small"
             onClick={() => discover()}
@@ -828,6 +905,21 @@ export function ModelHub({
                             : 'Not reported'}
                     </strong>
                   </span>
+                  <span
+                    className="model-metric"
+                    title="Cataloged monthly budget; not a live remaining-token count."
+                  >
+                    <small>Published monthly budget</small>
+                    <strong>
+                      {[
+                        ...new Set(
+                          model.providers
+                            .map((provider) => provider.monthlyTokenBudget)
+                            .filter(Boolean),
+                        ),
+                      ].join(' · ') || 'Not published'}
+                    </strong>
+                  </span>
                   <span className="model-check">
                     {selected &&
                       model.providers.some(
@@ -874,11 +966,20 @@ export function ModelHub({
           </div>
         ) : (
           <div className="model-empty">
-            <KeyRound size={20} />
-            <strong>No models discovered yet</strong>
+            {catalog?.models.length ? <Search size={20} /> : <KeyRound size={20} />}
+            <strong>
+              {catalog?.models.length
+                ? 'No models match the current filters'
+                : catalog
+                  ? 'No eligible models were returned'
+                  : 'Loading model catalog…'}
+            </strong>
             <span>
-              Add provider keys above, then refresh. Some providers may require authentication
-              before listing models.
+              {catalog?.models.length
+                ? 'Clear the search, provider, Vision, or Tools filters to show more results.'
+                : catalog
+                  ? 'Add provider keys above, then refresh. Some providers require authentication before listing models.'
+                  : 'Provider model lists and signed monthly-budget metadata are loading.'}
             </span>
           </div>
         )}

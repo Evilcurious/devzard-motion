@@ -26,6 +26,42 @@ export type RouterProviderId =
   | 'huggingface'
   | 'modelscope'
   | 'openai'
+  | 'speka'
+  | 'kenari'
+  | 'kiosapi'
+  | 'typhoon'
+  | 'plugsky'
+  | 'inferbase'
+  | 'simplellm'
+  | 'llmtr'
+  | 'gizmo'
+  | 'blockrun'
+  | 'experiential'
+  | 'router9'
+  | 'clod'
+  | 'blaze'
+  | 'lucidity'
+  | 'airforce'
+  | 'dreamprompting'
+  | 'waterfall'
+  | 'logfare'
+  | 'apinex'
+  | 'onomeo'
+  | 'iteracompute'
+  | 'bai'
+  | 'anyapi'
+  | 'llm7'
+  | 'ainative'
+  | 'aion'
+  | 'navy'
+  | 'nara'
+  | 'sealion'
+  | 'orcarouter'
+  | 'unorouter'
+  | 'qianfan'
+  | 'volcengine'
+  | 'longcat'
+  | 'xfyun'
   | 'managed';
 export type RouterProviderCategory = 'models' | 'search';
 export type RouterProvider = {
@@ -260,6 +296,334 @@ export const routerProviders: RouterProvider[] = [
     docsURL: 'https://api.bluesminds.com/',
     note: 'OpenAI-compatible model gateway. Save your key, then select one of the model IDs returned for that account. Provider billing and access rules apply.',
   },
+  // Additional OpenAI-compatible provider gateways ported from FreeLLMAPI's
+  // provider registry. Their models are loaded only from the authenticated
+  // provider model list; provider-side quota and billing remain authoritative.
+  {
+    id: 'speka',
+    name: 'Speka',
+    category: 'models',
+    baseURL: 'https://speka.me/v1',
+    keyRequired: true,
+    docsURL: 'https://speka.me',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Speka.',
+  },
+  {
+    id: 'kenari',
+    name: 'Kenari',
+    category: 'models',
+    baseURL: 'https://kenari.id/v1',
+    keyRequired: true,
+    docsURL: 'https://kenari.id',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Kenari.',
+  },
+  {
+    id: 'kiosapi',
+    name: 'KiosAPI',
+    category: 'models',
+    baseURL: 'https://api.kiosapi.id/v1',
+    keyRequired: true,
+    docsURL: 'https://kiosapi.id',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with KiosAPI.',
+  },
+  {
+    id: 'typhoon',
+    name: 'Typhoon',
+    category: 'models',
+    baseURL: 'https://api.opentyphoon.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://opentyphoon.ai',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Typhoon.',
+  },
+  {
+    id: 'plugsky',
+    name: 'Plugsky',
+    category: 'models',
+    baseURL: 'https://plugsky.com/v1',
+    keyRequired: true,
+    docsURL: 'https://plugsky.com',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Plugsky.',
+  },
+  {
+    id: 'inferbase',
+    name: 'Inferbase',
+    category: 'models',
+    baseURL: 'https://api.inferbase.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://inferbase.ai',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Inferbase.',
+  },
+  {
+    id: 'simplellm',
+    name: 'SimpleLLM',
+    category: 'models',
+    baseURL: 'https://api.simplellm.eu/v1',
+    keyRequired: true,
+    docsURL: 'https://simplellm.eu',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with SimpleLLM.',
+  },
+  {
+    id: 'llmtr',
+    name: 'LLMTR',
+    category: 'models',
+    baseURL: 'https://llmtr.com/v1',
+    keyRequired: true,
+    docsURL: 'https://llmtr.com',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with LLMTR.',
+  },
+  {
+    id: 'gizmo',
+    name: 'Gizmo',
+    category: 'models',
+    baseURL: 'https://api.gizmoplatforms.com/api/v1',
+    keyRequired: true,
+    docsURL: 'https://gizmoplatforms.com',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Gizmo.',
+  },
+  {
+    id: 'blockrun',
+    name: 'BlockRun',
+    category: 'models',
+    baseURL: 'https://api.blockrun.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://blockrun.ai',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with BlockRun.',
+  },
+  {
+    id: 'experiential',
+    name: 'Experiential Labs',
+    category: 'models',
+    baseURL: 'https://api.experientiallabs.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://experientiallabs.ai',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Experiential Labs.',
+  },
+  {
+    id: 'router9',
+    name: 'Router9',
+    category: 'models',
+    baseURL: 'https://api.router9.com/v1',
+    keyRequired: true,
+    docsURL: 'https://router9.com',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Router9.',
+  },
+  {
+    id: 'clod',
+    name: 'CLōD',
+    category: 'models',
+    baseURL: 'https://api.clod.io/v1',
+    keyRequired: true,
+    docsURL: 'https://clod.io',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with CLōD.',
+  },
+  {
+    id: 'blaze',
+    name: 'BlazeAPI',
+    category: 'models',
+    baseURL: 'https://api.blazeapi.org/paid/v1',
+    keyRequired: true,
+    docsURL: 'https://blazeapi.org',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with BlazeAPI.',
+  },
+  {
+    id: 'lucidity',
+    name: 'Lucidity',
+    category: 'models',
+    baseURL: 'https://composite.lucidity.sh/v1',
+    keyRequired: true,
+    docsURL: 'https://lucidity.sh',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Lucidity.',
+  },
+  {
+    id: 'airforce',
+    name: 'Api.Airforce',
+    category: 'models',
+    baseURL: 'https://api.airforce/v1',
+    keyRequired: true,
+    docsURL: 'https://api.airforce',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Api.Airforce.',
+  },
+  {
+    id: 'dreamprompting',
+    name: 'DreamPrompting',
+    category: 'models',
+    baseURL: 'https://dreamprompting.com/api/v1',
+    keyRequired: true,
+    docsURL: 'https://dreamprompting.com',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with DreamPrompting.',
+  },
+  {
+    id: 'waterfall',
+    name: 'Waterfall',
+    category: 'models',
+    baseURL: 'https://api.getwaterfall.org/v1',
+    keyRequired: true,
+    docsURL: 'https://getwaterfall.org',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Waterfall.',
+  },
+  {
+    id: 'logfare',
+    name: 'Logfare',
+    category: 'models',
+    baseURL: 'https://logfare.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://logfare.ai',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Logfare.',
+  },
+  {
+    id: 'apinex',
+    name: 'APINex',
+    category: 'models',
+    baseURL: 'https://api.apinex.bond/v1',
+    keyRequired: true,
+    docsURL: 'https://apinex.bond',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with APINex.',
+  },
+  {
+    id: 'onomeo',
+    name: 'Onomeo',
+    category: 'models',
+    baseURL: 'https://onomeo.com/v1',
+    keyRequired: true,
+    docsURL: 'https://onomeo.com',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with Onomeo.',
+  },
+  {
+    id: 'iteracompute',
+    name: 'IteraCompute',
+    category: 'models',
+    baseURL: 'https://api.iteracompute.com/v1',
+    keyRequired: true,
+    docsURL: 'https://iteracompute.com',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with IteraCompute.',
+  },
+  {
+    id: 'bai',
+    name: 'B.AI',
+    category: 'models',
+    baseURL: 'https://api.b.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://b.ai',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with B.AI.',
+  },
+  {
+    id: 'anyapi',
+    name: 'AnyAPI',
+    category: 'models',
+    baseURL: 'https://api.anyapi.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://anyapi.ai',
+    note: 'OpenAI-compatible provider. Verify account access and current billing with AnyAPI.',
+  },
+  {
+    id: 'llm7',
+    name: 'LLM7',
+    category: 'models',
+    baseURL: 'https://api.llm7.io/v1',
+    keyRequired: false,
+    docsURL: 'https://llm7.io',
+    note: 'OpenAI-compatible provider. Anonymous access may be rate-limited; verify model terms with LLM7.',
+  },
+  {
+    id: 'ainative',
+    name: 'AINative Studio',
+    category: 'models',
+    baseURL: 'https://api.ainative.studio/api/v1',
+    keyRequired: true,
+    docsURL: 'https://ainative.studio',
+    note: 'OpenAI-compatible provider. Verify account access and current quotas with AINative Studio.',
+  },
+  {
+    id: 'aion',
+    name: 'Aion Labs',
+    category: 'models',
+    baseURL: 'https://api.aionlabs.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://aionlabs.ai',
+    note: 'OpenAI-compatible provider. Verify account access and current quotas with Aion Labs.',
+  },
+  {
+    id: 'navy',
+    name: 'NavyAI',
+    category: 'models',
+    baseURL: 'https://api.navy/v1',
+    keyRequired: true,
+    docsURL: 'https://api.navy',
+    userAgent: 'FreeLLMAPI/1.0',
+    note: 'OpenAI-compatible provider. Verify account access and current quotas with NavyAI.',
+  },
+  {
+    id: 'nara',
+    name: 'NaraRouter',
+    category: 'models',
+    baseURL: 'https://router.bynara.id/v1',
+    keyRequired: true,
+    docsURL: 'https://bynara.id',
+    note: 'OpenAI-compatible provider. Verify account access and current quotas with NaraRouter.',
+  },
+  {
+    id: 'sealion',
+    name: 'SEA-LION',
+    category: 'models',
+    baseURL: 'https://api.sea-lion.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://sea-lion.ai',
+    note: 'OpenAI-compatible provider. Verify account access and current quotas with SEA-LION.',
+  },
+  {
+    id: 'orcarouter',
+    name: 'OrcaRouter',
+    category: 'models',
+    baseURL: 'https://api.orcarouter.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://orcarouter.ai',
+    note: 'OpenAI-compatible provider. Verify account access and current quotas with OrcaRouter.',
+  },
+  {
+    id: 'unorouter',
+    name: 'UnoRouter',
+    category: 'models',
+    baseURL: 'https://api.unorouter.com/v1',
+    keyRequired: true,
+    docsURL: 'https://unorouter.com',
+    note: 'OpenAI-compatible provider. Verify account access and current quotas with UnoRouter.',
+  },
+  {
+    id: 'qianfan',
+    name: 'Baidu Qianfan',
+    category: 'models',
+    baseURL: 'https://qianfan.baidubce.com/v2',
+    keyRequired: true,
+    docsURL: 'https://cloud.baidu.com/product/wenxinworkshop',
+    note: 'OpenAI-compatible provider. Account and region restrictions may apply.',
+  },
+  {
+    id: 'volcengine',
+    name: 'Volcengine Ark',
+    category: 'models',
+    baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
+    keyRequired: true,
+    docsURL: 'https://www.volcengine.com/product/ark',
+    note: 'OpenAI-compatible provider. Account and region restrictions may apply.',
+  },
+  {
+    id: 'longcat',
+    name: 'LongCat',
+    category: 'models',
+    baseURL: 'https://api.longcat.chat/openai/v1',
+    keyRequired: true,
+    docsURL: 'https://longcat.chat',
+    note: 'OpenAI-compatible provider. Verify account access and current quotas with LongCat.',
+  },
+  {
+    id: 'xfyun',
+    name: 'iFlytek Spark',
+    category: 'models',
+    baseURL: 'https://spark-api-open.xf-yun.com/v1',
+    keyRequired: true,
+    docsURL: 'https://xinghuo.xfyun.cn',
+    note: 'OpenAI-compatible provider. Account and region restrictions may apply.',
+  },
   {
     id: 'firecrawl',
     name: 'Firecrawl',
@@ -300,6 +664,8 @@ export type RouterModel = {
     contextTokens: number | null;
     availableTokens: number | null;
     supportsTools: boolean | null;
+    supportsVision?: boolean | null;
+    monthlyTokenBudget?: string | null;
     isFree: boolean;
     accountCreditsAvailable?: boolean;
   }>;

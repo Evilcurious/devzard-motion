@@ -14,7 +14,9 @@ import {
 } from '../lib/model-router';
 
 test('model provider registry uses fixed HTTPS hosts and separates search services', () => {
-  assert.equal(routerProviders.length, 27);
+  const providerIds = routerProviders.map((provider) => provider.id);
+  assert.equal(new Set(providerIds).size, providerIds.length, 'provider IDs are unique');
+  assert.ok(providerIds.length >= 60, 'registry includes the expanded FreeLLMAPI gateway set');
   assert.equal(getRouterProvider('openai')?.baseURL, 'https://api.openai.com/v1');
   assert.equal(getRouterProvider('openai')?.keyRequired, true);
   assert.equal(getRouterProvider('gemini')?.name, 'Google Gemini API');

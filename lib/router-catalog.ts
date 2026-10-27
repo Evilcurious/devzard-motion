@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { fetchFreeLlmCatalog, type FreeLlmCatalogModel } from './freellmapi-catalog';
 import { getAdminProviderKeys, getProviderKeys, getOwnProviderKeys } from './provider-credentials';
 import { getPrincipal } from './security';
 import {
@@ -16,6 +17,8 @@ type ProviderModel = ReturnType<typeof routerModelIds>[number] & {
   providerName: string;
   accountCreditsAvailable?: boolean;
   authenticatedListing?: boolean;
+  monthlyTokenBudget?: string | null;
+  supportsVision?: boolean | null;
 };
 export type RouterCatalog = {
   models: RouterModel[];
@@ -26,6 +29,8 @@ export type RouterCatalog = {
     error: string | null;
   }>;
   refreshedAt: string;
+  sourceCatalog?: { version: string; generatedAt: string; tier: 'live' | 'monthly' } | null;
+  sourceCatalogError?: string | null;
   metricsNote: string;
 };
 type ProviderLoad = {
@@ -496,11 +501,25 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
     const admin = await getAdminProviderKeys(providerId);
     return [...new Set([...own, ...admin])];
   };
-  const settled = await Promise.all(
-    providerIds.map(async (providerId) =>
-      discoverProvider(providerId, await discoveryKeys(providerId)),
+  const [settled, sourceCatalog] = await Promise.all([
+    Promise.all(
+      providerIds.map(async (providerId) =>
+        discoverProvider(providerId, await discoveryKeys(providerId)),
+      ),
     ),
-  );
+    fetchFreeLlmCatalog().catch(() => null),
+  ]);
+  const sourceModels = new Map<string, FreeLlmCatalogModel>();
+  const sourceProviderAliases: Record<string, RouterProviderId> = {
+    google: 'gemini',
+    ollama: 'ollama-cloud',
+    opencode: 'opencode-zen',
+    septor: 'septorlabs',
+  };
+  for (const model of sourceCatalog?.models || []) {
+    const providerId = sourceProviderAliases[model.platform] || model.platform;
+    sourceModels.set(`${providerId}::${canonicalModelKey(model.modelId)}`, model);
+  }
   const openRouterKeys =
     principal?.role === 'user'
       ? (await discoveryKeys('openrouter')) || []
@@ -529,14 +548,19 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
       if (model.availableTokens === 0) continue;
       eligibleCounts.set(result.providerId, (eligibleCounts.get(result.providerId) || 0) + 1);
       const key = canonicalModelKey(model.id);
+      const sourceModel = sourceModels.get(`${model.providerId}::${key}`);
+      const contextTokens = model.contextTokens ?? sourceModel?.contextWindow ?? null;
+      const supportsTools = model.supportsTools ?? sourceModel?.supportsTools ?? null;
       const existing = grouped.get(key);
       const providerEntry = {
         id: model.providerId,
         name: model.providerName,
         modelId: model.id,
-        contextTokens: model.contextTokens,
+        contextTokens,
         availableTokens: model.availableTokens,
-        supportsTools: model.supportsTools,
+        supportsTools,
+        supportsVision: sourceModel?.supportsVision ?? null,
+        monthlyTokenBudget: sourceModel?.monthlyTokenBudget ?? null,
         isFree: model.isFree,
         accountCreditsAvailable:
           (model.accountCreditsAvailable === true && result.providerId !== 'openrouter') ||
@@ -545,9 +569,9 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
       if (existing) {
         existing.providers.push(providerEntry);
         existing.contextTokens =
-          existing.contextTokens === null || model.contextTokens === null
-            ? (existing.contextTokens ?? model.contextTokens)
-            : Math.max(existing.contextTokens, model.contextTokens);
+          existing.contextTokens === null || contextTokens === null
+            ? (existing.contextTokens ?? contextTokens)
+            : Math.max(existing.contextTokens, contextTokens);
         existing.availableTokens =
           existing.availableTokens === null || model.availableTokens === null
             ? null
@@ -559,7 +583,7 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
           id: model.id,
           name: model.name,
           providers: [providerEntry],
-          contextTokens: model.contextTokens,
+          contextTokens,
           availableTokens: model.availableTokens,
           isFree: model.isFree,
         });
@@ -611,6 +635,16 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
       error,
     })),
     refreshedAt: new Date().toISOString(),
+    sourceCatalog: sourceCatalog
+      ? {
+          version: sourceCatalog.version,
+          generatedAt: sourceCatalog.generatedAt,
+          tier: sourceCatalog.tier,
+        }
+      : null,
+    sourceCatalogError: sourceCatalog
+      ? null
+      : 'The signed FreeLLMAPI metadata feed could not be refreshed; live provider model listings remain available.',
     metricsNote:
       'Models returned by a connected provider API key are listed even when quota metadata is omitted; paid access, billing and request limits remain controlled by that provider. Unauthenticated catalogs require explicit free access or positive quota/credit signals. Ollama Cloud uses its documented free-usage or positive-credit eligibility rules. Provider-reported quota errors can temporarily mark a model unavailable.',
   };

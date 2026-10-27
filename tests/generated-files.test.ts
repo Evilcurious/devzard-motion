@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findHtmlPreviewFile, generatedFileBundleSchema } from '../lib/generated-files';
+import {
+  findHtmlPreviewFile,
+  generatedArtifactSchema,
+  generatedFileBundleSchema,
+} from '../lib/generated-files';
 import { createZip } from '../lib/zip';
 
 test('generated bundles accept safe source files and website previews', () => {
@@ -12,6 +16,15 @@ test('generated bundles accept safe source files and website previews', () => {
     ],
   });
   assert.equal(parsed.files.length, 2);
+});
+
+test('preview artifact schema accepts the generated artifact ID sent by the browser', () => {
+  const artifact = generatedArtifactSchema.parse({
+    id: 'generated-artifact-1',
+    name: 'tiny-site',
+    files: [{ path: 'index.html', content: '<h1>Hello</h1>' }],
+  });
+  assert.equal(artifact.id, 'generated-artifact-1');
 });
 
 test('Node.js and Python project sources are preserved in the downloadable ZIP', () => {
