@@ -10,7 +10,13 @@ import {
 import { databaseConfigured } from '@/lib/db';
 import { isOpenRouterEndpoint } from '@/lib/ai-errors';
 import type { ModelSettings } from '@/lib/ai';
-import { addProviderKey, getOwnProviderKeys, removeProviderKey } from '@/lib/provider-credentials';
+import {
+  addProviderKey,
+  getAdminProviderKeys,
+  getOwnProviderKeys,
+  hasAdminModelAssignment,
+  removeProviderKey,
+} from '@/lib/provider-credentials';
 
 const saveSchema = z.object({
   providerId: z.string().min(1).max(40),
@@ -23,12 +29,7 @@ const deleteSchema = z.object({
 
 export async function GET() {
   try {
-    const principal = await guard();
-    if (principal.role === 'user' && principal.plan === 'premium')
-      return Response.json(
-        { providers: [] },
-        { headers: { 'Cache-Control': 'private, no-store' } },
-      );
+    await guard();
     const providers = await Promise.all(
       routerProviders.map(async (provider) => {
         const keys = await getOwnProviderKeys(provider.id);
@@ -67,7 +68,8 @@ export async function POST(request: Request) {
     const principal = await guard(request);
     if (
       principal.role === 'user' &&
-      (principal.plan === 'premium' || principal.providerMode !== 'both')
+      principal.plan !== 'premium' &&
+      principal.providerMode !== 'both'
     )
       throw new Error('Personal provider keys are not available for this account.');
     const input = saveSchema.parse(await readJson(request, 1000));
@@ -90,7 +92,8 @@ export async function DELETE(request: Request) {
     const principal = await guard(request);
     if (
       principal.role === 'user' &&
-      (principal.plan === 'premium' || principal.providerMode !== 'both')
+      principal.plan !== 'premium' &&
+      principal.providerMode !== 'both'
     )
       throw new Error('Personal provider keys are not available for this account.');
     const input = deleteSchema.parse(await readJson(request, 500));
@@ -102,21 +105,33 @@ export async function DELETE(request: Request) {
       if (legacy?.provider === 'compatible' && isOpenRouterEndpoint(legacy.baseURL || ''))
         await removeConnection('model');
     }
-    if (keyCount === 0) {
+    if (keyCount === 0 && provider.keyRequired) {
       const selection = await readConnection<RouterSelection>('router-selection');
-      if (selection?.providerId === provider.id) {
-        await removeConnection('router-selection');
-      } else if (selection) {
-        const fusionModels = selection.fusionModels.filter(
-          (target) => target.providerId !== provider.id,
-        );
-        if (selection.strategy === 'fusion' && !fusionModels.length) {
+      if (selection) {
+        const sharedAdminKey =
+          principal.role === 'user' &&
+          principal.plan === 'premium' &&
+          (await getAdminProviderKeys(provider.id)).length > 0;
+        const canKeep = (target: Pick<RouterSelection, 'providerId' | 'modelId'>) =>
+          target.providerId !== provider.id ||
+          sharedAdminKey ||
+          (principal.role === 'user' && hasAdminModelAssignment(principal.allowedModels, target));
+        if (!canKeep(selection)) {
           await removeConnection('router-selection');
         } else {
+          const fallbackChain = (selection.fallbackChain || []).filter(canKeep);
+          const fusionModels = selection.fusionModels.filter(canKeep);
+          const strategy =
+            selection.strategy === 'fallback' && !fallbackChain.length
+              ? 'auto'
+              : selection.strategy === 'fusion' && !fusionModels.length
+                ? 'auto'
+                : selection.strategy;
           await saveConnection('router-selection', {
             ...selection,
-            strategy: selection.strategy === 'fusion' ? 'fusion' : 'auto',
-            fusionModels,
+            strategy,
+            fallbackChain: strategy === 'fallback' ? fallbackChain : [],
+            fusionModels: strategy === 'fusion' ? fusionModels : [],
           });
         }
       }

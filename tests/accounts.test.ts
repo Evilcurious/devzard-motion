@@ -9,7 +9,7 @@ import {
 } from '../lib/accounts';
 import { unpersistedUsageThisMonth, rememberUnpersistedUsage } from '../lib/usage-memory';
 import { canUserUseTarget } from '../lib/account-access';
-import { hasAdminModelAssignment } from '../lib/provider-credentials';
+import { canUserUseSharedProviderKeys, hasAdminModelAssignment } from '../lib/provider-credentials';
 import type { UserPrincipal } from '../lib/security';
 
 test('usernames normalize consistently and reserve the owner login', () => {
@@ -43,7 +43,7 @@ test('user model policy permits exact admin assignments and denies other managed
     role: 'user',
     username: 'member',
     email: 'member@example.com',
-    plan: 'premium',
+    plan: 'free',
     providerMode: 'managed',
     monthlyTokenLimit: 20_000,
     allowedModels: [{ providerId: 'openrouter', modelId: 'vendor/model-a', name: 'Assigned A' }],
@@ -56,6 +56,39 @@ test('user model policy permits exact admin assignments and denies other managed
   assert.equal(
     await canUserUseTarget(user, { providerId: 'openrouter', modelId: 'vendor/model-b' }),
     false,
+  );
+});
+
+test('Premium accounts can use eligible no-key providers while Free accounts stay assignment-scoped', async () => {
+  const free: UserPrincipal = {
+    id: 'account-free-policy',
+    role: 'user',
+    username: 'free-member',
+    email: 'free@example.com',
+    plan: 'free',
+    providerMode: 'managed',
+    monthlyTokenLimit: 20_000,
+    allowedModels: [],
+    enabled: true,
+  };
+  const premium: UserPrincipal = {
+    ...free,
+    id: 'account-premium-policy',
+    username: 'premium-member',
+    email: 'premium@example.com',
+    plan: 'premium',
+    providerMode: 'managed',
+  };
+  const target = { providerId: 'aihorde' as const, modelId: 'example/model' };
+  assert.equal(await canUserUseTarget(free, target), false);
+  assert.equal(await canUserUseTarget(premium, target), true);
+  assert.equal(
+    canUserUseSharedProviderKeys(free, { providerId: 'openrouter', modelId: 'x' }),
+    false,
+  );
+  assert.equal(
+    canUserUseSharedProviderKeys(premium, { providerId: 'openrouter', modelId: 'x' }),
+    true,
   );
 });
 

@@ -107,29 +107,18 @@ export function AccountAdmin({ notify }: { notify: (message: string) => void }) 
       if (!activationEmail.trim()) throw new Error('Enter the account email to activate.');
       if (!Number.isSafeInteger(monthlyTokenLimit) || monthlyTokenLimit < 1000)
         throw new Error('Set a monthly token allowance of at least 1,000.');
-      if (selected.length === 0)
-        throw new Error('Select at least one admin-assigned model for Premium.');
-      const selectedModels =
-        data?.availableModels.filter((model) =>
-          selected.includes(`${model.providerId}::${model.modelId}`),
-        ) || [];
       await api(
         '/api/admin/users',
         {
           action: 'activate-premium',
           email: activationEmail.trim(),
           monthlyTokenLimit,
-          allowedModels: selectedModels.map(({ providerId, modelId, name }) => ({
-            providerId,
-            modelId,
-            name,
-          })),
         },
         'PATCH',
       );
       setActivationEmail('');
       await load();
-      notify('Premium activated. Assigned models are ready for this account.');
+      notify('Premium activated. All available models and routing options are enabled.');
     } catch (caught) {
       setError((caught as Error).message || 'Could not activate Premium.');
     } finally {
@@ -264,7 +253,10 @@ export function AccountAdmin({ notify }: { notify: (message: string) => void }) 
           )}
           <div className="premium-activation">
             <h3>Activate Premium by email</h3>
-            <p>Promote an existing Free account to admin-managed models and storage.</p>
+            <p>
+              Promote an existing Free account to all available models, routing modes and
+              admin-managed storage.
+            </p>
             <label className="settings-field">
               <span>Registered email</span>
               <input
@@ -276,8 +268,9 @@ export function AccountAdmin({ notify }: { notify: (message: string) => void }) 
               />
             </label>
             <small>
-              Premium uses Relay’s private database and assigned provider models. If a Free database
-              is connected, Relay migrates the account’s data without overwriting existing records.
+              Premium can use every currently available admin-managed model, choose any chat routing
+              mode, and add personal provider keys. Admin credentials remain private. If a Free
+              database is connected, Relay migrates account data without overwriting records.
             </small>
             <button className="button primary" disabled={busy || !data} onClick={activatePremium}>
               {busy ? <LoaderCircle size={15} className="spin" /> : <ShieldCheck size={15} />}

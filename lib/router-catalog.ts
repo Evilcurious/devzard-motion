@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { getProviderKeys, getOwnProviderKeys } from './provider-credentials';
+import { getAdminProviderKeys, getProviderKeys, getOwnProviderKeys } from './provider-credentials';
 import { getPrincipal } from './security';
 import {
   canonicalModelKey,
@@ -454,17 +454,21 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
   const providerIds = routerProviders
     .filter((provider) => provider.category === 'models')
     .map((provider) => provider.id);
+  const discoveryKeys = async (providerId: RouterProviderId) => {
+    if (principal?.role !== 'user') return undefined;
+    const own = await getOwnProviderKeys(providerId);
+    if (principal.plan !== 'premium') return own;
+    const admin = await getAdminProviderKeys(providerId);
+    return [...new Set([...own, ...admin])];
+  };
   const settled = await Promise.all(
     providerIds.map(async (providerId) =>
-      discoverProvider(
-        providerId,
-        principal?.role === 'user' ? await getOwnProviderKeys(providerId) : undefined,
-      ),
+      discoverProvider(providerId, await discoveryKeys(providerId)),
     ),
   );
   const openRouterKeys =
     principal?.role === 'user'
-      ? await getOwnProviderKeys('openrouter')
+      ? (await discoveryKeys('openrouter')) || []
       : await getProviderKeys('openrouter');
   const openRouterPaid = (await Promise.all(openRouterKeys.map(openRouterPaidAccess))).some(
     Boolean,

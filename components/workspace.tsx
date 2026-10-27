@@ -324,7 +324,7 @@ export default function Workspace() {
     if (densityReady) window.localStorage.setItem('relay-routing-strategy', routingStrategy);
   }, [routingStrategy, densityReady]);
   useEffect(() => {
-    if (!status?.authenticated || (status.role === 'user' && status.plan === 'premium')) return;
+    if (!status?.authenticated) return;
     api<{ selection: (RouterTarget & { autoPick?: boolean }) | null }>(
       '/api/router/selection',
       undefined,
@@ -1078,7 +1078,8 @@ export default function Workspace() {
           .filter(
             (item) =>
               ['settings', 'connections', 'analytics'].includes(item.id) ||
-              (item.id === 'models' && status.providerMode === 'both'),
+              (item.id === 'models' &&
+                (status.providerMode === 'both' || status.plan === 'premium')),
           )
           .map((item) => ({
             ...item,
@@ -1959,253 +1960,235 @@ export default function Workspace() {
               {modelPickerError}
             </div>
           )}
-          {status?.role === 'user' && status.plan === 'premium' ? (
+          <div className="chat-routing-mode-grid" role="group" aria-label="Chat routing mode">
+            {(
+              [
+                [
+                  'fallback',
+                  'Fallback chain',
+                  'Try your chosen models in order if one is unavailable.',
+                ],
+                [
+                  'fusion',
+                  'Fusion',
+                  'Ask your selected models in parallel and synthesize their answers.',
+                ],
+                [
+                  'auto-fusion',
+                  'Auto Fusion',
+                  'Match up to four eligible models to the prompt, then synthesize.',
+                ],
+              ] as const
+            ).map(([strategy, title, description]) => (
+              <button
+                key={strategy}
+                type="button"
+                className={`chat-routing-mode ${routerStrategy === strategy ? 'selected' : ''}`}
+                onClick={() => setRouterStrategy(strategy)}
+              >
+                <strong>{title}</strong>
+                <small>{description}</small>
+              </button>
+            ))}
+          </div>
+          {routerStrategy === 'fallback' && (
+            <div className="chat-route-choices">
+              <strong>Fallback models, in order (up to 3)</strong>
+              <small>
+                Choose the primary from the model list below, then mark backup models here.
+              </small>
+              {modelChoices.flatMap((model) =>
+                model.providers.map((provider) => {
+                  const target: RouterTarget = {
+                    providerId: provider.id,
+                    modelId: provider.modelId,
+                    availableTokens: provider.availableTokens,
+                    contextTokens: provider.contextTokens,
+                    supportsTools: provider.supportsTools,
+                    isFree: provider.isFree,
+                  };
+                  const key = `${target.providerId}::${target.modelId}`;
+                  const checked = fallbackChain.some(
+                    (item) => `${item.providerId}::${item.modelId}` === key,
+                  );
+                  return (
+                    <label key={`fallback-${key}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={
+                          (!checked && fallbackChain.length >= 3) ||
+                          key ===
+                            (routerSelection
+                              ? `${routerSelection.providerId}::${routerSelection.modelId}`
+                              : '')
+                        }
+                        onChange={() =>
+                          toggleChatRouteTarget(fallbackChain, setFallbackChain, target)
+                        }
+                      />
+                      <span>
+                        {checked
+                          ? `${fallbackChain.findIndex((item) => `${item.providerId}::${item.modelId}` === key) + 1}. `
+                          : ''}
+                        {model.name}
+                      </span>
+                      <small>{provider.name}</small>
+                    </label>
+                  );
+                }),
+              )}
+            </div>
+          )}
+          {routerStrategy === 'fusion' && (
+            <div className="chat-route-choices">
+              <strong>Additional Fusion models (up to 3; 4 total)</strong>
+              <small>
+                Select the primary in the model list below. Fusion runs without action tools.
+              </small>
+              {modelChoices.flatMap((model) =>
+                model.providers.map((provider) => {
+                  const target: RouterTarget = {
+                    providerId: provider.id,
+                    modelId: provider.modelId,
+                    availableTokens: provider.availableTokens,
+                    contextTokens: provider.contextTokens,
+                    supportsTools: provider.supportsTools,
+                    isFree: provider.isFree,
+                  };
+                  const key = `${target.providerId}::${target.modelId}`;
+                  const checked = fusionModels.some(
+                    (item) => `${item.providerId}::${item.modelId}` === key,
+                  );
+                  return (
+                    <label key={`fusion-${key}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={
+                          (!checked && fusionModels.length >= 3) ||
+                          key ===
+                            (routerSelection
+                              ? `${routerSelection.providerId}::${routerSelection.modelId}`
+                              : '')
+                        }
+                        onChange={() =>
+                          toggleChatRouteTarget(fusionModels, setFusionModels, target)
+                        }
+                      />
+                      <span>{model.name}</span>
+                      <small>{provider.name}</small>
+                    </label>
+                  );
+                }),
+              )}
+            </div>
+          )}
+          <button
+            className={`chat-auto-model-option ${routerAutoPick && routerStrategy === 'auto' ? 'selected' : ''}`}
+            onClick={() => void chooseAutomaticModel()}
+            disabled={modelPickerBusy || !modelChoices.length}
+          >
+            <Zap size={16} />
+            <span>
+              <strong>Auto Select</strong>
+              <small>
+                Relay picks the best eligible model for each request and falls back to another when
+                a provider rejects it or runs out of quota.
+              </small>
+            </span>
+            {routerAutoPick && routerStrategy === 'auto' && <Check size={16} />}
+          </button>
+          {routerStrategy === 'auto-fusion' ? (
             <div className="model-picker-empty">
-              <ShieldCheck size={20} />
-              <strong>Your model is managed by the administrator</strong>
-              <span>Premium model and provider assignments cannot be changed from chat.</span>
+              <Sparkles size={20} />
+              <strong>Auto Fusion is prompt-driven</strong>
+              <span>
+                When you send a prompt, Relay ranks eligible models by task fit, context, quota and
+                provider diversity, then runs up to four in parallel. No tools or account actions
+                are allowed in the ensemble.
+              </span>
+            </div>
+          ) : modelPickerBusy && !modelChoices.length ? (
+            <div className="model-picker-loading">
+              <LoaderCircle className="spin" size={18} /> Checking your API model access…
+            </div>
+          ) : modelChoices.length ? (
+            <div className="chat-model-picker-list">
+              {modelChoices.flatMap((model) =>
+                model.providers.map((provider) => {
+                  const isSelected =
+                    routerSelection?.providerId === provider.id &&
+                    routerSelection.modelId === provider.modelId;
+                  const availability = provider.isFree
+                    ? 'Free on this API'
+                    : provider.availableTokens !== null
+                      ? `${provider.availableTokens.toLocaleString()} tokens reported`
+                      : 'Account credits available';
+                  return (
+                    <button
+                      key={`${provider.id}::${provider.modelId}`}
+                      className={`chat-model-option ${isSelected ? 'selected' : ''}`}
+                      disabled={modelPickerBusy}
+                      onClick={() => void chooseChatModel(provider)}
+                    >
+                      <span className="chat-model-option-copy">
+                        <strong>{model.name}</strong>
+                        <small>
+                          {provider.modelId} · {provider.name}
+                        </small>
+                        <small className="chat-model-availability">{availability}</small>
+                      </span>
+                      {isSelected ? <Check size={16} /> : <ChevronRight size={16} />}
+                    </button>
+                  );
+                }),
+              )}
             </div>
           ) : (
-            <>
-              <div className="chat-routing-mode-grid" role="group" aria-label="Chat routing mode">
-                {(
-                  [
-                    [
-                      'fallback',
-                      'Fallback chain',
-                      'Try your chosen models in order if one is unavailable.',
-                    ],
-                    [
-                      'fusion',
-                      'Fusion',
-                      'Ask your selected models in parallel and synthesize their answers.',
-                    ],
-                    [
-                      'auto-fusion',
-                      'Auto Fusion',
-                      'Match up to four eligible models to the prompt, then synthesize.',
-                    ],
-                  ] as const
-                ).map(([strategy, title, description]) => (
-                  <button
-                    key={strategy}
-                    type="button"
-                    className={`chat-routing-mode ${routerStrategy === strategy ? 'selected' : ''}`}
-                    onClick={() => setRouterStrategy(strategy)}
-                  >
-                    <strong>{title}</strong>
-                    <small>{description}</small>
-                  </button>
-                ))}
-              </div>
-              {routerStrategy === 'fallback' && (
-                <div className="chat-route-choices">
-                  <strong>Fallback models, in order (up to 3)</strong>
-                  <small>
-                    Choose the primary from the model list below, then mark backup models here.
-                  </small>
-                  {modelChoices.flatMap((model) =>
-                    model.providers.map((provider) => {
-                      const target: RouterTarget = {
-                        providerId: provider.id,
-                        modelId: provider.modelId,
-                        availableTokens: provider.availableTokens,
-                        contextTokens: provider.contextTokens,
-                        supportsTools: provider.supportsTools,
-                        isFree: provider.isFree,
-                      };
-                      const key = `${target.providerId}::${target.modelId}`;
-                      const checked = fallbackChain.some(
-                        (item) => `${item.providerId}::${item.modelId}` === key,
-                      );
-                      return (
-                        <label key={`fallback-${key}`}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={
-                              (!checked && fallbackChain.length >= 3) ||
-                              key ===
-                                (routerSelection
-                                  ? `${routerSelection.providerId}::${routerSelection.modelId}`
-                                  : '')
-                            }
-                            onChange={() =>
-                              toggleChatRouteTarget(fallbackChain, setFallbackChain, target)
-                            }
-                          />
-                          <span>
-                            {checked
-                              ? `${fallbackChain.findIndex((item) => `${item.providerId}::${item.modelId}` === key) + 1}. `
-                              : ''}
-                            {model.name}
-                          </span>
-                          <small>{provider.name}</small>
-                        </label>
-                      );
-                    }),
-                  )}
-                </div>
-              )}
-              {routerStrategy === 'fusion' && (
-                <div className="chat-route-choices">
-                  <strong>Additional Fusion models (up to 3; 4 total)</strong>
-                  <small>
-                    Select the primary in the model list below. Fusion runs without action tools.
-                  </small>
-                  {modelChoices.flatMap((model) =>
-                    model.providers.map((provider) => {
-                      const target: RouterTarget = {
-                        providerId: provider.id,
-                        modelId: provider.modelId,
-                        availableTokens: provider.availableTokens,
-                        contextTokens: provider.contextTokens,
-                        supportsTools: provider.supportsTools,
-                        isFree: provider.isFree,
-                      };
-                      const key = `${target.providerId}::${target.modelId}`;
-                      const checked = fusionModels.some(
-                        (item) => `${item.providerId}::${item.modelId}` === key,
-                      );
-                      return (
-                        <label key={`fusion-${key}`}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={
-                              (!checked && fusionModels.length >= 3) ||
-                              key ===
-                                (routerSelection
-                                  ? `${routerSelection.providerId}::${routerSelection.modelId}`
-                                  : '')
-                            }
-                            onChange={() =>
-                              toggleChatRouteTarget(fusionModels, setFusionModels, target)
-                            }
-                          />
-                          <span>{model.name}</span>
-                          <small>{provider.name}</small>
-                        </label>
-                      );
-                    }),
-                  )}
-                </div>
-              )}
-            </>
+            <div className="model-picker-empty">
+              <CircleHelp size={20} />
+              <strong>No eligible models are listed</strong>
+              <span>
+                Refresh your provider keys or check the provider’s quota and model access. Quota can
+                change after this catalog check.
+              </span>
+            </div>
           )}
-          {!(status?.role === 'user' && status.plan === 'premium') && (
-            <>
-              <button
-                className={`chat-auto-model-option ${routerAutoPick && routerStrategy === 'auto' ? 'selected' : ''}`}
-                onClick={() => void chooseAutomaticModel()}
-                disabled={modelPickerBusy || !modelChoices.length}
-              >
-                <Zap size={16} />
-                <span>
-                  <strong>Auto Select</strong>
-                  <small>
-                    Relay picks the best eligible model for each request and falls back to another
-                    when a provider rejects it or runs out of quota.
-                  </small>
-                </span>
-                {routerAutoPick && routerStrategy === 'auto' && <Check size={16} />}
-              </button>
-              {routerStrategy === 'auto-fusion' ? (
-                <div className="model-picker-empty">
-                  <Sparkles size={20} />
-                  <strong>Auto Fusion is prompt-driven</strong>
-                  <span>
-                    When you send a prompt, Relay ranks eligible models by task fit, context, quota
-                    and provider diversity, then runs up to four in parallel. No tools or account
-                    actions are allowed in the ensemble.
-                  </span>
-                </div>
-              ) : modelPickerBusy && !modelChoices.length ? (
-                <div className="model-picker-loading">
-                  <LoaderCircle className="spin" size={18} /> Checking your API model access…
-                </div>
-              ) : modelChoices.length ? (
-                <div className="chat-model-picker-list">
-                  {modelChoices.flatMap((model) =>
-                    model.providers.map((provider) => {
-                      const isSelected =
-                        routerSelection?.providerId === provider.id &&
-                        routerSelection.modelId === provider.modelId;
-                      const availability = provider.isFree
-                        ? 'Free on this API'
-                        : provider.availableTokens !== null
-                          ? `${provider.availableTokens.toLocaleString()} tokens reported`
-                          : 'Account credits available';
-                      return (
-                        <button
-                          key={`${provider.id}::${provider.modelId}`}
-                          className={`chat-model-option ${isSelected ? 'selected' : ''}`}
-                          disabled={modelPickerBusy}
-                          onClick={() => void chooseChatModel(provider)}
-                        >
-                          <span className="chat-model-option-copy">
-                            <strong>{model.name}</strong>
-                            <small>
-                              {provider.modelId} · {provider.name}
-                            </small>
-                            <small className="chat-model-availability">{availability}</small>
-                          </span>
-                          {isSelected ? <Check size={16} /> : <ChevronRight size={16} />}
-                        </button>
-                      );
-                    }),
-                  )}
-                </div>
-              ) : (
-                <div className="model-picker-empty">
-                  <CircleHelp size={20} />
-                  <strong>No eligible models are listed</strong>
-                  <span>
-                    Refresh your provider keys or check the provider’s quota and model access. Quota
-                    can change after this catalog check.
-                  </span>
-                </div>
-              )}
-              {routerStrategy !== 'auto' && (
-                <button
-                  className="button primary"
-                  disabled={
-                    modelPickerBusy ||
-                    (routerStrategy === 'auto-fusion' ? !modelChoices.length : !routerSelection)
-                  }
-                  onClick={() => {
-                    const target = routerSelection || firstChatTarget();
-                    if (target) void saveChatRouting(target, routerStrategy);
-                  }}
-                >
-                  {modelPickerBusy ? (
-                    <LoaderCircle size={16} className="spin" />
-                  ) : (
-                    <Check size={16} />
-                  )}
-                  Apply{' '}
-                  {routerStrategy === 'fallback'
-                    ? 'fallback chain'
-                    : routerStrategy === 'fusion'
-                      ? 'Fusion'
-                      : 'Auto Fusion'}
-                </button>
-              )}
-              <div className="model-picker-footer">
-                <span>
-                  Model availability is a provider-reported snapshot. The provider can still return
-                  a quota error.
-                </span>
-                <button
-                  className="button small"
-                  onClick={() => void openModelPicker()}
-                  disabled={modelPickerBusy}
-                >
-                  <RefreshCw size={14} /> Refresh list
-                </button>
-              </div>
-            </>
+          {routerStrategy !== 'auto' && (
+            <button
+              className="button primary"
+              disabled={
+                modelPickerBusy ||
+                (routerStrategy === 'auto-fusion' ? !modelChoices.length : !routerSelection)
+              }
+              onClick={() => {
+                const target = routerSelection || firstChatTarget();
+                if (target) void saveChatRouting(target, routerStrategy);
+              }}
+            >
+              {modelPickerBusy ? <LoaderCircle size={16} className="spin" /> : <Check size={16} />}
+              Apply{' '}
+              {routerStrategy === 'fallback'
+                ? 'fallback chain'
+                : routerStrategy === 'fusion'
+                  ? 'Fusion'
+                  : 'Auto Fusion'}
+            </button>
           )}
+          <div className="model-picker-footer">
+            <span>
+              Model availability is a provider-reported snapshot. The provider can still return a
+              quota error.
+            </span>
+            <button
+              className="button small"
+              onClick={() => void openModelPicker()}
+              disabled={modelPickerBusy}
+            >
+              <RefreshCw size={14} /> Refresh list
+            </button>
+          </div>
         </Modal>
       )}
       {databaseSetupOpen && (

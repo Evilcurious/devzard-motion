@@ -68,7 +68,7 @@ function asUserRouterConfig(
     baseURL: baseURL.replace(/\/$/, ''),
     key,
     apiKeys: keys,
-    configured: !!provider && (!provider.keyRequired || !!key),
+    configured: !!provider && (!provider.keyRequired || keys.length > 0),
     strategy: selection.strategy,
     autoPick: selection.autoPick ?? false,
     fallbackChain: selection.fallbackChain || [],

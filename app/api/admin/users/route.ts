@@ -48,7 +48,7 @@ const premiumSchema = z.object({
   action: z.literal('activate-premium'),
   email: z.string().email().max(254),
   monthlyTokenLimit: z.number().int().min(1000).max(1_000_000_000),
-  allowedModels: z.array(allowedModel).min(1).max(100),
+  allowedModels: z.array(allowedModel).max(100).optional(),
 });
 const patchSchema = z.discriminatedUnion('action', [enabledSchema, premiumSchema]);
 export async function GET() {
@@ -133,20 +133,18 @@ export async function PATCH(request: Request) {
     if (!user) throw new Error('No account exists for that email yet. Ask them to sign up first.');
     if (user.plan !== 'free') throw new Error('That account is already Premium.');
     const [catalog, managed] = await Promise.all([discoverRouterCatalog(), managedDefaultModel()]);
-    const available = new Set(
-      catalog.models.flatMap((model) =>
-        model.providers.map((provider) => `${provider.id}::${provider.modelId}`),
-      ),
-    );
-    if (managed) available.add(`${managed.providerId}::${managed.modelId}`);
-    for (const model of input.allowedModels)
-      if (!available.has(`${model.providerId}::${model.modelId}`))
-        throw new Error(`Model ${model.modelId} is not currently available for assignment.`);
-    const models = [
-      ...new Map(
-        input.allowedModels.map((model) => [`${model.providerId}::${model.modelId}`, model]),
-      ).values(),
-    ] as AllowedAccountModel[];
+    const firstCatalogModel = catalog.models.flatMap((model) =>
+      model.providers.map((provider) => ({
+        providerId: provider.id,
+        modelId: provider.modelId,
+        name: model.name,
+      })),
+    )[0];
+    const models = (
+      managed ? [managed] : firstCatalogModel ? [firstCatalogModel] : []
+    ) as AllowedAccountModel[];
+    if (!models.length)
+      throw new Error('No admin-managed model is available to initialize Premium.');
     await migrateFreeAccountDataToCentral(user.id, async () => {
       if (!(await setAccountPlanByEmail(input.email, 'premium', input.monthlyTokenLimit, models)))
         throw new Error('That account could not be upgraded.');

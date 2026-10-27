@@ -3,6 +3,7 @@ import { isOpenRouterEndpoint } from './ai-errors';
 import type { ModelSettings } from './ai';
 import type { RouterProviderId, RouterTarget } from './model-router';
 import type { AllowedAccountModel } from './accounts';
+import type { UserPrincipal } from './security';
 import { getPrincipal } from './security';
 import { getManagedModelConfig } from './managed-model';
 
@@ -58,14 +59,23 @@ export function hasAdminModelAssignment(
     (model) => model.providerId === target.providerId && model.modelId === target.modelId,
   );
 }
-// A shared admin key is available only for an exact model the admin assigned to this user.
+export function canUserUseSharedProviderKeys(
+  user: UserPrincipal,
+  target: Pick<RouterTarget, 'providerId' | 'modelId'>,
+) {
+  return (
+    hasAdminModelAssignment(user.allowedModels, target) ||
+    (user.plan === 'premium' && target.providerId !== 'managed')
+  );
+}
+// Shared admin keys remain server-side and are returned only for an authorized target.
 export async function getProviderKeysForTarget(
   target: Pick<RouterTarget, 'providerId' | 'modelId'>,
 ): Promise<string[]> {
   const principal = await getPrincipal();
   const own = await getOwnProviderKeys(target.providerId);
   if (!principal || principal.role === 'admin') return own;
-  if (!hasAdminModelAssignment(principal.allowedModels, target)) return own;
+  if (!canUserUseSharedProviderKeys(principal, target)) return own;
   const shared = await getAdminProviderKeys(target.providerId);
   return [...new Set([...own, ...shared])].slice(0, MAX_KEYS_PER_PROVIDER * 2);
 }

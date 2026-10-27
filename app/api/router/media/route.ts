@@ -22,9 +22,10 @@ async function providerKeys(
   providerId: 'xkiro' | 'septorlabs',
   principal: Awaited<ReturnType<typeof guard>>,
 ) {
-  return principal.role === 'user' && principal.plan === 'premium'
-    ? getAdminProviderKeys(providerId)
-    : getProviderKeys(providerId);
+  const ownKeys = await getProviderKeys(providerId);
+  if (principal.role !== 'user' || principal.plan !== 'premium') return ownKeys;
+  const adminKeys = await getAdminProviderKeys(providerId);
+  return [...new Set([...ownKeys, ...adminKeys])];
 }
 function hideProviderDetails<T extends object>(
   result: T,
