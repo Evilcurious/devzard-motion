@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { getProviderKeys } from './provider-credentials';
 import {
   canonicalModelKey,
@@ -52,6 +53,56 @@ function isOllamaFreeUsageModel(modelId: string) {
   return (
     OLLAMA_FREE_USAGE_MODELS.has(id) || OLLAMA_FREE_USAGE_MODELS.has(id.replace(/:latest$/, ''))
   );
+}
+
+type OllamaCloudBalance = {
+  includedCreditsAvailable: boolean;
+  purchasedCreditsAvailable: boolean;
+  error: string | null;
+};
+const ollamaBalanceCache = new Map<string, { at: number; value: OllamaCloudBalance }>();
+const OLLAMA_BALANCE_CACHE_MS = 60_000;
+
+function positiveAmount(record: unknown, key: string) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return false;
+  const value = (record as Record<string, unknown>)[key];
+  const number =
+    typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(number) && number > 0;
+}
+
+function ollamaCloudBalance(body: unknown): OllamaCloudBalance {
+  if (!body || typeof body !== 'object' || Array.isArray(body))
+    return {
+      includedCreditsAvailable: false,
+      purchasedCreditsAvailable: false,
+      error: 'Ollama Cloud returned an invalid balance response.',
+    };
+  const response = body as Record<string, unknown>;
+  const included = response.included;
+  const includedRecord =
+    included && typeof included === 'object' && !Array.isArray(included)
+      ? (included as Record<string, unknown>)
+      : {};
+  const legacyIncluded =
+    positiveAmount(includedRecord.session, 'remaining_percent') ||
+    positiveAmount(includedRecord.weekly, 'remaining_percent');
+  return {
+    includedCreditsAvailable: positiveAmount(included, 'balance_usd') || legacyIncluded,
+    purchasedCreditsAvailable: positiveAmount(response.purchased, 'balance_usd'),
+    error: null,
+  };
+}
+
+export function applyOllamaCloudBalance(
+  models: ProviderModel[],
+  balance: OllamaCloudBalance,
+): ProviderModel[] {
+  return models.map((model) => ({
+    ...model,
+    isFree: model.isFree || (balance.includedCreditsAvailable && isOllamaFreeUsageModel(model.id)),
+    accountCreditsAvailable: model.accountCreditsAvailable || balance.purchasedCreditsAvailable,
+  }));
 }
 
 export function markRouterTargetDepleted(target: {
@@ -123,10 +174,7 @@ export async function discoverOllamaCloudProvider(
           contextTokens: model.contextTokens ?? previous?.contextTokens ?? null,
           availableTokens: model.availableTokens ?? previous?.availableTokens ?? null,
           supportsTools: model.supportsTools ?? previous?.supportsTools ?? null,
-          // Ollama documents these seven models as eligible for its free usage credits.
-          // The authenticated account model listing confirms the model is accessible;
-          // provider 402 errors still trigger the existing depletion cooldown.
-          isFree: model.isFree || previous?.isFree || isOllamaFreeUsageModel(model.id) || false,
+          isFree: model.isFree || previous?.isFree || false,
           accountCreditsAvailable:
             accountCreditsAvailable || previous?.accountCreditsAvailable || false,
           providerId: 'ollama-cloud',
@@ -145,6 +193,41 @@ export async function discoverOllamaCloudProvider(
     error: lastError instanceof Error ? lastError.message.slice(0, 240) : null,
     models: [],
   };
+}
+
+export async function discoverOllamaCloudBalance(
+  apiKey: string,
+  fetcher: typeof fetch = fetch,
+): Promise<OllamaCloudBalance> {
+  const cacheKey = createHash('sha256').update(apiKey).digest('hex');
+  const cached = ollamaBalanceCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < OLLAMA_BALANCE_CACHE_MS) return cached.value;
+
+  let result: OllamaCloudBalance = {
+    includedCreditsAvailable: false,
+    purchasedCreditsAvailable: false,
+    error: null,
+  };
+  try {
+    const response = await fetcher('https://ollama.com/api/balance', {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(8000),
+      cache: 'no-store',
+      redirect: 'error',
+    });
+    if (!response.ok) {
+      result.error = `Ollama Cloud balance API returned HTTP ${response.status}.`;
+    } else if (!(response.headers.get('content-type') || '').includes('json')) {
+      result.error = 'Ollama Cloud returned a non-JSON balance response.';
+    } else {
+      result = ollamaCloudBalance(await response.json());
+    }
+  } catch {
+    // Keep discovery safe and never return upstream balance details or credentials.
+    result.error = 'Could not read the Ollama Cloud account balance.';
+  }
+  ollamaBalanceCache.set(cacheKey, { at: Date.now(), value: result });
+  return result;
 }
 
 export async function discoverGeminiProvider(
@@ -227,7 +310,18 @@ async function discoverProvider(providerId: RouterProviderId): Promise<ProviderL
   const keys = await getProviderKeys(provider.id);
   if (provider.keyRequired && !keys.length) return { providerId, error: null, models: [] };
   if (provider.id === 'ollama-cloud') {
-    const results = await Promise.all(keys.map((key) => discoverOllamaCloudProvider(key)));
+    const results = await Promise.all(
+      keys.map(async (key) => {
+        const result = await discoverOllamaCloudProvider(key);
+        if (!result.models.length) return result;
+        const balance = await discoverOllamaCloudBalance(key);
+        return {
+          ...result,
+          error: result.error || balance.error,
+          models: applyOllamaCloudBalance(result.models, balance),
+        };
+      }),
+    );
     const models = new Map<string, ProviderModel>();
     for (const result of results) for (const model of result.models) models.set(model.id, model);
     return {
@@ -423,7 +517,7 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
     })),
     refreshedAt: new Date().toISOString(),
     metricsNote:
-      'Only authenticated model listings explicitly marked free, reporting positive per-model quota, documenting Ollama free-usage-credit eligibility, or carrying a positive account-credit signal are shown. Account credit signals are read from common explicit remaining/balance fields in provider responses; OpenRouter is also checked through its live balance and key endpoints. Ollama free-usage credits are account-level and can be exhausted; provider quota errors temporarily remove a model.',
+      'Only authenticated model listings explicitly marked free, reporting positive per-model quota, documenting Ollama free-usage-credit eligibility, or carrying a positive account-credit signal are shown. Account credit signals are read from common explicit remaining/balance fields in provider responses; OpenRouter and Ollama also use their official balance endpoints. Ollama included credits apply only to its documented free-usage models, while purchased credits apply to account-listed models. Provider quota errors temporarily remove a model.',
   };
   catalogCache.relayRouterCatalog = { at: Date.now(), result };
   return withoutDepletedModels(result);

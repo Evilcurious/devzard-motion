@@ -58,7 +58,7 @@ export const routerProviders: RouterProvider[] = [
     baseURL: 'https://ollama.com/v1',
     keyRequired: true,
     docsURL: 'https://ollama.com/settings/keys',
-    note: 'Recognizes Ollama’s documented free-usage-credit models when listed for your key; those models consume account free credits.',
+    note: 'Checks the official balance API; included credits apply to Ollama’s documented free-usage models, and purchased credits apply to listed models.',
   },
   {
     id: 'kilo',

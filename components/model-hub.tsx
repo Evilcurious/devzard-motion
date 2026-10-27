@@ -930,9 +930,10 @@ export function ModelHub({
             const routes = (catalog?.models || []).flatMap((model) =>
               model.providers.filter((provider) => provider.id === providerModelModal),
             );
-            const listedCount =
-              catalog?.providers.find((provider) => provider.providerId === providerModelModal)
-                ?.listedCount || 0;
+            const providerState = catalog?.providers.find(
+              (provider) => provider.providerId === providerModelModal,
+            );
+            const listedCount = providerState?.listedCount || 0;
             return routes.length ? (
               <div className="provider-model-picker">
                 {routes.map((provider) => (
@@ -973,9 +974,13 @@ export function ModelHub({
                     : 'No eligible models returned'}
                 </strong>
                 <span>
-                  {listedCount
-                    ? 'The API returned model names, but none had explicit free access, positive per-model quota, positive account-credit metadata, or a documented Ollama free-usage allowance. Relay keeps them out of selection until an availability signal is found.'
-                    : 'The provider key was saved, but no eligible models were returned. Check the key and provider access, then refresh.'}
+                  {providerState?.error && listedCount > 0
+                    ? `The model list returned, but the provider availability check failed: ${providerState.error}. Relay will not select models until it can confirm eligibility.`
+                    : providerState?.error
+                      ? `Provider check failed: ${providerState.error}`
+                      : listedCount
+                        ? 'The API returned model names, but none had explicit free access, positive per-model quota, positive account-credit metadata, or a documented Ollama free-usage allowance. Relay keeps them out of selection until an availability signal is found.'
+                        : 'The provider key was saved, but no eligible models were returned. Check the key and provider access, then refresh.'}
                 </span>
               </div>
             );

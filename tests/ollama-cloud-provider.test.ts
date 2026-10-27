@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { discoverOllamaCloudProvider } from '../lib/router-catalog';
+import {
+  applyOllamaCloudBalance,
+  discoverOllamaCloudBalance,
+  discoverOllamaCloudProvider,
+} from '../lib/router-catalog';
 
 test('Ollama Cloud model discovery checks both authenticated model-list APIs and merges safe quota metadata', async () => {
   const requests: Array<{ url: string; authorization: string; redirect: string | null }> = [];
@@ -55,7 +59,7 @@ test('Ollama Cloud model discovery checks both authenticated model-list APIs and
   assert.equal(JSON.stringify(result).includes('must not leak'), false);
 });
 
-test('Ollama documented free-usage models are eligible only when returned by the account model list', async () => {
+test('Ollama free-usage eligibility requires both positive included balance and authenticated model listing', async () => {
   const listedModels = [
     'beam:latest',
     'gemma4:31b',
@@ -66,13 +70,21 @@ test('Ollama documented free-usage models are eligible only when returned by the
     'nemotron-3-ultra',
     'another-cloud-model',
   ];
-  const result = await discoverOllamaCloudProvider('test-ollama-key', async (input) => {
+  const result = await discoverOllamaCloudProvider('test-ollama-list-key', async (input) => {
     if (String(input).endsWith('/api/tags')) return Response.json({ models: [] });
     return Response.json({ data: listedModels.map((id) => ({ id })) });
   });
 
+  assert.equal(
+    result.models.every((model) => !model.isFree),
+    true,
+  );
   assert.deepEqual(
-    result.models.map((model) => [model.id, model.isFree]),
+    applyOllamaCloudBalance(result.models, {
+      includedCreditsAvailable: true,
+      purchasedCreditsAvailable: false,
+      error: null,
+    }).map((model) => [model.id, model.isFree]),
     [
       ['beam:latest', true],
       ['gemma4:31b', true],
@@ -84,6 +96,79 @@ test('Ollama documented free-usage models are eligible only when returned by the
       ['another-cloud-model', false],
     ],
   );
+  assert.equal(
+    applyOllamaCloudBalance(result.models, {
+      includedCreditsAvailable: false,
+      purchasedCreditsAvailable: true,
+      error: null,
+    }).every((model) => model.accountCreditsAvailable),
+    true,
+  );
+});
+
+test('Ollama Cloud balance adapter reads included, purchased, and legacy quota balances safely', async () => {
+  let request: { url: string; authorization: string; redirect: string | null } | null = null;
+  const balance = await discoverOllamaCloudBalance(
+    'test-ollama-balance-key',
+    async (input, init) => {
+      request = {
+        url: String(input),
+        authorization: new Headers(init?.headers).get('authorization') || '',
+        redirect: init?.redirect || null,
+      };
+      return Response.json({
+        included: { balance_usd: 96.4, allowance_usd: 100 },
+        purchased: { balance_usd: 0 },
+      });
+    },
+  );
+
+  assert.deepEqual(request, {
+    url: 'https://ollama.com/api/balance',
+    authorization: 'Bearer test-ollama-balance-key',
+    redirect: 'error',
+  });
+  assert.deepEqual(balance, {
+    includedCreditsAvailable: true,
+    purchasedCreditsAvailable: false,
+    error: null,
+  });
+
+  const legacy = await discoverOllamaCloudBalance('test-ollama-legacy-key', async () =>
+    Response.json({
+      included: {
+        session: { remaining_percent: 0 },
+        weekly: { remaining_percent: 40 },
+      },
+      purchased: { balance_usd: '2.50' },
+    }),
+  );
+  assert.deepEqual(legacy, {
+    includedCreditsAvailable: true,
+    purchasedCreditsAvailable: true,
+    error: null,
+  });
+
+  const empty = await discoverOllamaCloudBalance('test-ollama-empty-key', async () =>
+    Response.json({ included: { balance_usd: 0 }, purchased: { balance_usd: 0 } }),
+  );
+  assert.deepEqual(empty, {
+    includedCreditsAvailable: false,
+    purchasedCreditsAvailable: false,
+    error: null,
+  });
+
+  const rejected = await discoverOllamaCloudBalance(
+    'test-ollama-rejected-balance-key',
+    async () =>
+      new Response(JSON.stringify({ error: 'test-ollama-rejected-balance-key' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      }),
+  );
+  assert.equal(rejected.includedCreditsAvailable, false);
+  assert.match(rejected.error || '', /HTTP 401/);
+  assert.equal(JSON.stringify(rejected).includes('test-ollama-rejected-balance-key'), false);
 });
 
 test('Ollama Cloud errors do not expose upstream bodies or bypass rejected credentials', async () => {
