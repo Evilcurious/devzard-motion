@@ -6442,7 +6442,7 @@ body {
 }
 .account-admin-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 0.95fr) minmax(340px, 1.05fr);
+  grid-template-columns: minmax(320px, 0.88fr) minmax(360px, 1.12fr);
   gap: 18px;
   align-items: start;
 }
@@ -6536,6 +6536,41 @@ body {
   min-height: 34px;
   font-size: 12px;
 }
+.account-model-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  background: color-mix(in srgb, var(--subtle, #f7f7f9) 68%, transparent);
+}
+.account-model-tools > label {
+  display: grid;
+  gap: 4px;
+  min-width: 150px;
+  color: var(--muted, #737987);
+  font-size: 10px;
+  font-weight: 650;
+}
+.account-model-tools select,
+.managed-users-search input {
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 9px;
+  color: inherit;
+  background: var(--surface, #fff);
+  font: inherit;
+  font-size: 11px;
+}
+.account-model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
 .account-model-options {
   max-height: 255px;
   overflow: auto;
@@ -6599,6 +6634,24 @@ body {
 .invite-result .button {
   flex: 0 0 auto;
 }
+.managed-users-toolbar {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  margin: -4px 0 14px;
+}
+.managed-users-search {
+  flex: 1;
+  min-width: 0;
+}
+.managed-users-search input {
+  width: 100%;
+  min-height: 38px;
+  font-size: 12px;
+}
+.managed-users-toolbar .button {
+  flex: 0 0 auto;
+}
 .managed-users-list {
   display: grid;
   gap: 12px;
@@ -6614,6 +6667,42 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 9px;
+}
+.managed-user-head > div {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  min-width: 0;
+}
+.managed-user-head > div strong {
+  overflow-wrap: anywhere;
+}
+.managed-user-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.premium-model-editor {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent, #5144d6) 22%, var(--border, #e5e7eb));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--accent, #5144d6) 4%, var(--surface, #fff));
+}
+.premium-model-editor .settings-field {
+  margin-top: 0;
+}
+.premium-model-editor .account-model-picker {
+  margin: 4px 0;
+}
+.premium-model-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 5px;
 }
 .managed-user-head > div strong {
   font-size: 13px;
@@ -6692,6 +6781,16 @@ body {
   .account-model-picker-head {
     align-items: stretch;
     flex-direction: column;
+  }
+  .account-model-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .account-model-tools > label {
+    min-width: 0;
+  }
+  .account-model-actions {
+    justify-content: space-between;
   }
   .account-model-picker-head input {
     max-width: none;

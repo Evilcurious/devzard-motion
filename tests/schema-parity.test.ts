@@ -10,4 +10,6 @@ test('hosted migration schema stays identical to the safe CLI migration', async 
   assert.match(schemaSql, /ON CONFLICT DO NOTHING/);
   assert.match(schemaSql, /CREATE TABLE IF NOT EXISTS relay_analytics/);
   assert.match(schemaSql, /CREATE INDEX IF NOT EXISTS relay_analytics_created_at_idx/);
+  assert.match(schemaSql, /ADD COLUMN IF NOT EXISTS model_access text NOT NULL DEFAULT 'all'/);
+  assert.match(schemaSql, /model_access IN \('all','selected'\)/);
 });

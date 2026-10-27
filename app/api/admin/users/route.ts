@@ -3,13 +3,15 @@ import {
   createUserInvite,
   findUserByEmail,
   listUserAccounts,
+  getUserPolicy,
+  updatePremiumModelAccess,
   setAccountPlanByEmail,
   setUserEnabled,
   type AllowedAccountModel,
 } from '@/lib/accounts';
 import { errorResponse, requireAdmin, readJson } from '@/lib/security';
 import { discoverRouterCatalog } from '@/lib/router-catalog';
-import { databaseConfigured } from '@/lib/db';
+import { databaseConfigured, ensureAccountSchema } from '@/lib/db';
 import { aiConfig } from '@/lib/ai';
 import { migrateFreeAccountDataToCentral } from '@/lib/tenant-database';
 
@@ -26,7 +28,7 @@ const allowedModel = z.object({
 const inviteSchema = z.object({
   providerMode: z.enum(['managed', 'both']),
   monthlyTokenLimit: z.number().int().min(1000).max(1_000_000_000),
-  allowedModels: z.array(allowedModel).max(100),
+  allowedModels: z.array(allowedModel).max(1000),
 });
 
 async function managedDefaultModel() {
@@ -48,14 +50,24 @@ const premiumSchema = z.object({
   action: z.literal('activate-premium'),
   email: z.string().email().max(254),
   monthlyTokenLimit: z.number().int().min(1000).max(1_000_000_000),
-  allowedModels: z.array(allowedModel).max(100).optional(),
 });
-const patchSchema = z.discriminatedUnion('action', [enabledSchema, premiumSchema]);
+const premiumModelsSchema = z.object({
+  action: z.literal('update-premium-models'),
+  userId: z.string().uuid(),
+  modelAccess: z.enum(['all', 'selected']),
+  allowedModels: z.array(allowedModel).max(1000),
+});
+const patchSchema = z.discriminatedUnion('action', [
+  enabledSchema,
+  premiumSchema,
+  premiumModelsSchema,
+]);
 export async function GET() {
   try {
     await requireAdmin();
     if (!databaseConfigured())
       throw new Error('Configure the shared Neon database before managing user accounts.');
+    await ensureAccountSchema();
     const [users, catalog, managed] = await Promise.all([
       listUserAccounts(),
       discoverRouterCatalog(),
@@ -85,7 +97,8 @@ export async function POST(request: Request) {
     await requireAdmin(request);
     if (!databaseConfigured())
       throw new Error('Configure the shared Neon database before creating invitations.');
-    const input = inviteSchema.parse(await readJson(request, 30_000));
+    await ensureAccountSchema();
+    const input = inviteSchema.parse(await readJson(request, 500_000));
     const [catalog, managed] = await Promise.all([discoverRouterCatalog(), managedDefaultModel()]);
     const available = new Set(
       catalog.models.flatMap((model) =>
@@ -123,11 +136,49 @@ export async function PATCH(request: Request) {
     await requireAdmin(request);
     if (!databaseConfigured())
       throw new Error('Configure the shared Neon database before managing user accounts.');
-    const input = patchSchema.parse(await readJson(request, 30_000));
+    await ensureAccountSchema();
+    const input = patchSchema.parse(await readJson(request, 500_000));
     if (input.action === 'set-enabled') {
       if (!(await setUserEnabled(input.userId, input.enabled)))
         throw new Error('That user account was not found.');
       return Response.json({ ok: true });
+    }
+    if (input.action === 'update-premium-models') {
+      const user = await getUserPolicy(input.userId);
+      if (!user || user.plan !== 'premium')
+        throw new Error('Only an active Premium account can have its model access edited.');
+      let models: AllowedAccountModel[] = [];
+      if (input.modelAccess === 'selected') {
+        if (!input.allowedModels.length)
+          throw new Error('Select at least one model, or choose All available models.');
+        const [catalog, managed] = await Promise.all([
+          discoverRouterCatalog(),
+          managedDefaultModel(),
+        ]);
+        const availableModels: AllowedAccountModel[] = catalog.models.flatMap((model) =>
+          model.providers.map((provider) => ({
+            providerId: provider.id,
+            modelId: provider.modelId,
+            name: model.name,
+          })),
+        );
+        if (managed) availableModels.push(managed);
+        const available = new Map(
+          availableModels.map((model) => [`${model.providerId}::${model.modelId}`, model]),
+        );
+        const unique = new Set<string>();
+        for (const model of input.allowedModels) {
+          const key = `${model.providerId}::${model.modelId}`;
+          const availableModel = available.get(key);
+          if (!availableModel)
+            throw new Error(`Model ${model.modelId} is no longer available for assignment.`);
+          unique.add(key);
+        }
+        models = [...unique].map((key) => available.get(key)!);
+      }
+      if (!(await updatePremiumModelAccess(user.id, input.modelAccess, models)))
+        throw new Error('The Premium model access settings could not be saved.');
+      return Response.json({ ok: true, modelAccess: input.modelAccess });
     }
     const user = await findUserByEmail(input.email);
     if (!user) throw new Error('No account exists for that email yet. Ask them to sign up first.');

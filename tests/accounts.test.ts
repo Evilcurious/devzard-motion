@@ -44,6 +44,7 @@ test('user model policy permits exact admin assignments and denies other managed
     username: 'member',
     email: 'member@example.com',
     plan: 'free',
+    modelAccess: 'selected',
     providerMode: 'managed',
     monthlyTokenLimit: 20_000,
     allowedModels: [{ providerId: 'openrouter', modelId: 'vendor/model-a', name: 'Assigned A' }],
@@ -66,6 +67,7 @@ test('Premium accounts can use eligible no-key providers while Free accounts sta
     username: 'free-member',
     email: 'free@example.com',
     plan: 'free',
+    modelAccess: 'selected',
     providerMode: 'managed',
     monthlyTokenLimit: 20_000,
     allowedModels: [],
@@ -77,11 +79,24 @@ test('Premium accounts can use eligible no-key providers while Free accounts sta
     username: 'premium-member',
     email: 'premium@example.com',
     plan: 'premium',
+    modelAccess: 'all',
     providerMode: 'managed',
   };
   const target = { providerId: 'aihorde' as const, modelId: 'example/model' };
   assert.equal(await canUserUseTarget(free, target), false);
   assert.equal(await canUserUseTarget(premium, target), true);
+  assert.equal(await canUserUseTarget({ ...premium, modelAccess: 'selected' }, target), false);
+  assert.equal(
+    await canUserUseTarget(
+      {
+        ...premium,
+        modelAccess: 'selected',
+        allowedModels: [{ providerId: 'aihorde', modelId: 'example/model', name: 'Assigned' }],
+      },
+      target,
+    ),
+    true,
+  );
   assert.equal(
     canUserUseSharedProviderKeys(free, { providerId: 'openrouter', modelId: 'x' }),
     false,
@@ -89,6 +104,13 @@ test('Premium accounts can use eligible no-key providers while Free accounts sta
   assert.equal(
     canUserUseSharedProviderKeys(premium, { providerId: 'openrouter', modelId: 'x' }),
     true,
+  );
+  assert.equal(
+    canUserUseSharedProviderKeys(
+      { ...premium, modelAccess: 'selected' },
+      { providerId: 'openrouter', modelId: 'x' },
+    ),
+    false,
   );
 });
 

@@ -457,7 +457,12 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
   const discoveryKeys = async (providerId: RouterProviderId) => {
     if (principal?.role !== 'user') return undefined;
     const own = await getOwnProviderKeys(providerId);
-    if (principal.plan !== 'premium') return own;
+    if (
+      principal.plan !== 'premium' ||
+      (principal.modelAccess !== 'all' &&
+        !principal.allowedModels.some((model) => model.providerId === providerId))
+    )
+      return own;
     const admin = await getAdminProviderKeys(providerId);
     return [...new Set([...own, ...admin])];
   };

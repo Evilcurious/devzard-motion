@@ -65,7 +65,7 @@ export function canUserUseSharedProviderKeys(
 ) {
   return (
     hasAdminModelAssignment(user.allowedModels, target) ||
-    (user.plan === 'premium' && target.providerId !== 'managed')
+    (user.plan === 'premium' && user.modelAccess === 'all' && target.providerId !== 'managed')
   );
 }
 // Shared admin keys remain server-side and are returned only for an authorized target.

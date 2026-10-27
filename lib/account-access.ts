@@ -14,13 +14,22 @@ export async function canUserUseTarget(
     )
   )
     return true;
-  if (user.providerMode !== 'both' && user.plan !== 'premium') return false;
+  if (user.plan === 'premium' && user.modelAccess === 'all') {
+    const provider = getRouterProvider(target.providerId);
+    if (!provider || provider.id === 'managed') return false;
+    if (!provider.keyRequired) return true;
+    if ((await getOwnProviderKeys(provider.id)).length) return true;
+    return (await getAdminProviderKeys(provider.id)).length > 0;
+  }
+  if (user.plan === 'premium' && user.modelAccess === 'selected') {
+    const provider = getRouterProvider(target.providerId);
+    return !!provider && provider.keyRequired && (await getOwnProviderKeys(provider.id)).length > 0;
+  }
+  if (user.providerMode !== 'both') return false;
   const provider = getRouterProvider(target.providerId);
   if (!provider || provider.id === 'managed') return false;
   if (!provider.keyRequired) return true;
-  const ownKeys = await getOwnProviderKeys(provider.id);
-  if (ownKeys.length) return true;
-  return user.plan === 'premium' && (await getAdminProviderKeys(provider.id)).length > 0;
+  return (await getOwnProviderKeys(provider.id)).length > 0;
 }
 export async function filterCatalogForPrincipal(
   catalog: RouterCatalog,
@@ -32,17 +41,25 @@ export async function filterCatalogForPrincipal(
     await Promise.all(
       catalog.providers.map(async ({ providerId }) => {
         const provider = getRouterProvider(providerId);
-        if (provider && (!provider.keyRequired || (await getOwnProviderKeys(provider.id)).length))
+        if (
+          provider &&
+          (provider.keyRequired
+            ? (await getOwnProviderKeys(provider.id)).length > 0
+            : principal.plan !== 'premium' || principal.modelAccess === 'all')
+        )
           providersWithOwnKeys.add(providerId);
       }),
     );
   }
   const adminProviders = new Set<string>();
   if (principal.plan === 'premium') {
+    const assignedProviders = new Set(principal.allowedModels.map((model) => model.providerId));
     await Promise.all(
       catalog.providers.map(async ({ providerId }) => {
         const provider = getRouterProvider(providerId);
-        if (provider && (await getAdminProviderKeys(provider.id)).length)
+        const eligibleForSharedKeys =
+          principal.modelAccess === 'all' || assignedProviders.has(providerId);
+        if (provider && eligibleForSharedKeys && (await getAdminProviderKeys(provider.id)).length)
           adminProviders.add(providerId);
       }),
     );
@@ -55,7 +72,12 @@ export async function filterCatalogForPrincipal(
         (allowed) => allowed.providerId === provider.id && allowed.modelId === provider.modelId,
       );
       const own = providersWithOwnKeys.has(provider.id);
-      const adminAvailable = principal.plan === 'premium' && adminProviders.has(provider.id);
+      const providerInfo = getRouterProvider(provider.id);
+      const adminAvailable =
+        principal.plan === 'premium' &&
+        principal.modelAccess === 'all' &&
+        !!providerInfo &&
+        (!providerInfo.keyRequired || adminProviders.has(provider.id));
       if (!assigned && !own && !adminAvailable) continue;
       visibleProviders.push(assigned ? { ...provider, name: 'Admin-managed model' } : provider);
     }

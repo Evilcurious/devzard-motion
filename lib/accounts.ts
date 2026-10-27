@@ -13,6 +13,7 @@ export type UserPolicy = {
   username: string;
   email: string | null;
   plan: 'free' | 'premium';
+  modelAccess: 'all' | 'selected';
   providerMode: ProviderMode;
   monthlyTokenLimit: number;
   allowedModels: AllowedAccountModel[];
@@ -147,7 +148,7 @@ export async function setAccountPlanByEmail(
   const email = normalizeEmail(emailValue);
   const result = await dbQuery(
     `UPDATE relay_users SET plan=$2, provider_mode=$3, monthly_token_limit=$4,
-       allowed_models=$5::jsonb, updated_at=now()
+       allowed_models=$5::jsonb, model_access='all', updated_at=now()
      WHERE lower(email)=$1 RETURNING id`,
     [
       email,
@@ -204,11 +205,11 @@ export async function redeemUserInvite(token: string, usernameValue: string, pas
          RETURNING policy
        )
        INSERT INTO relay_users
-         (id, username, password_hash, provider_mode, monthly_token_limit, allowed_models)
+         (id, username, password_hash, provider_mode, monthly_token_limit, allowed_models, model_access)
        SELECT $2, $3, $4, policy->>'providerMode', (policy->>'monthlyTokenLimit')::bigint,
-              COALESCE(policy->'allowedModels', '[]'::jsonb)
+              COALESCE(policy->'allowedModels', '[]'::jsonb), 'selected'
        FROM consumed
-       RETURNING id, username, provider_mode, monthly_token_limit, allowed_models, enabled`,
+       RETURNING id, username, plan, model_access, provider_mode, monthly_token_limit, allowed_models, enabled`,
       [hashInviteToken(token), id, username, passwordHash],
     );
     if (!result.rows[0])
@@ -229,6 +230,7 @@ function mapUserRow(row: Record<string, unknown>): UserPolicy {
     username: String(row.username),
     email: row.email ? String(row.email) : null,
     plan: row.plan === 'free' ? 'free' : 'premium',
+    modelAccess: row.model_access === 'selected' ? 'selected' : 'all',
     providerMode: row.provider_mode === 'both' ? 'both' : 'managed',
     monthlyTokenLimit: Number(row.monthly_token_limit) || 0,
     allowedModels: Array.isArray(row.allowed_models) ? row.allowed_models : [],
@@ -253,7 +255,7 @@ export async function findUserByUsername(usernameValue: string) {
 }
 export async function getUserPolicy(id: string): Promise<UserPolicy | null> {
   const result = await dbQuery(
-    `SELECT id, username, email, plan, provider_mode, monthly_token_limit, allowed_models, enabled
+    `SELECT id, username, email, plan, model_access, provider_mode, monthly_token_limit, allowed_models, enabled
      FROM relay_users WHERE id = $1`,
     [id],
   );
@@ -261,7 +263,7 @@ export async function getUserPolicy(id: string): Promise<UserPolicy | null> {
 }
 export async function listUserAccounts() {
   const result = await dbQuery(
-    `SELECT u.id, u.username, u.email, u.plan, u.provider_mode, u.monthly_token_limit, u.allowed_models,
+    `SELECT u.id, u.username, u.email, u.plan, u.model_access, u.provider_mode, u.monthly_token_limit, u.allowed_models,
        u.enabled, u.created_at,
        COALESCE(sum(COALESCE(a.input_tokens, 0) + COALESCE(a.output_tokens, 0))
          FILTER (WHERE a.created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0) AS used_tokens
@@ -273,6 +275,19 @@ export async function listUserAccounts() {
     createdAt: new Date(row.created_at).toISOString(),
     usedTokens: (Number(row.used_tokens) || 0) + unpersistedUsageThisMonth(String(row.id)),
   }));
+}
+export async function updatePremiumModelAccess(
+  id: string,
+  modelAccess: 'all' | 'selected',
+  allowedModels: AllowedAccountModel[],
+) {
+  const result = await dbQuery(
+    `UPDATE relay_users
+     SET model_access=$2, allowed_models=$3::jsonb, updated_at=now()
+     WHERE id=$1 AND plan='premium' RETURNING id`,
+    [id, modelAccess, JSON.stringify(modelAccess === 'all' ? [] : allowedModels)],
+  );
+  return (result.rowCount || 0) > 0;
 }
 export async function setUserEnabled(id: string, enabled: boolean) {
   const result = await dbQuery(

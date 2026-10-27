@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS relay_users (
   allowed_models jsonb NOT NULL DEFAULT '[]'::jsonb,
   email text,
   plan text NOT NULL DEFAULT 'premium' CHECK (plan IN ('free','premium')),
+  model_access text NOT NULL DEFAULT 'all' CHECK (model_access IN ('all','selected')),
   google_subject text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -31,6 +32,12 @@ CREATE TABLE IF NOT EXISTS relay_users (
 ALTER TABLE relay_users ALTER COLUMN password_hash DROP NOT NULL;
 ALTER TABLE relay_users ADD COLUMN IF NOT EXISTS email text;
 ALTER TABLE relay_users ADD COLUMN IF NOT EXISTS plan text NOT NULL DEFAULT 'premium';
+ALTER TABLE relay_users ADD COLUMN IF NOT EXISTS model_access text NOT NULL DEFAULT 'all';
+DO $$ BEGIN
+  ALTER TABLE relay_users ADD CONSTRAINT relay_users_model_access_check
+    CHECK (model_access IN ('all','selected'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 ALTER TABLE relay_users ADD COLUMN IF NOT EXISTS google_subject text;
 CREATE UNIQUE INDEX IF NOT EXISTS relay_users_email_ci_idx ON relay_users (lower(email)) WHERE email IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS relay_users_google_subject_idx ON relay_users (google_subject) WHERE google_subject IS NOT NULL;
