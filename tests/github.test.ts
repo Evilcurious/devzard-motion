@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateGitHubCommitMessage, validateGitHubFiles } from '../lib/github';
+import {
+  isSafeRepositoryContextPath,
+  validateGitHubCommitMessage,
+  validateGitHubFiles,
+} from '../lib/github';
 import { toolsForConnections } from '../lib/tools';
 
 test('GitHub code proposals accept bounded, unique repository-relative text files', () => {
@@ -65,6 +69,29 @@ test('chat always gets file-bundle creation and only connected integration tools
     toolsForConnections(false, true).map((tool) => tool.function.name),
     ['github_push_files', 'create_file_bundle'],
   );
+});
+
+test('GitHub repository context only includes bounded, non-secret source files', () => {
+  for (const path of [
+    'README.md',
+    'package.json',
+    'src/app/page.tsx',
+    'src/styles.css',
+    'tsconfig.json',
+  ])
+    assert.equal(isSafeRepositoryContextPath(path), true, path);
+
+  for (const path of [
+    '.env',
+    '.env.example',
+    '.npmrc',
+    '.github/workflows/deploy.yml',
+    'secrets/provider.json',
+    'credentials.json',
+    'private.pem',
+    'node_modules/package/index.js',
+  ])
+    assert.equal(isSafeRepositoryContextPath(path), false, path);
 });
 
 test('GitHub commit messages are a bounded single line', () => {

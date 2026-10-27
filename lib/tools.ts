@@ -144,7 +144,7 @@ export const tools = [
     function: {
       name: 'github_push_files',
       description:
-        'Prepare a complete, structured set of text files for the selected GitHub repository. This only creates a review proposal; never claim it was pushed before the user approves. For website/app requests, include a sensible project structure, package.json, source, styles, and setup documentation. Do not include secrets, dependency folders, build output, .git metadata, or GitHub workflow files.',
+        'Prepare a review proposal for the selected GitHub repository. Inspect the attached repository paths and source snippets first, preserve its existing framework and conventions, and include only the files that need to be added or changed. For a genuinely new project, include a sensible project structure, package.json, source, styles, and setup documentation. Never claim it was pushed before the user approves. Do not include secrets, dependency folders, build output, .git metadata, or GitHub workflow files.',
       parameters: {
         type: 'object',
         properties: {

@@ -1,0 +1,311 @@
+/* Mobile-first overrides: keep the workspace inside the viewport and make chat controls usable on touch screens. */
+@media (max-width: 640px) {
+  html,
+  body,
+  .workspace {
+    width: 100%;
+    min-width: 0;
+    overflow-x: clip;
+  }
+
+  .main-layout,
+  .main-content,
+  .conversation-page,
+  .page-content,
+  .chat-layout,
+  .messages,
+  .message,
+  .message-main {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .main-layout {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .topbar {
+    width: 100%;
+    min-width: 0;
+    height: 60px;
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .breadcrumb {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 7px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .breadcrumb > span:not(.beta-label) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar-actions {
+    flex: 0 0 auto;
+    gap: 5px;
+  }
+
+  .page-content {
+    padding: 24px 15px 40px;
+  }
+
+  .page-heading.with-action,
+  .analytics-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-tabs {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    justify-content: flex-start;
+    scrollbar-width: thin;
+  }
+
+  .settings-tabs button {
+    flex: 0 0 auto;
+    min-height: 42px;
+  }
+
+  .settings-hub-nav {
+    max-width: 100vw;
+    padding-inline: 12px;
+  }
+
+  .chat-layout {
+    width: 100%;
+    min-height: calc(100dvh - 60px);
+    padding: 16px 13px calc(12px + env(safe-area-inset-bottom));
+    overflow-x: clip;
+  }
+
+  .conversation-heading {
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 13px;
+  }
+
+  .conversation-heading > div {
+    flex: 1 1 auto;
+  }
+
+  .messages {
+    padding: 20px 0 12px;
+  }
+
+  .message {
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  .message.assistant .message-main,
+  .message.user .message-main {
+    max-width: 100%;
+  }
+
+  .message.user {
+    margin-left: 0;
+  }
+
+  .message.user .message-main {
+    flex: 0 1 auto;
+    padding: 10px 12px;
+  }
+
+  .message-content,
+  .github-proposal-preview,
+  .generated-artifact {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .chat-layout .composer-wrap {
+    width: 100%;
+    margin-inline: 0;
+    padding-top: 10px;
+  }
+
+  .composer {
+    width: 100%;
+    border-radius: 14px;
+  }
+
+  .composer textarea {
+    min-height: 72px;
+    max-height: 30dvh;
+    padding: 14px 14px 10px;
+    font-size: 16px;
+  }
+
+  .composer-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 9px;
+    padding: 4px 11px 11px;
+  }
+
+  .composer-tools {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .composer-mode-tools {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex: 1 1 100%;
+    width: 100%;
+    gap: 3px;
+    margin: 0;
+  }
+
+  .composer-mode-tools button {
+    justify-content: center;
+    min-width: 0;
+    min-height: 38px;
+    padding-inline: 7px;
+    font-size: 12px;
+  }
+
+  .composer-tools > .attach-button {
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+  }
+
+  .model-select {
+    flex: 1 1 145px;
+    min-width: 0;
+    max-width: calc(100% - 50px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+  }
+
+  .chat-github-picker,
+  .chat-github-connect,
+  .chat-github-empty {
+    flex: 1 1 145px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .chat-github-picker select {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .density-control,
+  .routing-strategy-control {
+    flex: 1 1 120px;
+    min-width: 0;
+    justify-content: space-between;
+    min-height: 36px;
+    padding: 0 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 11px;
+  }
+
+  .density-control > span,
+  .routing-strategy-control > span {
+    display: inline;
+  }
+
+  .density-control select,
+  .routing-strategy-control select {
+    min-width: 0;
+    max-width: 120px;
+    padding: 6px 18px 6px 7px;
+    font-size: 11px;
+  }
+
+  .send-tools {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .send-tools > span {
+    display: inline;
+  }
+
+  .send-button {
+    min-width: 42px;
+    min-height: 42px;
+  }
+
+  .modal-backdrop {
+    align-items: flex-end;
+    padding: 8px;
+  }
+
+  .modal,
+  .modal.wide {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 16px);
+    padding: 18px;
+    border-radius: 16px;
+  }
+
+  .integration-settings-grid,
+  .integration-grid,
+  .analytics-breakdown-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .integration-card,
+  .account-admin-card,
+  .settings-page .appearance-controls {
+    min-width: 0;
+    padding: 16px;
+  }
+
+  .github-empty-state {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 380px) {
+  .topbar {
+    padding-inline: 7px;
+  }
+
+  .topbar-actions {
+    gap: 2px;
+  }
+
+  .chat-layout {
+    padding-inline: 10px;
+  }
+
+  .composer-toolbar {
+    padding-inline: 8px;
+  }
+
+  .composer-mode-tools button {
+    gap: 4px;
+    padding-inline: 4px;
+    font-size: 11px;
+  }
+
+  .density-control,
+  .routing-strategy-control {
+    flex-basis: 100%;
+  }
+}

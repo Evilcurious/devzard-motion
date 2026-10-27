@@ -1,5 +1,6 @@
 import { createSign } from 'node:crypto';
 import { readConnection } from './connection-store';
+import { isSafeGeneratedPath } from './generated-file-policy';
 
 export type GitHubInstallation = { installationId: number; account: string };
 export type GitHubRepository = {
@@ -164,7 +165,7 @@ export async function listGitHubRepositories() {
   if (!installation) return [];
   const token = await getGitHubInstallationToken(installation);
   const repositories: GitHubRepository[] = [];
-  for (let page = 1; page <= 3; page++) {
+  for (let page = 1; page <= 50; page++) {
     const data = await githubApi(`/installation/repositories?per_page=100&page=${page}`, token);
     const items = Array.isArray(data?.repositories) ? data.repositories : [];
     for (const repo of items) {
@@ -184,13 +185,126 @@ export async function listGitHubRepositories() {
         htmlUrl: repo.html_url,
       });
     }
-    if (items.length < 100) break;
+    const totalCount = Number.isSafeInteger(data?.total_count) ? data.total_count : undefined;
+    if (items.length < 100 || (totalCount !== undefined && page * 100 >= totalCount)) break;
   }
   return repositories;
 }
 
 export async function getSelectedGitHubRepository() {
   return readConnection<GitHubSelection>('github_repository');
+}
+
+const REPOSITORY_CONTEXT_MAX_BYTES = 20_000;
+const REPOSITORY_CONTEXT_MAX_FILES = 12;
+
+export function isSafeRepositoryContextPath(path: string) {
+  if (!isSafeGeneratedPath(path)) return false;
+  const segments = path.split('/');
+  if (
+    segments.some((segment) => /^\.(?:github|vscode|idea|devcontainer)$/i.test(segment)) ||
+    segments.some((segment) => /^(?:secrets?|credentials?)$/i.test(segment)) ||
+    /(?:^|\/)(?:\.npmrc|\.netrc|credentials?(?:\.[^/]*)?|secrets?(?:\.[^/]*)?|id_rsa|id_ed25519)$/i.test(
+      path,
+    ) ||
+    /\.(?:lock|pem|key|p12|pfx)$/i.test(path)
+  )
+    return false;
+  return (
+    /(?:^|\/)(?:readme(?:\.[^/]*)?|package\.json|pyproject\.toml|requirements\.txt|go\.mod|cargo\.toml|pom\.xml|build\.gradle|makefile|tsconfig\.json|vite\.config\.[^/]+|next\.config\.[^/]+|astro\.config\.[^/]+|svelte\.config\.[^/]+)$/i.test(
+      path,
+    ) ||
+    /\.(?:tsx?|jsx?|mjs|cjs|py|go|rs|java|kt|swift|vue|svelte|html|css|scss|md|mdx|json|ya?ml|toml)$/i.test(
+      path,
+    )
+  );
+}
+
+function redactRepositorySecrets(content: string) {
+  return content
+    .replace(
+      /((?:api[_-]?key|access[_-]?token|client[_-]?secret|password|secret|private[_-]?key)\s*["']?\s*[:=]\s*["']?)[^"'\s,;]+/gi,
+      '$1[REDACTED]',
+    )
+    .replace(
+      /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16})\b/g,
+      '[REDACTED]',
+    );
+}
+
+export async function getGitHubRepositoryContext(selection: GitHubSelection) {
+  const token = await getGitHubInstallationToken();
+  const owner = encodeURIComponent(selection.owner);
+  const repo = encodeURIComponent(selection.name);
+  const branch = selection.defaultBranch.split('/').map(encodeURIComponent).join('/');
+  const ref = await githubApi(`/repos/${owner}/${repo}/git/ref/heads/${branch}`, token);
+  const commit = await githubApi(
+    `/repos/${owner}/${repo}/git/commits/${encodeURIComponent(ref.object.sha)}`,
+    token,
+  );
+  const tree = await githubApi(
+    `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(commit.tree.sha)}?recursive=1`,
+    token,
+  );
+  const entries: { path: string; sha: string; size?: number }[] = Array.isArray(tree?.tree)
+    ? tree.tree
+        .filter(
+          (entry: { type?: string; path?: string; sha?: string; size?: number }) =>
+            entry.type === 'blob' &&
+            typeof entry.path === 'string' &&
+            typeof entry.sha === 'string' &&
+            isSafeRepositoryContextPath(entry.path) &&
+            (entry.size === undefined || entry.size <= 10_000),
+        )
+        .map((entry: { path: string; sha: string; size?: number }) => ({
+          path: entry.path,
+          sha: entry.sha,
+          size: entry.size,
+        }))
+    : [];
+
+  const priority = (path: string) =>
+    /^(?:README(?:\.[^/]*)?|package\.json|pyproject\.toml|requirements\.txt|go\.mod|Cargo\.toml|Makefile|tsconfig\.json)$/i.test(
+      path,
+    )
+      ? 0
+      : path.split('/').length === 1
+        ? 1
+        : 2;
+  entries.sort((a, b) => priority(a.path) - priority(b.path) || a.path.localeCompare(b.path));
+  const selected = entries.slice(0, REPOSITORY_CONTEXT_MAX_FILES);
+  const blobs = await Promise.all(
+    selected.map(async (entry) => {
+      try {
+        const blob = await githubApi(
+          `/repos/${owner}/${repo}/git/blobs/${encodeURIComponent(entry.sha)}`,
+          token,
+        );
+        if (blob?.encoding !== 'base64' || typeof blob.content !== 'string') return null;
+        const text = Buffer.from(blob.content.replace(/\s/g, ''), 'base64').toString('utf8');
+        if (text.includes('\uFFFD') || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)) return null;
+        return { path: entry.path, content: redactRepositorySecrets(text) };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  let remaining = REPOSITORY_CONTEXT_MAX_BYTES;
+  const included = blobs
+    .filter((blob): blob is { path: string; content: string } => !!blob)
+    .flatMap((blob) => {
+      if (remaining <= 0) return [];
+      const content = blob.content.slice(0, remaining);
+      remaining -= Buffer.byteLength(content, 'utf8');
+      return [{ path: blob.path, content }];
+    });
+  const fileList = entries.slice(0, 250).map(({ path }) => path);
+  return {
+    fileList,
+    files: included,
+    truncated:
+      !!tree?.truncated || entries.length > fileList.length || blobs.length > included.length,
+  };
 }
 
 export async function selectGitHubRepository(id: number) {

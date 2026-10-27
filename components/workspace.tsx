@@ -2779,8 +2779,9 @@ function GitHubConnectionCard({
       <h2>GitHub</h2>
       <h3>Turn a chat into a reviewed code change.</h3>
       <p>
-        Select a repository once. In any chat, ask Relay to create or update a site or app; it will
-        prepare a structured file set and wait for your approval before pushing a new branch.
+        Select a repository once. Relay can then inspect a small, bounded set of safe source files
+        through your chosen AI model and prepare changes that match the existing project. It waits
+        for your approval before pushing a new branch; review sensitive repository data before use.
       </p>
       {account ? (
         <>

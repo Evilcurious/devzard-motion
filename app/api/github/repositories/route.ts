@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { guard, errorResponse, readJson } from '@/lib/security';
-import { saveConnection } from '@/lib/connection-store';
+import { removeConnection, saveConnection } from '@/lib/connection-store';
 import {
   getGitHubInstallation,
   getSelectedGitHubRepository,
@@ -12,9 +12,17 @@ export async function GET() {
   try {
     await guard();
     const installation = await getGitHubInstallation();
-    const [repositories, selection] = installation
-      ? await Promise.all([listGitHubRepositories(), getSelectedGitHubRepository()])
-      : [[], null];
+    const repositories = installation ? await listGitHubRepositories() : [];
+    let selection = installation ? await getSelectedGitHubRepository() : null;
+    if (selection && !repositories.some((repository) => repository.id === selection?.id)) {
+      await removeConnection('github_repository');
+      selection = null;
+    }
+    // A single available repository is unambiguous, so attach it automatically.
+    if (installation && !selection && repositories.length === 1) {
+      selection = repositories[0];
+      await saveConnection('github_repository', selection);
+    }
     return Response.json({
       connected: !!installation,
       account: installation?.account || null,
