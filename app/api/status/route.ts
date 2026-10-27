@@ -7,6 +7,7 @@ import { getGitHubInstallation, githubAppConfig } from '@/lib/github';
 import { getVercelConnection, getVercelProjectSelection } from '@/lib/vercel';
 import { monthlyTokenUsage } from '@/lib/accounts';
 import { getWorkspaceBranding, defaultBranding } from '@/lib/branding';
+import { accountDatabaseHealth } from '@/lib/tenant-database';
 export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
@@ -17,6 +18,7 @@ export async function GET() {
       (!!process.env.APP_PASSWORD && (process.env.SESSION_SECRET?.length || 0) < 32);
     if (!principal) return Response.json({ authenticated: false, setupRequired, branding });
     const db = await databaseHealth();
+    const accountDb = principal.role === 'user' ? await accountDatabaseHealth(principal.id) : db;
     const secureSettings = (process.env.SESSION_SECRET?.length || 0) >= 32;
     const common = {
       authenticated: true,
@@ -24,8 +26,11 @@ export async function GET() {
       role: principal.role,
       accountId: principal.id,
       username: principal.username,
+      email: principal.role === 'user' ? principal.email : null,
+      plan: principal.role === 'user' ? principal.plan : null,
+      accountDatabaseConfigured: principal.role === 'user' ? accountDb.configured : undefined,
       providerMode: principal.role === 'user' ? principal.providerMode : null,
-      allowedModels: principal.role === 'user' ? principal.allowedModels : [],
+      allowedModels: [],
       monthlyTokenLimit: principal.role === 'user' ? principal.monthlyTokenLimit : null,
       passwordProtected: !!process.env.APP_PASSWORD,
       ...(principal.role === 'admin'
@@ -37,11 +42,19 @@ export async function GET() {
             databaseTLS: db.tls,
           }
         : {}),
-      databaseConfigured: db.configured,
-      databaseReady: db.ready,
+      databaseConfigured: principal.role === 'user' ? accountDb.configured : db.configured,
+      databaseReady: principal.role === 'user' ? accountDb.ready : db.ready,
       deployment: process.env.VERCEL ? 'vercel' : 'self-hosted',
     };
     if (db.configured && !db.ready) return Response.json(common);
+    if (principal.role === 'user' && !accountDb.ready)
+      return Response.json({
+        ...common,
+        aiConfigured: false,
+        model: '',
+        usedTokens: 0,
+        remainingTokens: null,
+      });
     try {
       const [ai, google, client, github, githubApp, vercel] = await Promise.all([
         aiConfig(),

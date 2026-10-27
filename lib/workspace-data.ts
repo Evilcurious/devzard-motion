@@ -75,7 +75,11 @@ export const workspaceSchema = z.object({
               error: z.boolean().optional(),
               steps: z.array(short).max(50).optional(),
               modelUsed: z
-                .object({ modelId: short, providerId: short, providerName: short })
+                .object({
+                  modelId: short,
+                  providerId: short.optional(),
+                  providerName: short.optional(),
+                })
                 .optional(),
               media: z
                 .object({

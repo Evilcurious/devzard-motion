@@ -55,7 +55,7 @@ export function useWorkspaceStorage(
   const generation = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const authenticated = status?.authenticated;
-  const database = !!status?.databaseConfigured;
+  const database = !!(status?.accountDatabaseConfigured ?? status?.databaseConfigured);
   const localStorageKey =
     status?.accountId && status.accountId !== 'owner'
       ? `relay.workspace.user.${status.accountId}.v1`

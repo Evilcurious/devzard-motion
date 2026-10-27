@@ -42,6 +42,8 @@ test('user model policy permits exact admin assignments and denies other managed
     id: 'account-user-test',
     role: 'user',
     username: 'member',
+    email: 'member@example.com',
+    plan: 'premium',
     providerMode: 'managed',
     monthlyTokenLimit: 20_000,
     allowedModels: [{ providerId: 'openrouter', modelId: 'vendor/model-a', name: 'Assigned A' }],

@@ -1,4 +1,5 @@
-import { databaseConfigured, dbQuery } from '@/lib/db';
+import { databaseConfigured } from '@/lib/db';
+import { accountDbQuery } from '@/lib/tenant-database';
 import { cookies } from 'next/headers';
 import { executeAction, validateAction, type WriteAction } from '@/lib/tools';
 import { googleSession } from '@/lib/google';
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
         'This action was already submitted. Check the destination before trying again.',
       );
     if (databaseConfigured()) {
-      const claim = await dbQuery(
+      const claim = await accountDbQuery(
         'INSERT INTO relay_action_claims (id, account) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING id',
         [proposal.id, account],
       );

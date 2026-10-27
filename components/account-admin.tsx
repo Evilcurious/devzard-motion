@@ -8,6 +8,8 @@ type AvailableModel = { providerId: string; modelId: string; name: string; provi
 type ManagedUser = {
   id: string;
   username: string;
+  email: string | null;
+  plan: 'free' | 'premium';
   enabled: boolean;
   providerMode: 'managed' | 'both';
   monthlyTokenLimit: number;
@@ -26,6 +28,7 @@ export function AccountAdmin({ notify }: { notify: (message: string) => void }) 
   const [selected, setSelected] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [inviteUrl, setInviteUrl] = useState('');
+  const [activationEmail, setActivationEmail] = useState('');
 
   async function load() {
     try {
@@ -96,6 +99,44 @@ export function AccountAdmin({ notify }: { notify: (message: string) => void }) 
     }
   }
 
+  async function activatePremium() {
+    setBusy(true);
+    setError('');
+    try {
+      const monthlyTokenLimit = Number(limit);
+      if (!activationEmail.trim()) throw new Error('Enter the account email to activate.');
+      if (!Number.isSafeInteger(monthlyTokenLimit) || monthlyTokenLimit < 1000)
+        throw new Error('Set a monthly token allowance of at least 1,000.');
+      if (selected.length === 0)
+        throw new Error('Select at least one admin-assigned model for Premium.');
+      const selectedModels =
+        data?.availableModels.filter((model) =>
+          selected.includes(`${model.providerId}::${model.modelId}`),
+        ) || [];
+      await api(
+        '/api/admin/users',
+        {
+          action: 'activate-premium',
+          email: activationEmail.trim(),
+          monthlyTokenLimit,
+          allowedModels: selectedModels.map(({ providerId, modelId, name }) => ({
+            providerId,
+            modelId,
+            name,
+          })),
+        },
+        'PATCH',
+      );
+      setActivationEmail('');
+      await load();
+      notify('Premium activated. Assigned models are ready for this account.');
+    } catch (caught) {
+      setError((caught as Error).message || 'Could not activate Premium.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function copyInvite() {
     try {
       await navigator.clipboard.writeText(inviteUrl);
@@ -110,7 +151,10 @@ export function AccountAdmin({ notify }: { notify: (message: string) => void }) 
       <div className="page-heading">
         <div className="eyebrow">ADMIN WORKSPACE</div>
         <h1>Accounts & invitations</h1>
-        <p>Create private user workspaces with selected models and a monthly token allowance.</p>
+        <p>
+          Free accounts use their own PostgreSQL database and provider keys; activate Premium for
+          shared admin-managed models.
+        </p>
       </div>
       {error && (
         <div className="error-box" role="alert">
@@ -124,8 +168,8 @@ export function AccountAdmin({ notify }: { notify: (message: string) => void }) 
               <Link2 size={17} />
             </span>
             <div>
-              <h2>Invite a user</h2>
-              <p>They choose their own username and password.</p>
+              <h2>Legacy invitation</h2>
+              <p>For existing invite-only account workflows.</p>
             </div>
           </div>
           <label className="settings-field">
@@ -218,6 +262,28 @@ export function AccountAdmin({ notify }: { notify: (message: string) => void }) 
               </div>
             </div>
           )}
+          <div className="premium-activation">
+            <h3>Activate Premium by email</h3>
+            <p>Promote an existing Free account to admin-managed models and storage.</p>
+            <label className="settings-field">
+              <span>Registered email</span>
+              <input
+                type="email"
+                autoComplete="email"
+                value={activationEmail}
+                onChange={(event) => setActivationEmail(event.target.value)}
+                placeholder="person@example.com"
+              />
+            </label>
+            <small>
+              Premium uses Relay’s private database and assigned provider models. If a Free database
+              is connected, Relay migrates the account’s data without overwriting existing records.
+            </small>
+            <button className="button primary" disabled={busy || !data} onClick={activatePremium}>
+              {busy ? <LoaderCircle size={15} className="spin" /> : <ShieldCheck size={15} />}
+              Activate Premium
+            </button>
+          </div>
         </section>
         <section className="account-admin-card">
           <div className="account-admin-title">
@@ -226,7 +292,7 @@ export function AccountAdmin({ notify }: { notify: (message: string) => void }) 
             </span>
             <div>
               <h2>User accounts</h2>
-              <p>Monthly usage and access status, visible only to the admin.</p>
+              <p>Emails, plan status and Premium usage, visible only to the admin.</p>
             </div>
           </div>
           {!data ? (
@@ -241,7 +307,10 @@ export function AccountAdmin({ notify }: { notify: (message: string) => void }) 
                   <article className="managed-user" key={user.id}>
                     <div className="managed-user-head">
                       <div>
-                        <strong>{user.username}</strong>
+                        <strong>{user.email || user.username}</strong>
+                        <span className={`small-badge ${user.plan === 'premium' ? 'green' : ''}`}>
+                          {user.plan === 'premium' ? 'Premium' : 'Free'}
+                        </span>
                         <span className={`small-badge ${user.enabled ? 'green' : ''}`}>
                           {user.enabled ? 'Active' : 'Disabled'}
                         </span>
@@ -263,19 +332,21 @@ export function AccountAdmin({ notify }: { notify: (message: string) => void }) 
                       </button>
                     </div>
                     <div className="managed-user-meta">
-                      {user.providerMode === 'both'
-                        ? 'Managed + personal providers'
-                        : 'Managed models'}{' '}
-                      · {user.allowedModels.length} assigned model
-                      {user.allowedModels.length === 1 ? '' : 's'}
+                      {user.plan === 'premium'
+                        ? `${user.allowedModels.length} admin-assigned model${user.allowedModels.length === 1 ? '' : 's'} · ${user.monthlyTokenLimit.toLocaleString()} monthly tokens`
+                        : 'Own PostgreSQL database and provider keys'}
                     </div>
-                    <div className="quota-meter">
-                      <span style={{ width: `${percent}%` }} />
-                    </div>
-                    <div className="managed-user-usage">
-                      {user.usedTokens.toLocaleString()} / {user.monthlyTokenLimit.toLocaleString()}{' '}
-                      tokens this month
-                    </div>
+                    {user.plan === 'premium' && (
+                      <>
+                        <div className="quota-meter">
+                          <span style={{ width: `${percent}%` }} />
+                        </div>
+                        <div className="managed-user-usage">
+                          {user.usedTokens.toLocaleString()} /{' '}
+                          {user.monthlyTokenLimit.toLocaleString()} tokens this month
+                        </div>
+                      </>
+                    )}
                   </article>
                 );
               })}

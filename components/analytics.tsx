@@ -20,7 +20,7 @@ type Summary = {
   estimatedSavingsUsd: number | null;
 };
 type BreakdownRow = {
-  providerId: string;
+  providerId?: string;
   modelId: string | null;
   requests: number;
   successes: number;
@@ -189,10 +189,12 @@ function BreakdownTable({
   title,
   rows,
   showModel,
+  showProvider = true,
 }: {
   title: string;
   rows: BreakdownRow[];
   showModel: boolean;
+  showProvider?: boolean;
 }) {
   return (
     <section className="analytics-breakdown-panel">
@@ -206,7 +208,9 @@ function BreakdownTable({
           <table className="analytics-breakdown-table">
             <thead>
               <tr>
-                <th scope="col">{showModel ? 'Model / provider' : 'Provider'}</th>
+                <th scope="col">
+                  {showModel ? (showProvider ? 'Model / provider' : 'Model') : 'Provider'}
+                </th>
                 <th scope="col">Requests</th>
                 <th scope="col">Success</th>
                 <th scope="col">In tokens</th>
@@ -218,12 +222,12 @@ function BreakdownTable({
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={`${row.providerId}::${row.modelId || ''}`}>
+                <tr key={`${row.providerId || 'hidden'}::${row.modelId || ''}`}>
                   <th scope="row">
                     {showModel ? (
                       <>
                         <strong>{row.modelId || 'Unknown model'}</strong>
-                        <small>{row.providerId}</small>
+                        {showProvider && row.providerId && <small>{row.providerId}</small>}
                       </>
                     ) : (
                       row.providerId
@@ -248,7 +252,13 @@ function BreakdownTable({
   );
 }
 
-export function Analytics({ onOpenStorage }: { onOpenStorage?: () => void }) {
+export function Analytics({
+  onOpenStorage,
+  hideProviders = false,
+}: {
+  onOpenStorage?: () => void;
+  hideProviders?: boolean;
+}) {
   const [range, setRange] = useState<Range>('7d');
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [busy, setBusy] = useState(true);
@@ -407,12 +417,19 @@ export function Analytics({ onOpenStorage }: { onOpenStorage?: () => void }) {
         )}
       </section>
       <div className="analytics-breakdown-grid">
+        {!hideProviders && (
+          <BreakdownTable
+            title="Provider performance"
+            rows={data?.providers || []}
+            showModel={false}
+          />
+        )}
         <BreakdownTable
-          title="Provider performance"
-          rows={data?.providers || []}
-          showModel={false}
+          title="Model performance"
+          rows={data?.models || []}
+          showModel
+          showProvider={!hideProviders}
         />
-        <BreakdownTable title="Model performance" rows={data?.models || []} showModel />
       </div>
       <p className="analytics-footnote">
         Counts and timings are recorded per upstream chat-completion API call; catalog refreshes and

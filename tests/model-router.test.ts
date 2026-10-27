@@ -11,7 +11,7 @@ import {
 } from '../lib/model-router';
 
 test('model provider registry uses fixed HTTPS hosts and separates search services', () => {
-  assert.equal(routerProviders.length, 17);
+  assert.equal(routerProviders.length, 26);
   assert.equal(getRouterProvider('openai')?.baseURL, 'https://api.openai.com/v1');
   assert.equal(getRouterProvider('openai')?.keyRequired, true);
   assert.equal(getRouterProvider('gemini')?.name, 'Google Gemini API');
@@ -30,6 +30,22 @@ test('model provider registry uses fixed HTTPS hosts and separates search servic
   assert.equal(getRouterProvider('firecrawl')?.baseURL, 'https://api.firecrawl.dev/v2');
   assert.equal(getRouterProvider('parallel')?.category, 'search');
   assert.equal(getRouterProvider('keenable')?.category, 'search');
+  for (const id of [
+    'groq',
+    'cerebras',
+    'opencode-zen',
+    'mistral',
+    'cohere',
+    'zai',
+    'nvidia',
+    'huggingface',
+    'modelscope',
+  ]) {
+    const provider = getRouterProvider(id);
+    assert.equal(provider?.category, 'models');
+    assert.ok(provider?.docsURL.startsWith('https://'));
+    assert.match(provider?.note || '', /FreeLLMAPI lists/);
+  }
   for (const provider of routerProviders) {
     if (provider.baseURL) assert.equal(new URL(provider.baseURL).protocol, 'https:');
   }

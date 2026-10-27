@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { guard, errorResponse, readJson, seal, unseal } from '@/lib/security';
-import { getProviderKeys } from '@/lib/provider-credentials';
+import { getAdminProviderKeys, getProviderKeys } from '@/lib/provider-credentials';
 import { getRouterProvider } from '@/lib/model-router';
 
 export const runtime = 'nodejs';
@@ -16,6 +16,30 @@ const schema = z.discriminatedUnion('action', [
 ]);
 
 type ImageJob = { providerId: 'xkiro'; jobId: string; modelId: string; accountId: string };
+
+async function providerKeys(
+  providerId: 'xkiro' | 'septorlabs',
+  principal: Awaited<ReturnType<typeof guard>>,
+) {
+  return principal.role === 'user' && principal.plan === 'premium'
+    ? getAdminProviderKeys(providerId)
+    : getProviderKeys(providerId);
+}
+function hideProviderDetails<T extends object>(
+  result: T,
+  principal: Awaited<ReturnType<typeof guard>>,
+) {
+  if (principal.role !== 'user' || principal.plan !== 'premium') return result;
+  const {
+    providerId: _providerId,
+    providerName: _providerName,
+    ...safe
+  } = result as T & {
+    providerId?: unknown;
+    providerName?: unknown;
+  };
+  return safe;
+}
 
 function apiError(payload: unknown, fallback: string) {
   if (payload && typeof payload === 'object' && 'error' in payload) {
@@ -172,13 +196,13 @@ export async function POST(request: Request) {
           { error: 'This image job link is invalid or expired. Start a new image request.' },
           { status: 400 },
         );
-      const keys = await getProviderKeys('xkiro');
+      const keys = await providerKeys('xkiro', principal);
       if (!keys.length)
         return Response.json(
           { error: 'Reconnect xKiro to finish this image job.' },
           { status: 400 },
         );
-      return Response.json(await pollXkiroJob(job, keys));
+      return Response.json(hideProviderDetails(await pollXkiroJob(job, keys), principal));
     }
     if (input.type === 'video') {
       return Response.json(
@@ -190,8 +214,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const xkiroKeys = await getProviderKeys('xkiro');
-    const septorKeys = await getProviderKeys('septorlabs');
+    const xkiroKeys = await providerKeys('xkiro', principal);
+    const septorKeys = await providerKeys('septorlabs', principal);
     if (!xkiroKeys.length && !septorKeys.length) {
       return Response.json(
         {
@@ -204,7 +228,12 @@ export async function POST(request: Request) {
     let lastError: unknown;
     for (const key of xkiroKeys) {
       try {
-        return Response.json(await generateXkiroImage(input.prompt, [key], principal.id));
+        return Response.json(
+          hideProviderDetails(
+            await generateXkiroImage(input.prompt, [key], principal.id),
+            principal,
+          ),
+        );
       } catch (error) {
         lastError = error;
         if (!(error instanceof Error) || !/(401|402|403|429|quota|credit|key)/i.test(error.message))
@@ -213,7 +242,9 @@ export async function POST(request: Request) {
     }
     for (const key of septorKeys) {
       try {
-        return Response.json(await generateSeptorImage(input.prompt, key));
+        return Response.json(
+          hideProviderDetails(await generateSeptorImage(input.prompt, key), principal),
+        );
       } catch (error) {
         lastError = error;
         if (!(error instanceof Error) || !/(401|402|403|429|quota|credit|key)/i.test(error.message))

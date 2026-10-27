@@ -51,10 +51,15 @@ const schema = z
 
 export async function GET() {
   try {
-    await guard();
+    const principal = await guard();
     const raw = await readConnection<RouterSelection & { fallbackChain?: unknown }>(
       'router-selection',
     );
+    if (principal.role === 'user' && principal.plan === 'premium')
+      return Response.json(
+        { selection: raw ? { modelId: raw.modelId } : null },
+        { headers: { 'Cache-Control': 'private, no-store' } },
+      );
     if (!raw) return Response.json({ selection: null });
     const selection = {
       ...raw,
@@ -72,6 +77,8 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const principal = await guard(request);
+    if (principal.role === 'user' && principal.plan === 'premium')
+      throw new Error('Premium model assignments are managed by the administrator.');
     let selection = schema.parse(await readJson(request, 3000));
     if (principal.role === 'user') {
       const catalog = await filterCatalogForPrincipal(await discoverRouterCatalog(), principal);

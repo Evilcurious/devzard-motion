@@ -23,7 +23,12 @@ const deleteSchema = z.object({
 
 export async function GET() {
   try {
-    await guard();
+    const principal = await guard();
+    if (principal.role === 'user' && principal.plan === 'premium')
+      return Response.json(
+        { providers: [] },
+        { headers: { 'Cache-Control': 'private, no-store' } },
+      );
     const providers = await Promise.all(
       routerProviders.map(async (provider) => {
         const keys = await getOwnProviderKeys(provider.id);
@@ -48,7 +53,10 @@ export async function GET() {
         };
       }),
     );
-    return Response.json({ providers, storage: databaseConfigured() ? 'postgresql' : 'cookie' });
+    return Response.json(
+      { providers, storage: databaseConfigured() ? 'postgresql' : 'cookie' },
+      { headers: { 'Cache-Control': 'private, no-store' } },
+    );
   } catch (error) {
     return errorResponse(error);
   }
@@ -57,8 +65,11 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const principal = await guard(request);
-    if (principal.role === 'user' && principal.providerMode !== 'both')
-      throw new Error('Your administrator has not enabled personal providers for this account.');
+    if (
+      principal.role === 'user' &&
+      (principal.plan === 'premium' || principal.providerMode !== 'both')
+    )
+      throw new Error('Personal provider keys are not available for this account.');
     const input = saveSchema.parse(await readJson(request, 1000));
     const provider = getRouterProvider(input.providerId);
     if (!provider) return Response.json({ error: 'Unknown provider.' }, { status: 400 });
@@ -77,8 +88,11 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const principal = await guard(request);
-    if (principal.role === 'user' && principal.providerMode !== 'both')
-      throw new Error('Your administrator has not enabled personal providers for this account.');
+    if (
+      principal.role === 'user' &&
+      (principal.plan === 'premium' || principal.providerMode !== 'both')
+    )
+      throw new Error('Personal provider keys are not available for this account.');
     const input = deleteSchema.parse(await readJson(request, 500));
     const provider = getRouterProvider(input.providerId);
     if (!provider) return Response.json({ error: 'Unknown provider.' }, { status: 400 });

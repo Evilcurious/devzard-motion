@@ -283,7 +283,7 @@ export async function POST(request: Request) {
   try {
     const principal = await guard(request);
     const quota =
-      principal.role === 'user'
+      principal.role === 'user' && principal.plan === 'premium'
         ? { accountId: principal.id, monthlyLimit: principal.monthlyTokenLimit }
         : undefined;
     if (quota && (await monthlyTokenUsage(quota.accountId)) >= quota.monthlyLimit)
@@ -376,11 +376,14 @@ export async function POST(request: Request) {
     const density: AIDensity = input.density;
     const routingStrategy: RoutingStrategy = input.routingStrategy;
     const observedMetrics = await observedModelMetricsByTarget();
-    const modelUsed = (target: ResolvedTarget) => ({
-      modelId: target.model,
-      providerId: target.providerId,
-      providerName: getRouterProvider(target.providerId)?.name || target.providerId,
-    });
+    const modelUsed = (target: ResolvedTarget) =>
+      principal.role === 'user' && principal.plan === 'premium'
+        ? { modelId: target.model }
+        : {
+            modelId: target.model,
+            providerId: target.providerId,
+            providerName: getRouterProvider(target.providerId)?.name || target.providerId,
+          };
     let eligibleTargets: RouterTarget[] | null = null;
     async function getEligibleTargets() {
       if (!eligibleTargets) {

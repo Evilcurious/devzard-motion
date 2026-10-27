@@ -22,7 +22,32 @@ CREATE TABLE IF NOT EXISTS relay_users (
   provider_mode text NOT NULL DEFAULT 'managed' CHECK (provider_mode IN ('managed','both')),
   monthly_token_limit bigint NOT NULL CHECK (monthly_token_limit >= 0),
   allowed_models jsonb NOT NULL DEFAULT '[]'::jsonb,
+  email text,
+  plan text NOT NULL DEFAULT 'premium' CHECK (plan IN ('free','premium')),
+  google_subject text,
   created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE relay_users ALTER COLUMN password_hash DROP NOT NULL;
+ALTER TABLE relay_users ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE relay_users ADD COLUMN IF NOT EXISTS plan text NOT NULL DEFAULT 'premium';
+ALTER TABLE relay_users ADD COLUMN IF NOT EXISTS google_subject text;
+CREATE UNIQUE INDEX IF NOT EXISTS relay_users_email_ci_idx ON relay_users (lower(email)) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS relay_users_google_subject_idx ON relay_users (google_subject) WHERE google_subject IS NOT NULL;
+CREATE TABLE IF NOT EXISTS relay_tenant_databases (
+  account_id text PRIMARY KEY REFERENCES relay_users(id) ON DELETE CASCADE,
+  encrypted_url text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS relay_account_migrations (
+  account_id text PRIMARY KEY REFERENCES relay_users(id) ON DELETE CASCADE,
+  migrating boolean NOT NULL DEFAULT false,
+  active_queries integer NOT NULL DEFAULT 0 CHECK (active_queries >= 0)
+);
+CREATE TABLE IF NOT EXISTS relay_auth_rate_limits (
+  key_hash text PRIMARY KEY,
+  window_started_at timestamptz NOT NULL DEFAULT now(),
+  attempts integer NOT NULL DEFAULT 0,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS relay_invites (

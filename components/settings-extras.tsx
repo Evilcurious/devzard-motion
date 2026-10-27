@@ -518,6 +518,7 @@ type GoogleClientConfig = {
   appURL: string;
   secretSaved: boolean;
   redirectURI: string;
+  signInRedirectURI: string;
   configured: boolean;
 };
 export function GoogleSettings({
@@ -673,13 +674,17 @@ export function GoogleSettings({
         </label>
         {(appURL || config?.redirectURI) && (
           <div className="oauth-redirect-uri">
-            Authorized redirect URI:
+            Gmail and Sheets redirect URI:
             {config?.redirectURI || `${appURL.replace(/\/$/, '')}/api/google/callback`}
+            <br />
+            Google sign-in redirect URI:
+            {config?.signInRedirectURI || `${appURL.replace(/\/$/, '')}/api/auth/google/callback`}
           </div>
         )}
         <div className="integration-setup-help">
           In Google Cloud, create a Web application OAuth client, enable the Gmail API and Google
-          Sheets API, and add the redirect URI above to its Authorized redirect URIs.
+          Sheets API, and add both redirect URIs above to its Authorized redirect URIs. Existing
+          Gmail/Sheets scopes remain user-granted; sign-in only requests basic profile and email.
         </div>
         {error && (
           <div className="error-box" role="alert">

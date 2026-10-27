@@ -15,6 +15,7 @@ import {
   CircleHelp,
   Cpu,
   Clock3,
+  Database,
   Download,
   Eye,
   ExternalLink,
@@ -260,14 +261,26 @@ export default function Workspace() {
       setPage('connections');
       notify(params.get('connection_error')!);
     }
-    if (params.has('connected') || params.has('connection_error')) {
+    if (params.has('auth_error'))
+      notify('Google sign-in failed. Check the Google OAuth setup or try email and password.');
+    if (params.has('auth_success')) notify('Signed in with Google.');
+    if (
+      params.has('connected') ||
+      params.has('connection_error') ||
+      params.has('auth_error') ||
+      params.has('auth_success')
+    ) {
       params.delete('connected');
       params.delete('connection_error');
+      params.delete('auth_error');
+      params.delete('auth_success');
     }
     if (
       window.location.search.includes('invite=') ||
       window.location.search.includes('connected=') ||
-      window.location.search.includes('connection_error=')
+      window.location.search.includes('connection_error=') ||
+      window.location.search.includes('auth_error=') ||
+      window.location.search.includes('auth_success=')
     ) {
       const query = params.toString();
       window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
@@ -300,7 +313,7 @@ export default function Workspace() {
     if (densityReady) window.localStorage.setItem('relay-routing-strategy', routingStrategy);
   }, [routingStrategy, densityReady]);
   useEffect(() => {
-    if (!status?.authenticated) return;
+    if (!status?.authenticated || (status.role === 'user' && status.plan === 'premium')) return;
     api<{ selection: (RouterTarget & { autoPick?: boolean }) | null }>(
       '/api/router/selection',
       undefined,
@@ -641,7 +654,7 @@ export default function Workspace() {
             };
       if (mode !== 'chat') setMediaMode('chat');
       if (mode === 'chat') setWebSearch(false);
-      if (result.modelUsed) {
+      if (result.modelUsed?.providerId) {
         setRouterSelection({
           providerId: result.modelUsed.providerId,
           modelId: result.modelUsed.modelId,
@@ -990,6 +1003,19 @@ export default function Workspace() {
           </button>
         )}
       </div>
+    );
+  if (
+    status.authenticated &&
+    status.role === 'user' &&
+    status.plan === 'free' &&
+    (!status.accountDatabaseConfigured || !status.databaseReady)
+  )
+    return (
+      <AccountDatabaseSetup
+        onComplete={refresh}
+        logoDataUrl={logoDataUrl}
+        configured={!!status.accountDatabaseConfigured}
+      />
     );
   const accountSections =
     status.role === 'user'
@@ -1509,10 +1535,13 @@ export default function Workspace() {
                           </div>
                         )}
                         {message.modelUsed && (
-                          <button className="message-model-used" onClick={openModelPicker}>
+                          <div className="message-model-used">
                             <Cpu size={12} />
-                            Used {message.modelUsed.modelId} · {message.modelUsed.providerName}
-                          </button>
+                            Used {message.modelUsed.modelId}
+                            {message.modelUsed.providerName
+                              ? ` · ${message.modelUsed.providerName}`
+                              : ''}
+                          </div>
                         )}
                         {message.error && !status?.aiConfigured && (
                           <button
@@ -1802,7 +1831,10 @@ export default function Workspace() {
             </div>
           )}
           {page === 'analytics' && (
-            <Analytics onOpenStorage={status.role === 'admin' ? openDatabaseSettings : undefined} />
+            <Analytics
+              onOpenStorage={status.role === 'admin' ? openDatabaseSettings : undefined}
+              hideProviders={status.role === 'user' && status.plan === 'premium'}
+            />
           )}
           {page === 'users' && status.role === 'admin' && <AccountAdmin notify={notify} />}
           {page === 'models' && <ModelHub onSelect={refresh} notify={notify} />}
@@ -3000,10 +3032,30 @@ function Login({
   onLogin: () => Promise<void>;
   logoDataUrl: string | null;
 }) {
-  const [username, setUsername] = useState('');
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      if (mode === 'signup') {
+        if (password !== confirmPassword) throw new Error('Passwords do not match.');
+        await api('/api/auth/signup', { email, password, confirmPassword });
+      } else {
+        await api('/api/auth/login', { email, password });
+      }
+      await onLogin();
+    } catch (caught) {
+      setError((caught as Error).message || 'Could not authenticate this account.');
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <div className="login-page">
       <div className="login-card">
@@ -3017,47 +3069,201 @@ function Login({
             </>
           )}
         </div>
-        <h1>{setupRequired ? 'One more thing to feel at home.' : 'Your workspace is waiting.'}</h1>
+        <h1>{setupRequired ? 'Workspace setup is required.' : 'Your workspace is waiting.'}</h1>
         <p>
           {setupRequired
-            ? `Run npm run setup, then restart Relay. Database-backed and hosted workspaces require APP_PASSWORD and a SESSION_SECRET of at least 32 characters. This keeps your agent and accounts private.`
-            : 'Sign in with your account. For the administrator account, leave username blank and enter the workspace password.'}
+            ? 'The administrator must finish secure workspace setup before accounts can be created.'
+            : mode === 'signup'
+              ? 'Create a Free account with your email and password. You can connect your own PostgreSQL database and provider keys after sign-up.'
+              : 'Sign in to Relay with your email and password, or continue with Google.'}
         </p>
         {!setupRequired && (
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setBusy(true);
-              setError('');
-              try {
-                await api('/api/auth/login', { username: username.trim(), password });
-                await onLogin();
-              } catch (e) {
-                setError((e as Error).message);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
+          <>
+            <div className="login-mode-tabs" role="tablist" aria-label="Account access">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'signin'}
+                className={mode === 'signin' ? 'active' : ''}
+                onClick={() => {
+                  setMode('signin');
+                  setError('');
+                }}
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'signup'}
+                className={mode === 'signup' ? 'active' : ''}
+                onClick={() => {
+                  setMode('signup');
+                  setError('');
+                }}
+              >
+                Sign up
+              </button>
+            </div>
+            <form onSubmit={submit}>
+              <label>
+                {mode === 'signin' ? 'Email or admin login' : 'Email'}
+                <input
+                  required
+                  type="text"
+                  inputMode={mode === 'signup' ? 'email' : undefined}
+                  autoComplete="username"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder={mode === 'signin' ? 'you@example.com or admin' : 'you@example.com'}
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  required
+                  type="password"
+                  minLength={mode === 'signup' ? 12 : undefined}
+                  maxLength={256}
+                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder={mode === 'signup' ? 'At least 12 characters' : 'Your password'}
+                />
+              </label>
+              {mode === 'signup' && (
+                <label>
+                  Repeat password
+                  <input
+                    required
+                    type="password"
+                    minLength={12}
+                    maxLength={256}
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    placeholder="Enter your password again"
+                  />
+                </label>
+              )}
+              {error && (
+                <div className="error-box" role="alert">
+                  {error}
+                </div>
+              )}
+              <button className="button primary" disabled={busy}>
+                {busy ? <LoaderCircle size={17} className="spin" /> : <ArrowRight size={17} />}
+                {busy ? 'Please wait…' : mode === 'signup' ? 'Create Free account' : 'Sign in'}
+              </button>
+            </form>
+            <div className="login-separator">
+              <span>or</span>
+            </div>
+            <button
+              type="button"
+              className="button login-google-button"
+              disabled={busy}
+              onClick={() => window.location.assign('/api/auth/google')}
+            >
+              <GoogleIcon /> Continue with Google
+            </button>
+          </>
+        )}
+        <div className="subtle-note">
+          <LockKeyhole size={13} /> Free account data is private to your account.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 48 48" width="17" height="17">
+      <path
+        fill="#4285F4"
+        d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5h6.6c3.9-3.6 6.1-8.8 6.1-14.9Z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 44c5.5 0 10.1-1.8 13.5-4.8l-6.6-5c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.2A20 20 0 0 0 24 44Z"
+      />
+      <path fill="#FBBC05" d="M12.6 27.8a12 12 0 0 1 0-7.6V15H5.8a20 20 0 0 0 0 18l6.8-5.2Z" />
+      <path
+        fill="#EA4335"
+        d="M24 11.8c3 0 5.7 1 7.8 3.1l5.9-5.9C34.1 5.7 29.5 4 24 4A20 20 0 0 0 5.8 15l6.8 5.2c1.6-4.8 6.1-8.4 11.4-8.4Z"
+      />
+    </svg>
+  );
+}
+
+function AccountDatabaseSetup({
+  onComplete,
+  logoDataUrl,
+  configured,
+}: {
+  onComplete: () => Promise<void>;
+  logoDataUrl: string | null;
+  configured: boolean;
+}) {
+  const [connectionString, setConnectionString] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function connect(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/user/database', { connectionString });
+      setConnectionString('');
+      await onComplete();
+    } catch (caught) {
+      setError((caught as Error).message || 'Could not connect this database.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="login-page">
+      <div className="login-card account-database-card">
+        <div className="brand login-brand">
+          {logoDataUrl ? (
+            <img className="brand-logo-image" src={logoDataUrl} alt="Relay" />
+          ) : (
+            <>
+              <Mark />
+              <span>relay.</span>
+            </>
+          )}
+        </div>
+        <div className="eyebrow">FREE ACCOUNT SETUP</div>
+        <h1>{configured ? 'Your database is not reachable.' : 'Connect your own database.'}</h1>
+        <p>
+          {configured
+            ? 'Relay cannot currently reach the PostgreSQL database connected to this account. Check that it is online and allows secure connections, then refresh.'
+            : 'Free accounts store chat history, settings, provider keys and usage in a PostgreSQL database you control. Relay encrypts the connection URL and never displays it to the administrator.'}
+        </p>
+        {configured ? (
+          <button type="button" className="button primary" onClick={() => void onComplete()}>
+            <ArrowRight size={16} /> Check connection again
+          </button>
+        ) : (
+          <form onSubmit={connect}>
             <label>
-              Username <span className="optional">(leave blank for administrator)</span>
-              <input
-                value={username}
-                autoComplete="username"
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Your account username"
-              />
-            </label>
-            <label>
-              Password
+              PostgreSQL connection URL
               <input
                 required
                 type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Your APP_PASSWORD"
+                autoComplete="off"
+                spellCheck={false}
+                value={connectionString}
+                onChange={(event) => setConnectionString(event.target.value)}
+                placeholder="postgresql://user:password@host/database?sslmode=require"
               />
+              <span>
+                Use a public Neon or Supabase PostgreSQL URL with TLS. Localhost/private hosts are
+                blocked.
+              </span>
             </label>
             {error && (
               <div className="error-box" role="alert">
@@ -3065,13 +3271,14 @@ function Login({
               </div>
             )}
             <button className="button primary" disabled={busy}>
-              {busy ? <LoaderCircle size={17} className="spin" /> : <ArrowRight size={17} />}Enter
-              workspace
+              {busy ? <LoaderCircle size={16} className="spin" /> : <Database size={16} />}
+              {busy ? 'Testing and connecting…' : 'Test and connect database'}
             </button>
           </form>
         )}
         <div className="subtle-note">
-          <LockKeyhole size={13} />A personal space for your everyday possibilities.
+          <LockKeyhole size={13} /> Premium accounts use Relay’s admin-managed database; its
+          connection details are never shown.
         </div>
       </div>
     </div>

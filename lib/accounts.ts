@@ -11,6 +11,8 @@ export type AllowedAccountModel = {
 export type UserPolicy = {
   id: string;
   username: string;
+  email: string | null;
+  plan: 'free' | 'premium';
   providerMode: ProviderMode;
   monthlyTokenLimit: number;
   allowedModels: AllowedAccountModel[];
@@ -53,6 +55,109 @@ export function verifyAccountPassword(password: string, encoded: string) {
 }
 export function hashInviteToken(token: string) {
   return createHash('sha256').update(token).digest('hex');
+}
+export function normalizeEmail(value: string) {
+  const email = value.trim().toLowerCase();
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    throw new Error('Enter a valid email address.');
+  return email;
+}
+export async function createFreeEmailAccount(emailValue: string, password: string) {
+  const email = normalizeEmail(emailValue);
+  const passwordHash = hashAccountPassword(password);
+  const id = randomUUID();
+  const username = `acct_${id.replaceAll('-', '').slice(0, 20)}`;
+  try {
+    const result = await dbQuery(
+      `INSERT INTO relay_users
+        (id, username, email, password_hash, provider_mode, monthly_token_limit, allowed_models, plan)
+       VALUES ($1,$2,$3,$4,'both',0,'[]'::jsonb,'free')
+       RETURNING id, username, email, plan, provider_mode, monthly_token_limit, allowed_models, enabled`,
+      [id, username, email, passwordHash],
+    );
+    return mapUserRow(result.rows[0]);
+  } catch (error) {
+    if (/unique|duplicate/i.test((error as Error).message))
+      throw new Error('An account with this email already exists. Sign in instead.');
+    throw error;
+  }
+}
+export async function findUserByEmail(emailValue: string) {
+  const email = normalizeEmail(emailValue);
+  const result = await dbQuery(
+    `SELECT id, username, email, password_hash, enabled, plan
+     FROM relay_users WHERE lower(email) = $1 LIMIT 1`,
+    [email],
+  );
+  return result.rows[0]
+    ? {
+        id: String(result.rows[0].id),
+        username: String(result.rows[0].username),
+        email: result.rows[0].email ? String(result.rows[0].email) : null,
+        passwordHash: result.rows[0].password_hash ? String(result.rows[0].password_hash) : null,
+        enabled: result.rows[0].enabled === true,
+        plan: result.rows[0].plan === 'free' ? ('free' as const) : ('premium' as const),
+      }
+    : null;
+}
+export async function findOrCreateGoogleUser(emailValue: string, subject: string) {
+  const email = normalizeEmail(emailValue);
+  if (!subject || subject.length > 255) throw new Error('Google sign-in could not be verified.');
+  const existing = await dbQuery(
+    `SELECT id, username, email, google_subject, enabled
+     FROM relay_users WHERE lower(email) = $1 OR google_subject = $2 LIMIT 1`,
+    [email, subject],
+  );
+  const row = existing.rows[0];
+  if (row) {
+    if (String(row.email || '').toLowerCase() !== email)
+      throw new Error('This Google account is linked to a different Relay email.');
+    if (row.google_subject && row.google_subject !== subject)
+      throw new Error('This email is already linked to another Google account.');
+    await dbQuery(
+      `UPDATE relay_users SET google_subject=$2, updated_at=now() WHERE id=$1 AND google_subject IS NULL`,
+      [row.id, subject],
+    );
+    if (row.enabled === false)
+      throw new Error('This account is disabled. Contact the administrator.');
+    return { id: String(row.id), username: String(row.username), email };
+  }
+  const id = randomUUID();
+  const username = `acct_${id.replaceAll('-', '').slice(0, 20)}`;
+  try {
+    await dbQuery(
+      `INSERT INTO relay_users
+        (id, username, email, password_hash, google_subject, provider_mode, monthly_token_limit, allowed_models, plan)
+       VALUES ($1,$2,$3,NULL,$4,'both',0,'[]'::jsonb,'free')`,
+      [id, username, email, subject],
+    );
+    return { id, username, email };
+  } catch (error) {
+    if (/unique|duplicate/i.test((error as Error).message))
+      throw new Error('An account with this email already exists. Sign in instead.');
+    throw error;
+  }
+}
+export async function setAccountPlanByEmail(
+  emailValue: string,
+  plan: 'free' | 'premium',
+  monthlyTokenLimit = 0,
+  allowedModels: AllowedAccountModel[] = [],
+) {
+  const email = normalizeEmail(emailValue);
+  const result = await dbQuery(
+    `UPDATE relay_users SET plan=$2, provider_mode=$3, monthly_token_limit=$4,
+       allowed_models=$5::jsonb, updated_at=now()
+     WHERE lower(email)=$1 RETURNING id`,
+    [
+      email,
+      plan,
+      plan === 'premium' ? 'managed' : 'both',
+      monthlyTokenLimit,
+      JSON.stringify(allowedModels),
+    ],
+  );
+  return (result.rowCount || 0) > 0;
 }
 export async function createUserInvite(input: {
   providerMode: ProviderMode;
@@ -122,6 +227,8 @@ function mapUserRow(row: Record<string, unknown>): UserPolicy {
   return {
     id: String(row.id),
     username: String(row.username),
+    email: row.email ? String(row.email) : null,
+    plan: row.plan === 'free' ? 'free' : 'premium',
     providerMode: row.provider_mode === 'both' ? 'both' : 'managed',
     monthlyTokenLimit: Number(row.monthly_token_limit) || 0,
     allowedModels: Array.isArray(row.allowed_models) ? row.allowed_models : [],
@@ -146,7 +253,7 @@ export async function findUserByUsername(usernameValue: string) {
 }
 export async function getUserPolicy(id: string): Promise<UserPolicy | null> {
   const result = await dbQuery(
-    `SELECT id, username, provider_mode, monthly_token_limit, allowed_models, enabled
+    `SELECT id, username, email, plan, provider_mode, monthly_token_limit, allowed_models, enabled
      FROM relay_users WHERE id = $1`,
     [id],
   );
@@ -154,7 +261,7 @@ export async function getUserPolicy(id: string): Promise<UserPolicy | null> {
 }
 export async function listUserAccounts() {
   const result = await dbQuery(
-    `SELECT u.id, u.username, u.provider_mode, u.monthly_token_limit, u.allowed_models,
+    `SELECT u.id, u.username, u.email, u.plan, u.provider_mode, u.monthly_token_limit, u.allowed_models,
        u.enabled, u.created_at,
        COALESCE(sum(COALESCE(a.input_tokens, 0) + COALESCE(a.output_tokens, 0))
          FILTER (WHERE a.created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0) AS used_tokens

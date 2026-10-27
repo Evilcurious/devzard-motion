@@ -7,6 +7,7 @@ import {
 } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { getUserPolicy, type UserPolicy } from './accounts';
+import { databaseConfigured, ensureAccountSchema } from './db';
 
 const developmentKey = randomBytes(32).toString('hex');
 function key() {
@@ -67,6 +68,7 @@ export async function getPrincipal(): Promise<Principal | null> {
   if (!process.env.APP_PASSWORD) return { id: 'owner', role: 'admin', username: 'admin' };
   const session = await sessionPayload();
   if (!session) return null;
+  if (databaseConfigured()) await ensureAccountSchema();
   const fingerprint = createHash('sha256').update(process.env.APP_PASSWORD).digest('hex');
   if (session.fingerprint && equal(session.fingerprint, fingerprint))
     return { id: 'owner', role: 'admin', username: 'admin' };
@@ -103,7 +105,12 @@ export async function requireAdmin(request?: Request): Promise<AdminPrincipal> {
 }
 export function errorResponse(error: unknown) {
   const message = error instanceof Error ? error.message : 'Something went wrong.';
-  const status = message === 'UNAUTHORIZED' ? 401 : message === 'ADMIN_REQUIRED' ? 403 : 400;
+  const explicitStatus =
+    error && typeof error === 'object' && 'status' in error && typeof error.status === 'number'
+      ? error.status
+      : null;
+  const status =
+    explicitStatus || (message === 'UNAUTHORIZED' ? 401 : message === 'ADMIN_REQUIRED' ? 403 : 400);
   return Response.json({ error: message }, { status });
 }
 export async function readJson(request: Request, max = 250_000) {

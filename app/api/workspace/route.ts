@@ -1,18 +1,26 @@
 import { guard, errorResponse, readJson } from '@/lib/security';
-import { databaseConfigured, dbQuery } from '@/lib/db';
+import { databaseHealth } from '@/lib/db';
+import { accountDbQuery, accountDatabaseHealth } from '@/lib/tenant-database';
 import { workspaceWriteSchema } from '@/lib/workspace-data';
 export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const principal = await guard();
-    if (!databaseConfigured()) {
-      if (principal.role !== 'admin') throw new Error('User accounts require the shared Neon database.');
+    const health =
+      principal.role === 'user'
+        ? await accountDatabaseHealth(principal.id)
+        : await databaseHealth();
+    if (!health.configured) {
+      if (principal.role !== 'admin')
+        throw new Error('Connect your PostgreSQL database before using this workspace.');
       return Response.json({ storage: 'browser', data: null, revision: 0 });
     }
-    await dbQuery('INSERT INTO relay_workspace (id) VALUES ($1) ON CONFLICT DO NOTHING', [
+    if (!health.ready)
+      throw new Error('Your workspace database is not reachable. Check its status and reload.');
+    await accountDbQuery('INSERT INTO relay_workspace (id) VALUES ($1) ON CONFLICT DO NOTHING', [
       principal.id,
     ]);
-    const result = await dbQuery(
+    const result = await accountDbQuery(
       'SELECT data, revision, updated_at FROM relay_workspace WHERE id=$1',
       [principal.id],
     );
@@ -28,9 +36,16 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const principal = await guard(request);
-    if (!databaseConfigured()) throw new Error('Set DATABASE_URL to enable PostgreSQL saving.');
+    const health =
+      principal.role === 'user'
+        ? await accountDatabaseHealth(principal.id)
+        : await databaseHealth();
+    if (!health.configured)
+      throw new Error('Connect your PostgreSQL database before saving this workspace.');
+    if (!health.ready)
+      throw new Error('Your workspace database is not reachable. Your browser draft is preserved.');
     const { data, revision } = workspaceWriteSchema.parse(await readJson(request, 3_500_000));
-    const result = await dbQuery(
+    const result = await accountDbQuery(
       'UPDATE relay_workspace SET data=$1::jsonb, revision=revision+1, updated_at=now() WHERE id=$2 AND revision=$3 RETURNING revision, updated_at',
       [JSON.stringify(data), principal.id, revision],
     );

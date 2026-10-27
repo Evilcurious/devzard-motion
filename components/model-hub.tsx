@@ -614,6 +614,14 @@ export function ModelHub({
                 <p>
                   {provider.category === 'models' ? 'Chat model provider' : 'Search integration'}
                 </p>
+                <a
+                  className="provider-docs-link"
+                  href={provider.docsURL}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Provider site and API keys ↗
+                </a>
                 {provider.note && <small className="provider-note">{provider.note}</small>}
                 {provider.category === 'models' && state?.error && (
                   <small className="provider-note error-text">{state.error}</small>

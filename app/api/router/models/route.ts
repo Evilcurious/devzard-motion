@@ -8,6 +8,11 @@ export const maxDuration = 60;
 export async function GET() {
   try {
     const principal = await guard();
+    if (principal.role === 'user' && principal.plan === 'premium')
+      return Response.json(
+        { models: [], providers: [], refreshedAt: new Date().toISOString(), metricsNote: null },
+        { headers: { 'Cache-Control': 'private, no-store' } },
+      );
     let catalog = await discoverRouterCatalog(true);
     if (principal.role === 'user') {
       catalog = await filterCatalogForPrincipal(catalog, principal);

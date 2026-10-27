@@ -8,6 +8,9 @@ export type Status = {
   role?: 'admin' | 'user';
   accountId?: string;
   username?: string;
+  email?: string | null;
+  plan?: 'free' | 'premium';
+  accountDatabaseConfigured?: boolean;
   providerMode?: 'managed' | 'both' | null;
   allowedModels?: Array<{ providerId: string; modelId: string; name: string }>;
   monthlyTokenLimit?: number | null;
@@ -60,7 +63,7 @@ export type Message = {
   artifacts?: GeneratedArtifact[];
   proposals?: Proposal[];
   steps?: string[];
-  modelUsed?: { modelId: string; providerId: string; providerName: string };
+  modelUsed?: { modelId: string; providerId?: string; providerName?: string };
   media?: { type: 'image' | 'video'; urls: string[]; providerName?: string; modelId?: string };
   sources?: Array<{ title: string; url: string; snippet: string }>;
   error?: boolean;

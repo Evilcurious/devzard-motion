@@ -37,6 +37,7 @@ export async function GET() {
       appURL: config.appURL,
       secretSaved: !!config.clientSecret,
       redirectURI: config.appURL ? `${config.appURL}/api/google/callback` : '',
+      signInRedirectURI: config.appURL ? `${config.appURL}/api/auth/google/callback` : '',
       configured: !!(config.clientId && config.clientSecret && config.appURL),
     });
   } catch (error) {
@@ -56,7 +57,11 @@ export async function POST(request: Request) {
     const appURL = (input.appURL || config.appURL || '').replace(/\/$/, '');
     if (!appURL)
       throw new Error('Enter the public Relay site URL so Google can return to the right page.');
-    await saveConnection('google_client', { clientId: input.clientId, clientSecret, appURL }, 'owner');
+    await saveConnection(
+      'google_client',
+      { clientId: input.clientId, clientSecret, appURL },
+      'owner',
+    );
     // A changed client invalidates the existing grant; never refresh a grant with another client.
     if (input.clientId !== config.clientId) await removeAllGoogleGrants();
     return Response.json({ ok: true });

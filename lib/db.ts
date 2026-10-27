@@ -1,6 +1,10 @@
 import { Pool } from 'pg';
 import { postgresConfig, databaseErrorMessage } from './postgres-config.mjs';
-const globalDB = globalThis as unknown as { relayPool?: Pool };
+import { schemaSql } from './schema-sql';
+const globalDB = globalThis as unknown as {
+  relayPool?: Pool;
+  relaySchemaMigration?: Promise<void>;
+};
 export function databaseConfigured() {
   return !!process.env.DATABASE_URL?.trim();
 }
@@ -28,6 +32,18 @@ export async function dbQuery(text: string, values: unknown[] = []) {
     throw new Error(databaseErrorMessage(error));
   }
 }
+export async function ensureAccountSchema() {
+  if (!databaseConfigured()) throw new Error('The account database is not configured.');
+  if (!globalDB.relaySchemaMigration) {
+    globalDB.relaySchemaMigration = dbQuery(schemaSql)
+      .then(() => undefined)
+      .catch((error) => {
+        globalDB.relaySchemaMigration = undefined;
+        throw error;
+      });
+  }
+  await globalDB.relaySchemaMigration;
+}
 export async function databaseHealth() {
   if (!databaseConfigured())
     return { configured: false, ready: false, provider: null, pooled: false, tls: false };
@@ -38,7 +54,7 @@ export async function databaseHealth() {
     provider = config.provider;
     pooled = config.pooled;
     const result = await dbQuery(
-      "SELECT to_regclass('relay_settings') AS settings, to_regclass('relay_workspace') AS workspace, to_regclass('relay_users') AS users, to_regclass('relay_invites') AS invites, to_regclass('relay_action_claims') AS claims, to_regclass('relay_analytics') AS analytics",
+      "SELECT to_regclass('relay_settings') AS settings, to_regclass('relay_workspace') AS workspace, to_regclass('relay_users') AS users, to_regclass('relay_invites') AS invites, to_regclass('relay_action_claims') AS claims, to_regclass('relay_analytics') AS analytics, to_regclass('relay_auth_rate_limits') AS auth_limits, to_regclass('relay_tenant_databases') AS tenant_databases, to_regclass('relay_account_migrations') AS account_migrations",
     );
     if (
       !result.rows[0]?.settings ||
@@ -46,7 +62,10 @@ export async function databaseHealth() {
       !result.rows[0]?.users ||
       !result.rows[0]?.invites ||
       !result.rows[0]?.claims ||
-      !result.rows[0]?.analytics
+      !result.rows[0]?.analytics ||
+      !result.rows[0]?.auth_limits ||
+      !result.rows[0]?.tenant_databases ||
+      !result.rows[0]?.account_migrations
     )
       throw new Error(
         `${provider === 'neon' ? 'Neon is reachable' : 'The database is reachable'}, but Relay tables need initialization. Open Settings → Database and choose “Initialize or repair Relay tables”. This hosted migration is safe; it does not delete existing data. Download your browser draft before reloading.`,

@@ -15,6 +15,15 @@ export type RouterProviderId =
   | 'parallel'
   | 'keenable'
   | 'gemini'
+  | 'groq'
+  | 'cerebras'
+  | 'opencode-zen'
+  | 'mistral'
+  | 'cohere'
+  | 'zai'
+  | 'nvidia'
+  | 'huggingface'
+  | 'modelscope'
   | 'openai'
   | 'managed';
 export type RouterProviderCategory = 'models' | 'search';
@@ -52,6 +61,87 @@ export const routerProviders: RouterProvider[] = [
     keyRequired: true,
     docsURL: 'https://aistudio.google.com/app/apikey',
     note: 'Only models with API-reported free access or positive remaining quota are selectable.',
+  },
+  {
+    id: 'groq',
+    name: 'Groq',
+    category: 'models',
+    baseURL: 'https://api.groq.com/openai/v1',
+    keyRequired: true,
+    docsURL: 'https://console.groq.com/keys',
+    note: 'FreeLLMAPI lists eligible free-tier models; Groq also has model- and usage-specific limits or paid options. Verify current quotas and pricing with Groq.',
+  },
+  {
+    id: 'cerebras',
+    name: 'Cerebras',
+    category: 'models',
+    baseURL: 'https://api.cerebras.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://cloud.cerebras.ai/platform',
+    note: 'FreeLLMAPI lists eligible free-tier models; availability, rate limits, and paid options vary by model and account.',
+  },
+  {
+    id: 'opencode-zen',
+    name: 'OpenCode Zen',
+    category: 'models',
+    baseURL: 'https://opencode.ai/zen/v1',
+    keyRequired: true,
+    docsURL: 'https://opencode.ai/docs/zen/',
+    note: 'FreeLLMAPI lists selected models; Zen access and pricing are model-specific and may include paid models. Check current terms before use.',
+  },
+  {
+    id: 'mistral',
+    name: 'Mistral AI',
+    category: 'models',
+    baseURL: 'https://api.mistral.ai/v1',
+    keyRequired: true,
+    docsURL: 'https://console.mistral.ai/api-keys/',
+    note: 'FreeLLMAPI lists eligible evaluation/free-tier models where available; other API use may be billed. Check current Mistral terms and per-model pricing.',
+  },
+  {
+    id: 'cohere',
+    name: 'Cohere',
+    category: 'models',
+    baseURL: 'https://api.cohere.com/compatibility/v1',
+    keyRequired: true,
+    docsURL: 'https://dashboard.cohere.com/api-keys',
+    note: 'FreeLLMAPI lists eligible trial/free-tier models; trial limits and paid production usage differ. Check current Cohere terms.',
+  },
+  {
+    id: 'zai',
+    name: 'Z.ai (Zhipu)',
+    category: 'models',
+    baseURL: 'https://api.z.ai/api/paas/v4',
+    keyRequired: true,
+    docsURL: 'https://z.ai/model-api',
+    note: 'FreeLLMAPI lists eligible free-tier models; quotas and paid access vary by model, region, and account.',
+  },
+  {
+    id: 'nvidia',
+    name: 'NVIDIA API Catalog',
+    category: 'models',
+    baseURL: 'https://integrate.api.nvidia.com/v1',
+    keyRequired: true,
+    docsURL: 'https://build.nvidia.com/',
+    note: 'FreeLLMAPI lists eligible NVIDIA-hosted endpoints; trial credits, rate limits, model availability, and paid terms can change.',
+  },
+  {
+    id: 'huggingface',
+    name: 'Hugging Face Inference Providers',
+    category: 'models',
+    baseURL: 'https://router.huggingface.co/v1',
+    keyRequired: true,
+    docsURL: 'https://huggingface.co/settings/tokens',
+    note: 'FreeLLMAPI lists selected endpoints; provider/model compatibility, included credits, and paid usage vary. Check current Hugging Face pricing.',
+  },
+  {
+    id: 'modelscope',
+    name: 'ModelScope',
+    category: 'models',
+    baseURL: 'https://api-inference.modelscope.cn/v1',
+    keyRequired: true,
+    docsURL: 'https://modelscope.cn/my/myaccesstoken',
+    note: 'FreeLLMAPI lists some ModelScope endpoints; cloud access may require account/region binding and availability is model-specific. Check current ModelScope terms.',
   },
   {
     id: 'openrouter',

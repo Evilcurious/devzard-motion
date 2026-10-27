@@ -1,5 +1,6 @@
 import { guard, errorResponse } from '@/lib/security';
-import { databaseHealth, dbQuery } from '@/lib/db';
+import { databaseHealth } from '@/lib/db';
+import { accountDbQuery, accountDatabaseHealth } from '@/lib/tenant-database';
 import {
   analyticsRanges,
   bucketEvents,
@@ -35,19 +36,24 @@ function groupedRows(rows: Record<string, unknown>[], includeModel: boolean) {
 export async function GET(request: Request) {
   try {
     const principal = await guard();
+    const hideProviderInfo = principal.role === 'user' && principal.plan === 'premium';
     const accountFilter = principal.role === 'user' ? ' AND account_id = $2' : '';
     const accountParams = principal.role === 'user' ? [principal.id] : [];
     const url = new URL(request.url);
     const range = toAnalyticsRange(url.searchParams.get('range'));
     const config = analyticsRanges[range];
-    const dbHealth = await databaseHealth();
+    const dbHealth =
+      principal.role === 'user'
+        ? await accountDatabaseHealth(principal.id)
+        : await databaseHealth();
     if (dbHealth.configured) {
       if (!dbHealth.ready)
         return Response.json(
           {
             range,
             storage: 'unavailable',
-            error: dbHealth.error,
+            error:
+              'Your workspace database is not ready. Check its connection and initialize Relay tables if needed.',
             summary: summarizeEvents([]),
             buckets: bucketEvents([], range),
             providers: [],
@@ -55,7 +61,7 @@ export async function GET(request: Request) {
           },
           { headers: { 'Cache-Control': 'private, no-store' } },
         );
-      const summaryResult = await dbQuery(
+      const summaryResult = await accountDbQuery(
         `SELECT
           count(*)::int AS requests,
           count(*) FILTER (WHERE succeeded)::int AS successes,
@@ -72,7 +78,7 @@ export async function GET(request: Request) {
         [config.hours, ...accountParams],
       );
       const startAt = Date.now() - config.hours * 60 * 60 * 1000;
-      const bucketResult = await dbQuery(
+      const bucketResult = await accountDbQuery(
         `SELECT
           floor((extract(epoch FROM created_at) * 1000 - $3::double precision) / $2::double precision)
             * $2::double precision + $3::double precision AS at,
@@ -97,7 +103,7 @@ export async function GET(request: Request) {
         };
       });
       const [providerResult, modelResult] = await Promise.all([
-        dbQuery(
+        accountDbQuery(
           `SELECT provider_id,
             count(*)::int AS requests,
             count(*) FILTER (WHERE succeeded)::int AS successes,
@@ -113,7 +119,7 @@ export async function GET(request: Request) {
           GROUP BY provider_id ORDER BY requests DESC, provider_id LIMIT 100`,
           [config.hours, ...accountParams],
         ),
-        dbQuery(
+        accountDbQuery(
           `SELECT provider_id, model_id,
             count(*)::int AS requests,
             count(*) FILTER (WHERE succeeded)::int AS successes,
@@ -150,8 +156,10 @@ export async function GET(request: Request) {
             estimatedSavingsUsd: null,
           },
           buckets,
-          providers: groupedRows(providerResult.rows, false),
-          models: groupedRows(modelResult.rows, true),
+          providers: hideProviderInfo ? [] : groupedRows(providerResult.rows, false),
+          models: groupedRows(modelResult.rows, true).map((row) =>
+            hideProviderInfo ? { ...row, providerId: undefined } : row,
+          ),
           notes: {
             ttft: 'Not measured: Relay currently requests non-streaming provider responses.',
             savings: 'Unavailable: no verified model-price baseline is configured.',
@@ -172,8 +180,10 @@ export async function GET(request: Request) {
         storage: 'memory',
         summary: summarizeEvents(events),
         buckets: bucketEvents(events, range, now),
-        providers: groupAnalyticsEvents(events, 'provider'),
-        models: groupAnalyticsEvents(events, 'model'),
+        providers: hideProviderInfo ? [] : groupAnalyticsEvents(events, 'provider'),
+        models: groupAnalyticsEvents(events, 'model').map((row) =>
+          hideProviderInfo ? { ...row, providerId: undefined } : row,
+        ),
         notes: {
           storage: 'Metrics are held in server memory and may reset when the server restarts.',
           ttft: 'Not measured: Relay currently requests non-streaming provider responses.',

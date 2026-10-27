@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { databaseConfigured, dbQuery } from './db';
+import { databaseConfigured } from './db';
+import { accountDbQuery } from './tenant-database';
 import { getPrincipal } from './security';
 import { rememberUnpersistedUsage } from './usage-memory';
 
@@ -55,7 +56,7 @@ export async function recordAnalyticsEvent(
     return safe.accountId === 'owner';
   }
   try {
-    await dbQuery(
+    await accountDbQuery(
       `INSERT INTO relay_analytics
         (id, account_id, provider_id, model_id, succeeded, status_code, latency_ms, ttft_ms, input_tokens, output_tokens)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
@@ -142,7 +143,7 @@ export async function observedModelMetricsByTarget(): Promise<Map<string, Observ
     return new Map(metrics);
   }
   try {
-    const result = await dbQuery(
+    const result = await accountDbQuery(
       accountId
         ? `SELECT provider_id, model_id, count(*)::int AS requests,
              100.0 * count(*) FILTER (WHERE succeeded) / count(*) AS success_rate,
