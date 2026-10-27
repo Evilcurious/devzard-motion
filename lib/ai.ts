@@ -1,4 +1,4 @@
-import { readConnection } from './connection-store';
+import { readConnection, saveConnection } from './connection-store';
 import {
   getRouterProvider,
   type RouterProviderId,
@@ -6,7 +6,7 @@ import {
   type RouterTarget,
 } from './model-router';
 import { getOwnProviderKeys, getProviderKeysForTarget } from './provider-credentials';
-import { canUserUseTarget } from './account-access';
+import { canUserUseTarget, getUsageBlockedTargets } from './account-access';
 import { getManagedModelConfig } from './managed-model';
 import { getPrincipal } from './security';
 import type { UserPrincipal } from './security';
@@ -21,6 +21,32 @@ async function userCanUseTarget(
   target: Pick<RouterTarget, 'providerId' | 'modelId'>,
 ) {
   return canUserUseTarget(user, target);
+}
+async function firstUsableAssignedSelection(user: UserPrincipal): Promise<RouterSelection | null> {
+  const blocked = await getUsageBlockedTargets();
+  for (const target of user.allowedModels) {
+    if (blocked.has(`${target.providerId}::${target.modelId}`)) continue;
+    const selection: RouterSelection = {
+      providerId: target.providerId as RouterProviderId,
+      modelId: target.modelId,
+      strategy: 'auto',
+      autoPick: true,
+      fusionModels: [],
+    };
+    if (target.providerId === 'managed') {
+      const managed = await getManagedModelConfig();
+      if (managed.configured && managed.model === target.modelId && managed.baseURL)
+        return selection;
+      continue;
+    }
+    const provider = getRouterProvider(target.providerId);
+    if (!provider || provider.category !== 'models' || !provider.baseURL) continue;
+    if (!(await userCanUseTarget(user, selection))) continue;
+    const keys = await getProviderKeysForTarget(selection);
+    if (provider.keyRequired && !keys.length) continue;
+    return selection;
+  }
+  return null;
 }
 function asUserRouterConfig(
   selection: RouterSelection,
@@ -49,7 +75,11 @@ function asUserRouterConfig(
   };
 }
 async function userAIConfig(user: UserPrincipal) {
-  const selection = await readConnection<RouterSelection>('router-selection');
+  let selection = await readConnection<RouterSelection>('router-selection');
+  if (!selection) {
+    selection = await firstUsableAssignedSelection(user);
+    if (selection) await saveConnection('router-selection', selection);
+  }
   if (selection) {
     const primary = { providerId: selection.providerId, modelId: selection.modelId };
     if (selection.providerId === 'managed') {
@@ -96,17 +126,36 @@ async function userAIConfig(user: UserPrincipal) {
         getProviderKeysForTarget(primary),
         getOwnProviderKeys(provider.id),
       ]);
-      return asUserRouterConfig(selection, provider.id, provider.baseURL!, keys, ownKeys[0] || '');
+      const configured = asUserRouterConfig(
+        selection,
+        provider.id,
+        provider.baseURL!,
+        keys,
+        ownKeys[0] || '',
+      );
+      if (configured.configured) return configured;
     }
   }
+  const usageBlockedTargets = await getUsageBlockedTargets();
   for (const target of user.allowedModels) {
+    if (usageBlockedTargets.has(`${target.providerId}::${target.modelId}`)) continue;
     if (target.providerId === 'managed') {
       const managed = await getManagedModelConfig();
       if (!managed.configured || managed.model !== target.modelId || !managed.baseURL) continue;
-      const apiKeys = await getProviderKeysForTarget({
+      const fallbackSelection: RouterSelection = {
         providerId: 'managed',
         modelId: target.modelId,
-      });
+        strategy: 'auto',
+        autoPick: true,
+        fusionModels: [],
+      };
+      if (
+        selection?.providerId !== fallbackSelection.providerId ||
+        selection.modelId !== fallbackSelection.modelId ||
+        !selection.autoPick
+      )
+        await saveConnection('router-selection', fallbackSelection);
+      const apiKeys = await getProviderKeysForTarget(fallbackSelection);
       return {
         provider: 'compatible' as const,
         routerProviderId: 'managed',
@@ -116,28 +165,32 @@ async function userAIConfig(user: UserPrincipal) {
         apiKeys,
         configured: true,
         strategy: 'auto' as const,
-        autoPick: false,
+        autoPick: true,
         fusionModels: [],
       };
     }
     const provider = getRouterProvider(target.providerId);
     if (!provider || provider.category !== 'models' || !provider.baseURL) continue;
+    const fallbackSelection: RouterSelection = {
+      providerId: target.providerId as RouterProviderId,
+      modelId: target.modelId,
+      strategy: 'auto',
+      autoPick: true,
+      fusionModels: [],
+    };
     const [keys, ownKeys] = await Promise.all([
-      getProviderKeysForTarget({
-        providerId: target.providerId as RouterProviderId,
-        modelId: target.modelId,
-      }),
+      getProviderKeysForTarget(fallbackSelection),
       getOwnProviderKeys(provider.id),
     ]);
     if (provider.keyRequired && !keys.length) continue;
+    if (
+      selection?.providerId !== fallbackSelection.providerId ||
+      selection.modelId !== fallbackSelection.modelId ||
+      !selection.autoPick
+    )
+      await saveConnection('router-selection', fallbackSelection);
     return asUserRouterConfig(
-      {
-        providerId: target.providerId as RouterProviderId,
-        modelId: target.modelId,
-        strategy: 'auto',
-        autoPick: false,
-        fusionModels: [],
-      },
+      fallbackSelection,
       provider.id,
       provider.baseURL,
       keys,
