@@ -13,7 +13,7 @@ import {
 } from '../lib/model-router';
 
 test('model provider registry uses fixed HTTPS hosts and separates search services', () => {
-  assert.equal(routerProviders.length, 26);
+  assert.equal(routerProviders.length, 27);
   assert.equal(getRouterProvider('openai')?.baseURL, 'https://api.openai.com/v1');
   assert.equal(getRouterProvider('openai')?.keyRequired, true);
   assert.equal(getRouterProvider('gemini')?.name, 'Google Gemini API');
@@ -28,6 +28,10 @@ test('model provider registry uses fixed HTTPS hosts and separates search servic
   assert.equal(getRouterProvider('electronhub')?.baseURL, 'https://api.electronhub.ai/v1');
   assert.equal(getRouterProvider('xkiro')?.baseURL, 'https://api.xkiro.com/v1');
   assert.equal(getRouterProvider('septorlabs')?.baseURL, 'https://api.septorlabs.com/v1');
+  assert.equal(getRouterProvider('bluesminds')?.name, 'BluesMinds');
+  assert.equal(getRouterProvider('bluesminds')?.baseURL, 'https://api.bluesminds.com/v1');
+  assert.equal(getRouterProvider('bluesminds')?.modelsPath, '/v1/models');
+  assert.equal(getRouterProvider('bluesminds')?.keyRequired, true);
   assert.equal(getRouterProvider('firecrawl')?.category, 'search');
   assert.equal(getRouterProvider('firecrawl')?.baseURL, 'https://api.firecrawl.dev/v2');
   assert.equal(getRouterProvider('parallel')?.category, 'search');

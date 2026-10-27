@@ -684,9 +684,9 @@ export default function Workspace() {
         throw new Error(result.error || 'Could not complete this request.');
       }
       if (mode === 'image' && result.status === 'processing') {
-        const deadline = Date.now() + 180_000;
+        const deadline = Date.now() + 240_000;
         while (result.status === 'processing' && Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 2500));
+          await new Promise((resolve) => setTimeout(resolve, 4000));
           const poll = await fetch('/api/router/media', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -706,7 +706,7 @@ export default function Workspace() {
         mode === 'chat'
           ? result
           : {
-              content: `Image generated with ${result.providerName} (${result.modelId}).`,
+              content: `Image generated with ${result.providerName || 'your connected provider'} (${result.modelId}).`,
               media: {
                 type: 'image' as const,
                 urls: [result.url],
@@ -923,7 +923,7 @@ export default function Workspace() {
                   setMediaMode('image');
                   setWebSearch(false);
                 }}
-                title="Generate an image with a connected image-capable provider"
+                title="Generate an image with a dedicated image model from xKiro or Septor Labs"
               >
                 <ImageIcon size={14} /> Image
               </button>
@@ -1034,7 +1034,7 @@ export default function Workspace() {
         <ShieldCheck size={13} />
         <span>
           {mediaMode === 'image'
-            ? 'Image jobs use your connected provider’s image service and may use its free allowance or account credits.'
+            ? 'Uses xKiro’s SenseNova U1.5 Lite image model first, with a connected image-provider fallback; provider limits or charges may apply.'
             : webSearch
               ? 'Web search uses your saved Firecrawl key and returns clickable sources.'
               : 'You’re in control. Relay asks before taking action.'}

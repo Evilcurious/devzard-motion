@@ -87,6 +87,7 @@ const providerNames: Record<string, string> = {
   electronhub: 'Electron Hub',
   xkiro: 'xKiro',
   septorlabs: 'Septor Labs',
+  bluesminds: 'BluesMinds',
   firecrawl: 'Firecrawl',
   parallel: 'Parallel',
   keenable: 'KeenAble',

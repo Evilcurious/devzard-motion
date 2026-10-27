@@ -11,6 +11,7 @@ export type RouterProviderId =
   | 'electronhub'
   | 'xkiro'
   | 'septorlabs'
+  | 'bluesminds'
   | 'firecrawl'
   | 'parallel'
   | 'keenable'
@@ -248,6 +249,16 @@ export const routerProviders: RouterProvider[] = [
     keyRequired: true,
     docsURL: 'https://septorlabs.com/docs/introduction',
     note: 'OpenAI-compatible model gateway with image generation on paid plans.',
+  },
+  {
+    id: 'bluesminds',
+    name: 'BluesMinds',
+    category: 'models',
+    baseURL: 'https://api.bluesminds.com/v1',
+    modelsPath: '/v1/models',
+    keyRequired: true,
+    docsURL: 'https://api.bluesminds.com/',
+    note: 'OpenAI-compatible model gateway. Model availability, billing, and free credits depend on your BluesMinds account.',
   },
   {
     id: 'firecrawl',

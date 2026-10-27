@@ -3,6 +3,11 @@ import { guard, errorResponse, readJson, seal, unseal } from '@/lib/security';
 import { getAdminProviderKeys, getProviderKeys } from '@/lib/provider-credentials';
 import { getRouterProvider } from '@/lib/model-router';
 import { accountDatabaseHealth } from '@/lib/tenant-database';
+import {
+  canTryAnotherImageProvider,
+  XKIRO_IMAGE_MODEL_ID,
+  xkiroImageGenerationRequest,
+} from '@/lib/media-generation';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -106,12 +111,7 @@ async function generateXkiroImage(prompt: string, keys: string[], accountId: str
       const response = await fetch(`${provider.baseURL}/images/generations`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'sensenova/sensenova-u1.5-lite',
-          prompt,
-          n: 1,
-          size: '1024x1024',
-        }),
+        body: JSON.stringify(xkiroImageGenerationRequest(prompt)),
         signal: AbortSignal.timeout(15000),
         redirect: 'error',
       });
@@ -126,7 +126,7 @@ async function generateXkiroImage(prompt: string, keys: string[], accountId: str
           url,
           providerId: 'xkiro',
           providerName: provider.name,
-          modelId: 'sensenova/sensenova-u1.5-lite',
+          modelId: XKIRO_IMAGE_MODEL_ID,
         };
       }
       if (typeof created?.id !== 'string') throw new Error('xKiro did not return an image job ID.');
@@ -134,19 +134,18 @@ async function generateXkiroImage(prompt: string, keys: string[], accountId: str
         providerId: 'xkiro',
         accountId,
         jobId: created.id,
-        modelId: 'sensenova/sensenova-u1.5-lite',
+        modelId: XKIRO_IMAGE_MODEL_ID,
       };
       return {
         status: 'processing' as const,
         providerId: 'xkiro',
         providerName: provider.name,
         modelId: job.modelId,
-        token: seal(job, 300),
+        token: seal(job, 600),
       };
     } catch (error) {
       lastError = error;
-      if (!(error instanceof Error) || !/(401|402|403|429|quota|credit|key)/i.test(error.message))
-        throw error;
+      if (!canTryAnotherImageProvider(error)) throw error;
     }
   }
   throw lastError instanceof Error ? lastError : new Error('All saved xKiro keys were rejected.');
@@ -234,7 +233,7 @@ export async function POST(request: Request) {
       return Response.json(
         {
           error:
-            'Connect an xKiro or Septor Labs API key in Models & providers to generate images.',
+            'Connect an xKiro or Septor Labs API key in Models & providers. Image generation uses a dedicated image model, not your chat model.',
         },
         { status: 400 },
       );
@@ -250,8 +249,7 @@ export async function POST(request: Request) {
         );
       } catch (error) {
         lastError = error;
-        if (!(error instanceof Error) || !/(401|402|403|429|quota|credit|key)/i.test(error.message))
-          throw error;
+        if (!canTryAnotherImageProvider(error)) throw error;
       }
     }
     for (const key of septorKeys) {
@@ -261,8 +259,7 @@ export async function POST(request: Request) {
         );
       } catch (error) {
         lastError = error;
-        if (!(error instanceof Error) || !/(401|402|403|429|quota|credit|key)/i.test(error.message))
-          throw error;
+        if (!canTryAnotherImageProvider(error)) throw error;
       }
     }
     throw lastError instanceof Error
