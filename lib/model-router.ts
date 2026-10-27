@@ -258,7 +258,7 @@ export const routerProviders: RouterProvider[] = [
     modelsPath: '/v1/models',
     keyRequired: true,
     docsURL: 'https://api.bluesminds.com/',
-    note: 'OpenAI-compatible model gateway. Model availability, billing, and free credits depend on your BluesMinds account.',
+    note: 'OpenAI-compatible model gateway. Save your key, then select one of the model IDs returned for that account. Provider billing and access rules apply.',
   },
   {
     id: 'firecrawl',

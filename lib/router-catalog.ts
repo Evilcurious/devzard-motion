@@ -32,6 +32,30 @@ type ProviderLoad = {
   error: string | null;
   models: ProviderModel[];
 };
+
+type ProviderEligibility = {
+  isFree: boolean;
+  availableTokens: number | null;
+  accountCreditsAvailable?: boolean;
+};
+
+export function isEligibleProviderModel(
+  providerId: RouterProviderId,
+  model: ProviderEligibility,
+  options: { openRouterPaid?: boolean; personalOpenAI?: boolean } = {},
+) {
+  return (
+    model.isFree ||
+    (model.availableTokens !== null && model.availableTokens > 0) ||
+    (model.accountCreditsAvailable === true && providerId !== 'openrouter') ||
+    (providerId === 'openrouter' && options.openRouterPaid === true) ||
+    options.personalOpenAI === true ||
+    // BluesMinds returns the models available to the authenticated API key but may
+    // omit quota metadata. Allow the account-listed IDs so users can choose one;
+    // provider usage/charges still apply and Relay enforces reported token usage.
+    providerId === 'bluesminds'
+  );
+}
 type CachedCatalog = typeof globalThis & {
   relayRouterCatalogs?: Map<string, { at: number; result: RouterCatalog }>;
 };
@@ -483,22 +507,17 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
 
   for (const result of settled) {
     for (const model of result.models) {
-      // Only keep models the authenticated catalog explicitly marks free or reports
-      // positive model-specific tokens for. OpenRouter paid access is additionally
-      // bounded by its live account and API-key credit limits.
+      // Only keep models the authenticated catalog marks available. BluesMinds
+      // account-listed models are selectable even when quota fields are omitted;
+      // Free account usage is still verified and billed/limited by the provider.
       if (isRouterTargetDepleted({ providerId: model.providerId, modelId: model.id }, accountId))
         continue;
-      const free = model.isFree === true;
-      const hasTokens = model.availableTokens !== null && model.availableTokens > 0;
-      const accountCredits =
-        model.accountCreditsAvailable === true && result.providerId !== 'openrouter';
       const personalOpenAI = principal?.role === 'user' && result.providerId === 'openai';
       if (
-        !free &&
-        !hasTokens &&
-        !accountCredits &&
-        !(result.providerId === 'openrouter' && openRouterPaid) &&
-        !personalOpenAI
+        !isEligibleProviderModel(result.providerId, model, {
+          openRouterPaid,
+          personalOpenAI,
+        })
       )
         continue;
       if (model.availableTokens === 0) continue;
@@ -587,7 +606,7 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
     })),
     refreshedAt: new Date().toISOString(),
     metricsNote:
-      'Only authenticated model listings explicitly marked free, reporting positive per-model quota, documenting Ollama free-usage-credit eligibility, or carrying a positive account-credit signal are shown. Account credit signals are read from common explicit remaining/balance fields in provider responses; OpenRouter and Ollama also use their official balance endpoints. Ollama included credits apply only to its documented free-usage models, while purchased credits apply to account-listed models. Provider quota errors temporarily remove a model.',
+      'Only authenticated model listings explicitly marked free, reporting positive per-model quota, documenting Ollama free-usage-credit eligibility, carrying a positive account-credit signal, or listed for the connected BluesMinds key are shown. Account credit signals are read from common explicit remaining/balance fields in provider responses; OpenRouter and Ollama also use their official balance endpoints. Ollama included credits apply only to its documented free-usage models, while purchased credits apply to account-listed models. Provider quota errors temporarily remove a model.',
   };
   catalogs.set(accountId, { at: Date.now(), result });
   return withoutDepletedModels(result, accountId);

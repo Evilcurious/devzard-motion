@@ -110,7 +110,9 @@ const availabilityLabel = (
       ? formatTokens(tokens)
       : accountCreditsAvailable
         ? 'Account credits available'
-        : 'Not reported';
+        : providerId === 'bluesminds'
+          ? 'Listed for your key'
+          : 'Not reported';
 const catalogTargets = (models: Model[]): Target[] =>
   models.flatMap((model) =>
     model.providers.map((provider) => ({
@@ -291,7 +293,7 @@ export function ModelHub({
           setAutoPick(true);
         } else
           setError(
-            'No models currently meet the eligibility checks: explicit free access, positive model quota, positive account-credit metadata, or Ollama’s documented free-usage models. Refresh model lists or check API access.',
+            'No models currently meet the eligibility checks: explicit free access, positive model quota, positive account-credit metadata, Ollama’s documented free-usage models, or an account-listed BluesMinds model. Refresh model lists or check API access.',
           );
       }
       return result;
@@ -425,7 +427,7 @@ export function ModelHub({
     const best = rankRouterTargets(catalogTargets(catalog?.models || []), 'auto')[0];
     if (!best) {
       setError(
-        'No eligible models were found. Relay checks explicit free access, positive model quota, positive account-credit metadata, and Ollama’s documented free-usage models. Refresh the catalog or connect another provider.',
+        'No eligible models were found. Relay checks free access, positive model quota, account credits, Ollama’s documented free-usage models, and account-listed BluesMinds IDs. Refresh the catalog or connect another provider.',
       );
       return;
     }
@@ -1026,7 +1028,11 @@ export function ModelHub({
       {providerModelModal && (
         <Modal
           title={`${providerNames[providerModelModal] || providerModelModal} models`}
-          subtitle="Only models this API lists as free or with positive remaining quota are available to select."
+          subtitle={
+            providerModelModal === 'bluesminds'
+              ? 'Choose a model ID returned for your BluesMinds key. “Use model” sets it as Relay’s active agent model; BluesMinds billing and access rules apply.'
+              : 'Only models this API lists as free or with positive remaining quota are available to select.'
+          }
           onClose={() => setProviderModelModal(null)}
           wide
         >
