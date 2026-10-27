@@ -67,34 +67,91 @@ export function inMemoryAnalytics(since: number): AnalyticsEvent[] {
   );
 }
 
-export async function observedLatencyByTarget(): Promise<Map<string, number>> {
+export type ObservedRoutingMetric = {
+  requests: number;
+  successRate: number;
+  averageLatencyMs: number | null;
+};
+let observedRoutingMetricsCache: {
+  at: number;
+  metrics: Map<string, ObservedRoutingMetric>;
+} | null = null;
+const OBSERVED_ROUTING_METRICS_CACHE_MS = 15_000;
+
+export async function observedModelMetricsByTarget(): Promise<Map<string, ObservedRoutingMetric>> {
+  if (
+    observedRoutingMetricsCache &&
+    Date.now() - observedRoutingMetricsCache.at < OBSERVED_ROUTING_METRICS_CACHE_MS
+  )
+    return new Map(observedRoutingMetricsCache.metrics);
   const recent = inMemoryAnalytics(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const totals = new Map<string, { total: number; count: number }>();
+  const totals = new Map<
+    string,
+    { requests: number; successes: number; latencyTotal: number; latencyCount: number }
+  >();
   for (const event of recent) {
-    if (!event.success) continue;
     const key = `${event.providerId}::${event.modelId}`;
-    const current = totals.get(key) || { total: 0, count: 0 };
-    current.total += event.latencyMs;
-    current.count++;
+    const current = totals.get(key) || {
+      requests: 0,
+      successes: 0,
+      latencyTotal: 0,
+      latencyCount: 0,
+    };
+    current.requests++;
+    if (event.success) {
+      current.successes++;
+      current.latencyTotal += event.latencyMs;
+      current.latencyCount++;
+    }
     totals.set(key, current);
   }
-  const latencies = new Map([...totals].map(([key, value]) => [key, value.total / value.count]));
-  if (!databaseConfigured()) return latencies;
+  const metrics = new Map<string, ObservedRoutingMetric>();
+  for (const [key, value] of totals) {
+    metrics.set(key, {
+      requests: value.requests,
+      successRate: (value.successes / value.requests) * 100,
+      averageLatencyMs: value.latencyCount ? value.latencyTotal / value.latencyCount : null,
+    });
+  }
+  if (!databaseConfigured()) {
+    observedRoutingMetricsCache = { at: Date.now(), metrics };
+    return new Map(metrics);
+  }
   try {
     const result = await dbQuery(
-      `SELECT provider_id, model_id, avg(latency_ms)::float AS average_latency
+      `SELECT provider_id, model_id,
+        count(*)::int AS requests,
+        100.0 * count(*) FILTER (WHERE succeeded) / count(*) AS success_rate,
+        avg(latency_ms) FILTER (WHERE succeeded) AS average_latency
        FROM relay_analytics
-       WHERE succeeded = true AND created_at >= now() - interval '30 days'
+       WHERE created_at >= now() - interval '30 days'
        GROUP BY provider_id, model_id`,
     );
     for (const row of result.rows) {
-      const average = Number(row.average_latency);
-      if (Number.isFinite(average)) latencies.set(`${row.provider_id}::${row.model_id}`, average);
+      const requests = Number(row.requests);
+      const successRate = Number(row.success_rate);
+      const average = row.average_latency === null ? null : Number(row.average_latency);
+      if (Number.isFinite(requests) && requests > 0 && Number.isFinite(successRate))
+        metrics.set(`${row.provider_id}::${row.model_id}`, {
+          requests,
+          successRate,
+          averageLatencyMs: average !== null && Number.isFinite(average) ? average : null,
+        });
     }
   } catch {
     // Routing remains available when analytics storage is not initialized.
   }
-  return latencies;
+  observedRoutingMetricsCache = { at: Date.now(), metrics };
+  return new Map(metrics);
+}
+
+export async function observedLatencyByTarget(): Promise<Map<string, number>> {
+  const metrics = await observedModelMetricsByTarget();
+  return new Map(
+    [...metrics]
+      .filter(([, metric]) => metric.averageLatencyMs !== null)
+      .map(([key, metric]) => [key, metric.averageLatencyMs!]),
+  );
 }
 
 export const analyticsRanges = {
@@ -107,6 +164,14 @@ export type AnalyticsRange = keyof typeof analyticsRanges;
 
 export function toAnalyticsRange(value: string | null): AnalyticsRange {
   return value && value in analyticsRanges ? (value as AnalyticsRange) : '7d';
+}
+
+function percentile(sortedValues: number[], quantile: number): number | null {
+  if (!sortedValues.length) return null;
+  const position = (sortedValues.length - 1) * quantile;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  return sortedValues[lower] + (sortedValues[upper] - sortedValues[lower]) * (position - lower);
 }
 
 export function summarizeEvents(events: AnalyticsEvent[]) {
@@ -128,12 +193,58 @@ export function summarizeEvents(events: AnalyticsEvent[]) {
     averageLatencyMs: latencies.length
       ? latencies.reduce((sum, n) => sum + n, 0) / latencies.length
       : null,
-    p95LatencyMs: latencies.length
-      ? latencies[Math.min(latencies.length - 1, Math.ceil(latencies.length * 0.95) - 1)]
-      : null,
+    p50LatencyMs: percentile(latencies, 0.5),
+    p95LatencyMs: percentile(latencies, 0.95),
     averageTtftMs: null,
     estimatedSavingsUsd: null,
   };
+}
+
+export type AnalyticsGroup = {
+  providerId: string;
+  modelId: string | null;
+  requests: number;
+  successes: number;
+  failures: number;
+  successRate: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  averageLatencyMs: number | null;
+  p50LatencyMs: number | null;
+  p95LatencyMs: number | null;
+};
+
+export function groupAnalyticsEvents(
+  events: AnalyticsEvent[],
+  dimension: 'provider' | 'model',
+): AnalyticsGroup[] {
+  const groups = new Map<string, AnalyticsEvent[]>();
+  for (const event of events) {
+    const key =
+      dimension === 'provider' ? event.providerId : `${event.providerId}::${event.modelId}`;
+    const items = groups.get(key) || [];
+    items.push(event);
+    groups.set(key, items);
+  }
+  return [...groups.values()]
+    .map((items) => {
+      const summary = summarizeEvents(items);
+      const first = items[0];
+      return {
+        providerId: first.providerId,
+        modelId: dimension === 'model' ? first.modelId : null,
+        requests: summary.requests,
+        successes: summary.successes,
+        failures: summary.failures,
+        successRate: summary.successRate,
+        inputTokens: summary.inputTokens,
+        outputTokens: summary.outputTokens,
+        averageLatencyMs: summary.averageLatencyMs,
+        p50LatencyMs: summary.p50LatencyMs,
+        p95LatencyMs: summary.p95LatencyMs,
+      };
+    })
+    .sort((a, b) => b.requests - a.requests || a.providerId.localeCompare(b.providerId));
 }
 
 export function bucketEvents(events: AnalyticsEvent[], range: AnalyticsRange, now = Date.now()) {

@@ -193,6 +193,54 @@ test('routing excludes reported zero quota and ranks only from provider or obser
   );
 });
 
+test('routing strategies use observed reliability and speed only as rankings, never as eligibility signals', () => {
+  const targets = [
+    {
+      providerId: 'openrouter' as const,
+      modelId: 'fast',
+      availableTokens: 1200,
+      contextTokens: 8000,
+    },
+    {
+      providerId: 'kilo' as const,
+      modelId: 'reliable',
+      availableTokens: 300,
+      contextTokens: 32000,
+    },
+    { providerId: 'ovh' as const, modelId: 'unknown', availableTokens: null, contextTokens: 64000 },
+    {
+      providerId: 'agnes' as const,
+      modelId: 'depleted',
+      availableTokens: 0,
+      contextTokens: 1000000,
+    },
+  ];
+  const metrics = new Map([
+    ['openrouter::fast', { requests: 8, successRate: 87.5, averageLatencyMs: 400 }],
+    ['kilo::reliable', { requests: 6, successRate: 100, averageLatencyMs: 900 }],
+    ['ovh::unknown', { requests: 2, successRate: 100, averageLatencyMs: null }],
+  ]);
+  assert.deepEqual(
+    rankRouterTargets(targets, 'auto', new Map(), 'fastest', metrics).map(
+      (target) => target.modelId,
+    ),
+    ['fast', 'reliable', 'unknown'],
+  );
+  assert.deepEqual(
+    rankRouterTargets(targets, 'auto', new Map(), 'most-reliable', metrics).map(
+      (target) => target.modelId,
+    ),
+    ['reliable', 'fast', 'unknown'],
+    'fewer than three observations do not qualify for the reliability ranking',
+  );
+  assert.deepEqual(
+    rankRouterTargets(targets, 'auto', new Map(), 'largest-context', metrics).map(
+      (target) => target.modelId,
+    ),
+    ['unknown', 'reliable', 'fast'],
+  );
+});
+
 test('an explicitly selected model is pinned while Auto-pick may use the ranked eligible list', () => {
   const ranked = [
     { providerId: 'openrouter' as const, modelId: 'first', availableTokens: 900 },

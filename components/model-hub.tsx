@@ -50,6 +50,18 @@ type Model = {
 };
 type Strategy = 'auto' | 'fusion';
 type Target = RouterTarget;
+type ObservedModelStats = {
+  providerId: string;
+  modelId: string | null;
+  requests: number;
+  successes: number;
+  failures: number;
+  successRate: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  averageLatencyMs: number | null;
+  p95LatencyMs: number | null;
+};
 type Catalog = {
   models: Model[];
   providers: Array<{
@@ -112,6 +124,57 @@ const catalogTargets = (models: Model[]): Target[] =>
   );
 const enrichTarget = (target: Target, models: Model[]): Target =>
   catalogTargets(models).find((candidate) => targetKey(candidate) === targetKey(target)) || target;
+function aggregateObservedStats(
+  providers: ModelProvider[],
+  statsByTarget: Record<string, ObservedModelStats>,
+) {
+  const rows = providers.flatMap((provider) => {
+    const stats = statsByTarget[`${provider.id}::${provider.modelId}`];
+    return stats ? [stats] : [];
+  });
+  if (!rows.length) return null;
+  const requests = rows.reduce((sum, row) => sum + row.requests, 0);
+  const successes = rows.reduce((sum, row) => sum + row.successes, 0);
+  const latencyRows = rows.filter((row) => row.averageLatencyMs !== null && row.successes > 0);
+  const latencyCount = latencyRows.reduce((sum, row) => sum + row.successes, 0);
+  const averageLatencyMs = latencyCount
+    ? latencyRows.reduce((sum, row) => sum + row.averageLatencyMs! * row.successes, 0) /
+      latencyCount
+    : null;
+  return {
+    requests,
+    successRate: requests ? (successes / requests) * 100 : null,
+    averageLatencyMs,
+  };
+}
+function ObservedModelPerformance({
+  providers,
+  statsByTarget,
+  status,
+}: {
+  providers: ModelProvider[];
+  statsByTarget: Record<string, ObservedModelStats>;
+  status: 'loading' | 'ready' | 'unavailable';
+}) {
+  const stats = aggregateObservedStats(providers, statsByTarget);
+  return (
+    <div
+      className="model-observation"
+      title="Aggregated from Relay calls over the last 30 days; not provider-wide ratings."
+    >
+      <small>Relay-observed performance · 30 days</small>
+      <strong>
+        {stats
+          ? `${stats.requests.toLocaleString()} calls · ${stats.successRate === null ? '—' : `${stats.successRate.toFixed(1)}% success`} · ${stats.averageLatencyMs === null ? 'latency unavailable' : `${Math.round(stats.averageLatencyMs).toLocaleString()} ms avg successful call`}`
+          : status === 'loading'
+            ? 'Loading observed usage…'
+            : status === 'unavailable'
+              ? 'Usage analytics are unavailable'
+              : 'No Relay calls observed in this period'}
+      </strong>
+    </div>
+  );
+}
 
 export function ModelHub({
   onSelect,
@@ -122,6 +185,12 @@ export function ModelHub({
 }) {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [observedModelStats, setObservedModelStats] = useState<Record<string, ObservedModelStats>>(
+    {},
+  );
+  const [modelStatsStatus, setModelStatsStatus] = useState<'loading' | 'ready' | 'unavailable'>(
+    'loading',
+  );
   const [selection, setSelection] = useState<Target | null>(null);
   const [strategy, setStrategy] = useState<Strategy>('auto');
   const [autoPick, setAutoPick] = useState(true);
@@ -184,12 +253,32 @@ export function ModelHub({
     }
     return response.selection;
   }
+  async function loadObservedModelStats() {
+    try {
+      const response = await api<{
+        models: ObservedModelStats[];
+        storage: 'postgresql' | 'memory' | 'unavailable';
+      }>('/api/analytics?range=30d', undefined, 'GET');
+      setObservedModelStats(
+        Object.fromEntries(
+          response.models
+            .filter((row) => row.modelId)
+            .map((row) => [`${row.providerId}::${row.modelId}`, row]),
+        ),
+      );
+      setModelStatsStatus(response.storage === 'unavailable' ? 'unavailable' : 'ready');
+    } catch {
+      setObservedModelStats({});
+      setModelStatsStatus('unavailable');
+    }
+  }
   async function discover(autoSelect = false): Promise<Catalog | null> {
     setBusy('discover');
     setError('');
     try {
       const result = await api<Catalog>('/api/router/models', undefined, 'GET');
       setCatalog(result);
+      void loadObservedModelStats();
       setSelection((current) =>
         current && result.models.length ? enrichTarget(current, result.models) : current,
       );
@@ -735,6 +824,11 @@ export function ModelHub({
                       ) && <Check size={16} />}
                   </span>
                 </button>
+                <ObservedModelPerformance
+                  providers={model.providers}
+                  statsByTarget={observedModelStats}
+                  status={modelStatsStatus}
+                />
                 {model.providers.length > 1 && (
                   <div className="model-provider-choices">
                     Available through{' '}
@@ -785,8 +879,9 @@ export function ModelHub({
         <div className="model-profile-note">
           <strong>Provider profiles</strong>
           <span>
-            Reliability, speed, intelligence, and guardrail ratings are not available as measured
-            data here. Relay shows live model-list connectivity and provider-reported limits only.
+            Relay-observed request success and latency are shown per model over the last 30 days.
+            Intelligence and guardrail ratings are not measured here, and provider-wide ratings are
+            not inferred from Relay traffic.
           </span>
         </div>
       </section>

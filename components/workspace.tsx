@@ -45,7 +45,7 @@ import {
   RefreshCw,
   Zap,
 } from 'lucide-react';
-import type { AIDensity, RouterModel, RouterTarget } from '@/lib/model-router';
+import type { AIDensity, RouterModel, RouterTarget, RoutingStrategy } from '@/lib/model-router';
 import { isImageGenerationPrompt } from '@/lib/media-intent';
 import type {
   Activity,
@@ -106,6 +106,7 @@ export default function Workspace() {
   const [mediaMode, setMediaMode] = useState<'chat' | 'image' | 'video'>('chat');
   const [webSearch, setWebSearch] = useState(false);
   const [density, setDensity] = useState<AIDensity>('auto');
+  const [routingStrategy, setRoutingStrategy] = useState<RoutingStrategy>('balanced');
   const [densityReady, setDensityReady] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [modelChoices, setModelChoices] = useState<RouterModel[]>([]);
@@ -172,11 +173,20 @@ export default function Workspace() {
     const saved = window.localStorage.getItem('relay-ai-density');
     if (saved && ['slow', 'fast', 'faster', 'high', 'auto'].includes(saved))
       setDensity(saved as AIDensity);
+    const savedStrategy = window.localStorage.getItem('relay-routing-strategy');
+    if (
+      savedStrategy &&
+      ['balanced', 'fastest', 'most-reliable', 'largest-context'].includes(savedStrategy)
+    )
+      setRoutingStrategy(savedStrategy as RoutingStrategy);
     setDensityReady(true);
   }, []);
   useEffect(() => {
     if (densityReady) window.localStorage.setItem('relay-ai-density', density);
   }, [density, densityReady]);
+  useEffect(() => {
+    if (densityReady) window.localStorage.setItem('relay-routing-strategy', routingStrategy);
+  }, [routingStrategy, densityReady]);
   useEffect(() => {
     if (!status?.authenticated) return;
     api<{ selection: (RouterTarget & { autoPick?: boolean }) | null }>(
@@ -385,9 +395,7 @@ export default function Workspace() {
       setRouterAutoPick(true);
       setModelPickerOpen(false);
       await refresh();
-      notify(
-        `Auto-pick enabled. The best eligible model will be chosen using ${density} chat density.`,
-      );
+      notify(`Auto-pick enabled. ${routingStrategy} routing will rank only eligible models.`);
     } catch (error) {
       setModelPickerError((error as Error).message);
     } finally {
@@ -435,6 +443,7 @@ export default function Workspace() {
           mode === 'chat'
             ? {
                 density,
+                routingStrategy,
                 webSearch,
                 messages: history
                   .filter((m) => !m.error)
@@ -741,7 +750,7 @@ export default function Workspace() {
             <button className="model-select" onClick={openModelPicker} aria-haspopup="dialog">
               <span className={`status-dot ${status?.aiConfigured ? '' : 'muted'}`} />
               {routerAutoPick && routerSelection
-                ? `Auto · ${density}`
+                ? `Auto · ${routingStrategy === 'most-reliable' ? 'Reliable' : routingStrategy === 'largest-context' ? 'Context' : routingStrategy === 'fastest' ? 'Fastest' : 'Balanced'}`
                 : routerSelection?.modelId ||
                   (status?.aiConfigured ? status.model : 'Choose a model')}
               <ChevronDown size={13} />
@@ -750,7 +759,7 @@ export default function Workspace() {
               <span>AI density</span>
               <select
                 aria-label="AI density"
-                title="Only API-listed models marked free or reporting remaining tokens are candidates. Slow favors quota then context; Fast favors quota then observed latency; Faster favors observed latency; High favors reported context; Auto favors quota."
+                title="Eligibility is checked before ranking. This density setting influences completion budget and tie-breaks; choose the separate Route strategy for the main ranking priority."
                 value={density}
                 onChange={(event) => setDensity(event.target.value as AIDensity)}
                 disabled={busy}
@@ -760,6 +769,21 @@ export default function Workspace() {
                 <option value="faster">Faster</option>
                 <option value="high">High</option>
                 <option value="auto">Auto</option>
+              </select>
+            </label>
+            <label className="routing-strategy-control">
+              <span>Route</span>
+              <select
+                aria-label="Routing strategy"
+                title="Only models already verified as eligible are considered. Fastest and most reliable use Relay's observed successful requests over 30 days; reliability is ranked only after at least three calls."
+                value={routingStrategy}
+                onChange={(event) => setRoutingStrategy(event.target.value as RoutingStrategy)}
+                disabled={busy}
+              >
+                <option value="balanced">Balanced</option>
+                <option value="fastest">Fastest</option>
+                <option value="most-reliable">Most reliable</option>
+                <option value="largest-context">Largest context</option>
               </select>
             </label>
           </div>

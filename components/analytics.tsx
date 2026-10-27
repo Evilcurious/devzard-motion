@@ -14,15 +14,31 @@ type Summary = {
   inputTokens: number | null;
   outputTokens: number | null;
   averageLatencyMs: number | null;
+  p50LatencyMs: number | null;
   p95LatencyMs: number | null;
   averageTtftMs: number | null;
   estimatedSavingsUsd: number | null;
+};
+type BreakdownRow = {
+  providerId: string;
+  modelId: string | null;
+  requests: number;
+  successes: number;
+  failures: number;
+  successRate: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  averageLatencyMs: number | null;
+  p50LatencyMs: number | null;
+  p95LatencyMs: number | null;
 };
 type AnalyticsResponse = {
   range: Range;
   storage: 'postgresql' | 'memory' | 'unavailable';
   summary: Summary;
   buckets: Bucket[];
+  providers: BreakdownRow[];
+  models: BreakdownRow[];
   error?: string;
   notes?: { storage?: string; ttft?: string; savings?: string };
 };
@@ -35,6 +51,7 @@ const emptySummary: Summary = {
   inputTokens: null,
   outputTokens: null,
   averageLatencyMs: null,
+  p50LatencyMs: null,
   p95LatencyMs: null,
   averageTtftMs: null,
   estimatedSavingsUsd: null,
@@ -168,6 +185,69 @@ function rangesLabel(date: Date, count: number) {
   );
 }
 
+function BreakdownTable({
+  title,
+  rows,
+  showModel,
+}: {
+  title: string;
+  rows: BreakdownRow[];
+  showModel: boolean;
+}) {
+  return (
+    <section className="analytics-breakdown-panel">
+      <div className="analytics-panel-heading">
+        <BarChart3 size={16} />
+        <h2>{title}</h2>
+        <span>{rows.length}</span>
+      </div>
+      {rows.length ? (
+        <div className="analytics-table-scroll">
+          <table className="analytics-breakdown-table">
+            <thead>
+              <tr>
+                <th scope="col">{showModel ? 'Model / provider' : 'Provider'}</th>
+                <th scope="col">Requests</th>
+                <th scope="col">Success</th>
+                <th scope="col">In tokens</th>
+                <th scope="col">Out tokens</th>
+                <th scope="col">Avg latency</th>
+                <th scope="col">P50</th>
+                <th scope="col">P95</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={`${row.providerId}::${row.modelId || ''}`}>
+                  <th scope="row">
+                    {showModel ? (
+                      <>
+                        <strong>{row.modelId || 'Unknown model'}</strong>
+                        <small>{row.providerId}</small>
+                      </>
+                    ) : (
+                      row.providerId
+                    )}
+                  </th>
+                  <td>{number(row.requests)}</td>
+                  <td>{row.successRate === null ? '—' : `${row.successRate.toFixed(1)}%`}</td>
+                  <td>{number(row.inputTokens)}</td>
+                  <td>{number(row.outputTokens)}</td>
+                  <td>{duration(row.averageLatencyMs)}</td>
+                  <td>{duration(row.p50LatencyMs)}</td>
+                  <td>{duration(row.p95LatencyMs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="analytics-breakdown-empty">No calls in this range.</p>
+      )}
+    </section>
+  );
+}
+
 export function Analytics({ onOpenStorage }: { onOpenStorage: () => void }) {
   const [range, setRange] = useState<Range>('7d');
   const [data, setData] = useState<AnalyticsResponse | null>(null);
@@ -218,9 +298,9 @@ export function Analytics({ onOpenStorage }: { onOpenStorage: () => void }) {
       note: 'Measured request duration',
     },
     {
-      label: 'P95 latency',
-      value: duration(summary.p95LatencyMs),
-      note: '95th percentile request duration',
+      label: 'P50 / P95 latency',
+      value: `${duration(summary.p50LatencyMs)} / ${duration(summary.p95LatencyMs)}`,
+      note: 'Median / 95th percentile request duration',
     },
     {
       label: 'Avg TTFT',
@@ -324,6 +404,14 @@ export function Analytics({ onOpenStorage }: { onOpenStorage: () => void }) {
           <TrendChart buckets={buckets} />
         )}
       </section>
+      <div className="analytics-breakdown-grid">
+        <BreakdownTable
+          title="Provider performance"
+          rows={data?.providers || []}
+          showModel={false}
+        />
+        <BreakdownTable title="Model performance" rows={data?.models || []} showModel />
+      </div>
       <p className="analytics-footnote">
         Counts and timings are recorded per upstream chat-completion API call; catalog refreshes and
         connection tests are excluded. Token totals use provider-reported usage only. TTFT and

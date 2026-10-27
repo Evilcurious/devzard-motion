@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   bucketEvents,
+  groupAnalyticsEvents,
   summarizeEvents,
   toAnalyticsRange,
   type AnalyticsEvent,
@@ -38,9 +39,39 @@ test('analytics aggregates only actual counts, provider-reported usage and measu
   assert.equal(summary.inputTokens, 12);
   assert.equal(summary.outputTokens, 8);
   assert.equal(summary.averageLatencyMs, 2000);
-  assert.equal(summary.p95LatencyMs, 3000);
+  assert.equal(summary.p50LatencyMs, 2000);
+  assert.equal(summary.p95LatencyMs, 2900);
   assert.equal(summary.averageTtftMs, null);
   assert.equal(summary.estimatedSavingsUsd, null);
+});
+
+test('analytics provider and model breakdowns aggregate observed calls without inventing token totals', () => {
+  const events = [
+    event(),
+    event({
+      success: false,
+      statusCode: 429,
+      inputTokens: null,
+      outputTokens: null,
+      latencyMs: 3000,
+    }),
+    event({ providerId: 'gemini', modelId: 'gemini-fast', inputTokens: 20, outputTokens: 10 }),
+  ];
+  const providers = groupAnalyticsEvents(events, 'provider');
+  assert.equal(providers.length, 2);
+  assert.equal(providers[0].providerId, 'openrouter');
+  assert.equal(providers[0].requests, 2);
+  assert.equal(providers[0].successRate, 50);
+  assert.equal(providers[0].inputTokens, 12);
+  assert.equal(providers[0].outputTokens, 8);
+  assert.equal(providers[0].averageLatencyMs, 2000);
+  const models = groupAnalyticsEvents(events, 'model');
+  assert.equal(models.length, 2);
+  assert.equal(models[0].modelId, 'test-model');
+  assert.equal(models[0].providerId, 'openrouter');
+  assert.equal(models[0].requests, 2);
+  assert.equal(models[0].p50LatencyMs, 2000);
+  assert.equal(models[0].p95LatencyMs, 2900);
 });
 
 test('analytics buckets count only events within the selected range and fill empty periods', () => {

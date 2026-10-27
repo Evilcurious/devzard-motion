@@ -3,6 +3,7 @@ import { databaseHealth, dbQuery } from '@/lib/db';
 import {
   analyticsRanges,
   bucketEvents,
+  groupAnalyticsEvents,
   inMemoryAnalytics,
   summarizeEvents,
   toAnalyticsRange,
@@ -13,6 +14,22 @@ function numeric(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function groupedRows(rows: Record<string, unknown>[], includeModel: boolean) {
+  return rows.map((row) => ({
+    providerId: String(row.provider_id || ''),
+    modelId: includeModel ? String(row.model_id || '') : null,
+    requests: Number(row.requests) || 0,
+    successes: Number(row.successes) || 0,
+    failures: Number(row.failures) || 0,
+    successRate: numeric(row.success_rate),
+    inputTokens: numeric(row.input_tokens),
+    outputTokens: numeric(row.output_tokens),
+    averageLatencyMs: numeric(row.average_latency_ms),
+    p50LatencyMs: numeric(row.p50_latency_ms),
+    p95LatencyMs: numeric(row.p95_latency_ms),
+  }));
 }
 
 export async function GET(request: Request) {
@@ -31,6 +48,8 @@ export async function GET(request: Request) {
             error: dbHealth.error,
             summary: summarizeEvents([]),
             buckets: bucketEvents([], range),
+            providers: [],
+            models: [],
           },
           { headers: { 'Cache-Control': 'private, no-store' } },
         );
@@ -43,6 +62,7 @@ export async function GET(request: Request) {
           sum(input_tokens) AS input_tokens,
           sum(output_tokens) AS output_tokens,
           avg(latency_ms) AS average_latency_ms,
+          percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) AS p50_latency_ms,
           percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_latency_ms,
           avg(ttft_ms) AS average_ttft_ms
         FROM relay_analytics
@@ -74,6 +94,40 @@ export async function GET(request: Request) {
           ...(raw.get(at) || { success: 0, failure: 0 }),
         };
       });
+      const [providerResult, modelResult] = await Promise.all([
+        dbQuery(
+          `SELECT provider_id,
+            count(*)::int AS requests,
+            count(*) FILTER (WHERE succeeded)::int AS successes,
+            count(*) FILTER (WHERE NOT succeeded)::int AS failures,
+            100.0 * count(*) FILTER (WHERE succeeded) / count(*) AS success_rate,
+            sum(input_tokens) AS input_tokens,
+            sum(output_tokens) AS output_tokens,
+            avg(latency_ms) AS average_latency_ms,
+            percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) AS p50_latency_ms,
+            percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_latency_ms
+          FROM relay_analytics
+          WHERE created_at >= now() - ($1::int * interval '1 hour') AND created_at <= now()
+          GROUP BY provider_id ORDER BY requests DESC, provider_id LIMIT 100`,
+          [config.hours],
+        ),
+        dbQuery(
+          `SELECT provider_id, model_id,
+            count(*)::int AS requests,
+            count(*) FILTER (WHERE succeeded)::int AS successes,
+            count(*) FILTER (WHERE NOT succeeded)::int AS failures,
+            100.0 * count(*) FILTER (WHERE succeeded) / count(*) AS success_rate,
+            sum(input_tokens) AS input_tokens,
+            sum(output_tokens) AS output_tokens,
+            avg(latency_ms) AS average_latency_ms,
+            percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) AS p50_latency_ms,
+            percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_latency_ms
+          FROM relay_analytics
+          WHERE created_at >= now() - ($1::int * interval '1 hour') AND created_at <= now()
+          GROUP BY provider_id, model_id ORDER BY requests DESC, provider_id, model_id LIMIT 200`,
+          [config.hours],
+        ),
+      ]);
       const row = summaryResult.rows[0] || {};
       return Response.json(
         {
@@ -87,12 +141,15 @@ export async function GET(request: Request) {
             inputTokens: numeric(row.input_tokens),
             outputTokens: numeric(row.output_tokens),
             averageLatencyMs: numeric(row.average_latency_ms),
+            p50LatencyMs: numeric(row.p50_latency_ms),
             p95LatencyMs: numeric(row.p95_latency_ms),
             // No fake TTFT: the current provider calls are non-streaming.
             averageTtftMs: null,
             estimatedSavingsUsd: null,
           },
           buckets,
+          providers: groupedRows(providerResult.rows, false),
+          models: groupedRows(modelResult.rows, true),
           notes: {
             ttft: 'Not measured: Relay currently requests non-streaming provider responses.',
             savings: 'Unavailable: no verified model-price baseline is configured.',
@@ -110,6 +167,8 @@ export async function GET(request: Request) {
         storage: 'memory',
         summary: summarizeEvents(events),
         buckets: bucketEvents(events, range, now),
+        providers: groupAnalyticsEvents(events, 'provider'),
+        models: groupAnalyticsEvents(events, 'model'),
         notes: {
           storage: 'Metrics are held in server memory and may reset when the server restarts.',
           ttft: 'Not measured: Relay currently requests non-streaming provider responses.',

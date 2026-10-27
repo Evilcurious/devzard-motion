@@ -197,6 +197,12 @@ export type RouterModel = {
 };
 export type RouterStrategy = 'auto' | 'fusion';
 export type AIDensity = 'auto' | 'fast' | 'faster' | 'high' | 'slow';
+export type RoutingStrategy = 'balanced' | 'fastest' | 'most-reliable' | 'largest-context';
+export type ObservedModelMetric = {
+  requests: number;
+  successRate: number;
+  averageLatencyMs: number | null;
+};
 export type RouterTarget = {
   providerId: RouterProviderId;
   modelId: string;
@@ -228,16 +234,30 @@ export function rankRouterTargets<T extends RouterTarget>(
   targets: T[],
   density: AIDensity,
   measuredLatencyMs: ReadonlyMap<string, number> = new Map(),
+  strategy: RoutingStrategy = 'balanced',
+  observedMetrics: ReadonlyMap<string, ObservedModelMetric> = new Map(),
 ): T[] {
   const eligible = targets.filter((target) => target.availableTokens !== 0);
   return eligible
     .map((target, index) => ({ target, index }))
     .sort((a, b) => {
+      const keyA = `${a.target.providerId}::${a.target.modelId}`;
+      const keyB = `${b.target.providerId}::${b.target.modelId}`;
       const quotaA = a.target.availableTokens;
       const quotaB = b.target.availableTokens;
-      const quotaRankA = quotaA === null || quotaA === undefined ? 1 : 0;
-      const quotaRankB = quotaB === null || quotaB === undefined ? 1 : 0;
-      if (quotaRankA !== quotaRankB) return quotaRankA - quotaRankB;
+      const contextA = a.target.contextTokens ?? -1;
+      const contextB = b.target.contextTokens ?? -1;
+      const metricA = observedMetrics.get(keyA);
+      const metricB = observedMetrics.get(keyB);
+      const latencyA = metricA?.averageLatencyMs ?? measuredLatencyMs.get(keyA);
+      const latencyB = metricB?.averageLatencyMs ?? measuredLatencyMs.get(keyB);
+      const reliableA = metricA && metricA.requests >= 3 ? metricA.successRate : null;
+      const reliableB = metricB && metricB.requests >= 3 ? metricB.successRate : null;
+      const compareQuotaPresence = () => {
+        const knownA = quotaA !== null && quotaA !== undefined;
+        const knownB = quotaB !== null && quotaB !== undefined;
+        return knownA === knownB ? 0 : knownA ? -1 : 1;
+      };
       const compareQuota = () =>
         quotaA !== null &&
         quotaA !== undefined &&
@@ -247,35 +267,48 @@ export function rankRouterTargets<T extends RouterTarget>(
           ? quotaB - quotaA
           : 0;
       const compareLatency = () => {
-        const latencyA = measuredLatencyMs.get(`${a.target.providerId}::${a.target.modelId}`);
-        const latencyB = measuredLatencyMs.get(`${b.target.providerId}::${b.target.modelId}`);
         if (latencyA === undefined && latencyB !== undefined) return 1;
         if (latencyB === undefined && latencyA !== undefined) return -1;
         return latencyA !== undefined && latencyB !== undefined ? latencyA - latencyB : 0;
       };
-      if (density === 'faster') {
-        const latencyOrder = compareLatency();
-        if (latencyOrder) return latencyOrder;
-        const quotaOrder = compareQuota();
-        if (quotaOrder) return quotaOrder;
-      } else if (density === 'high') {
-        const contextA = a.target.contextTokens ?? -1;
-        const contextB = b.target.contextTokens ?? -1;
-        if (contextA !== contextB) return contextB - contextA;
-        const quotaOrder = compareQuota();
-        if (quotaOrder) return quotaOrder;
+      const compareReliability = () => {
+        if (reliableA === null && reliableB !== null) return 1;
+        if (reliableB === null && reliableA !== null) return -1;
+        return reliableA !== null && reliableB !== null ? reliableB - reliableA : 0;
+      };
+      const compareContext = () => {
+        const knownA = contextA >= 0;
+        const knownB = contextB >= 0;
+        if (knownA !== knownB) return knownA ? -1 : 1;
+        return contextA !== contextB ? contextB - contextA : 0;
+      };
+      const densityOrder = () => {
+        if (density === 'faster') return compareLatency() || compareQuota();
+        if (density === 'high') return compareContext() || compareQuota();
+        return (
+          compareQuota() ||
+          (density === 'fast' ? compareLatency() : 0) ||
+          (density === 'slow' ? compareContext() : 0)
+        );
+      };
+      if (strategy === 'balanced') {
+        const balancedOrder = compareQuotaPresence() || densityOrder();
+        if (balancedOrder) return balancedOrder;
+        const performanceOrder = compareReliability() || compareLatency();
+        if (performanceOrder) return performanceOrder;
       } else {
-        const quotaOrder = compareQuota();
-        if (quotaOrder) return quotaOrder;
-        if (density === 'fast') {
-          const latencyOrder = compareLatency();
-          if (latencyOrder) return latencyOrder;
-        }
-        if (density === 'slow') {
-          const contextA = a.target.contextTokens ?? -1;
-          const contextB = b.target.contextTokens ?? -1;
-          if (contextA !== contextB) return contextB - contextA;
-        }
+        const strategyOrder =
+          strategy === 'fastest'
+            ? compareLatency() || compareReliability() || compareQuotaPresence() || compareQuota()
+            : strategy === 'most-reliable'
+              ? compareReliability() || compareQuotaPresence() || compareQuota() || compareLatency()
+              : compareContext() ||
+                compareQuotaPresence() ||
+                compareQuota() ||
+                compareReliability();
+        if (strategyOrder) return strategyOrder;
+        const densityTieBreak = densityOrder();
+        if (densityTieBreak) return densityTieBreak;
       }
       const freeRankA = a.target.isFree ? 0 : 1;
       const freeRankB = b.target.isFree ? 0 : 1;
