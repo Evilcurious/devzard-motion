@@ -5,6 +5,8 @@ import {
   ArrowUpRight,
   Check,
   Database,
+  Github,
+  KeyRound,
   LoaderCircle,
   Palette,
   ShieldCheck,
@@ -415,6 +417,13 @@ export function StorageSettings({
     </>
   );
 }
+type GoogleClientConfig = {
+  clientId: string;
+  appURL: string;
+  secretSaved: boolean;
+  redirectURI: string;
+  configured: boolean;
+};
 export function GoogleSettings({
   status,
   refresh,
@@ -424,14 +433,26 @@ export function GoogleSettings({
   refresh: () => Promise<void>;
   notify: (text: string) => void;
 }) {
-  const [redirect, setRedirect] = useState('');
+  const [config, setConfig] = useState<GoogleClientConfig | null>(null);
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [appURL, setAppURL] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const load = async () => {
+    const result = await api<GoogleClientConfig>('/api/google/config', undefined, 'GET');
+    setConfig(result);
+    setClientId(result.clientId || '');
+    setAppURL(result.appURL || window.location.origin);
+  };
   useEffect(() => {
     let cancelled = false;
-    api<{ redirectURI: string }>('/api/google/config', undefined, 'GET')
-      .then((data) => {
-        if (!cancelled) setRedirect(data.redirectURI);
+    api<GoogleClientConfig>('/api/google/config', undefined, 'GET')
+      .then((result) => {
+        if (cancelled) return;
+        setConfig(result);
+        setClientId(result.clientId || '');
+        setAppURL(result.appURL || window.location.origin);
       })
       .catch((e) => {
         if (!cancelled) setError((e as Error).message);
@@ -440,6 +461,46 @@ export function GoogleSettings({
       cancelled = true;
     };
   }, []);
+  async function save() {
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/google/config', {
+        clientId,
+        clientSecret: clientSecret || undefined,
+        appURL,
+      });
+      setClientSecret('');
+      await load();
+      await refresh();
+      notify('Google OAuth settings saved securely.');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeConfig() {
+    if (
+      !window.confirm(
+        'Remove the saved Google OAuth app credentials and Google account connection?',
+      )
+    )
+      return;
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/google/config', {}, 'DELETE');
+      setClientSecret('');
+      await load();
+      await refresh();
+      notify('Google OAuth app settings removed.');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function connect() {
     setBusy(true);
     setError('');
@@ -466,41 +527,64 @@ export function GoogleSettings({
     }
   }
   return (
-    <>
-      <div className="section-intro">
-        <h2>Connect Google once</h2>
-        <p>One Google sign-in securely connects both Gmail and Google Sheets.</p>
-      </div>
-      <div className="google-api-summary">
+    <section className="settings-panel integration-settings-panel">
+      <div className="panel-title">
         <AppIcon type="email" />
-        <span>Gmail</span>
-        <span className="small-badge">Read & send</span>
-        <AppIcon type="sheet" />
-        <span>Google Sheets</span>
-        <span className="small-badge">Append rows</span>
+        <h3>Google · Gmail and Sheets</h3>
+        <span className={`small-badge ${status.googleEmail ? 'green' : ''}`}>
+          {status.googleEmail
+            ? 'Connected'
+            : status.googleConfigured
+              ? 'Ready to connect'
+              : 'Setup needed'}
+        </span>
       </div>
-      <section className="settings-panel">
-        <div className="panel-title">
-          <ShieldCheck size={18} />
-          <h3>Your Google account</h3>
-          <span className={`small-badge ${status.googleEmail ? 'green' : ''}`}>
-            {status.googleEmail
-              ? 'Connected'
-              : status.googleConfigured
-                ? 'Ready to connect'
-                : 'Setup needed'}
-          </span>
-        </div>
+      <div className="settings-form">
         <p className="settings-help">
-          Click once, choose your Google account, and approve the requested Gmail and Sheets access.
-          Relay never needs your Google password. Email sends and spreadsheet changes still require
-          your approval in chat.
+          Configure your Google OAuth web app here, then authorize the Gmail and Sheets connection.
+          The client secret is write-only and never sent back to this page.
         </p>
-        {status.googleEmail && (
-          <div className="connected-account">
-            <Check size={14} /> Connected as {status.googleEmail}
+        <label>
+          Google OAuth Client ID
+          <input
+            value={clientId}
+            onChange={(event) => setClientId(event.target.value)}
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          Google OAuth Client Secret
+          <input
+            type="password"
+            value={clientSecret}
+            onChange={(event) => setClientSecret(event.target.value)}
+            placeholder={
+              config?.secretSaved
+                ? 'Saved — leave blank to keep the current secret'
+                : 'Paste the OAuth client secret'
+            }
+            autoComplete="new-password"
+          />
+        </label>
+        <label>
+          Relay site URL
+          <input
+            value={appURL}
+            onChange={(event) => setAppURL(event.target.value)}
+            placeholder="https://relay.example.com"
+          />
+          <span>Use the public site origin, with no trailing path.</span>
+        </label>
+        {(appURL || config?.redirectURI) && (
+          <div className="oauth-redirect-uri">
+            Authorized redirect URI:
+            {config?.redirectURI || `${appURL.replace(/\/$/, '')}/api/google/callback`}
           </div>
         )}
+        <div className="integration-setup-help">
+          In Google Cloud, create a Web application OAuth client, enable the Gmail API and Google
+          Sheets API, and add the redirect URI above to its Authorized redirect URIs.
+        </div>
         {error && (
           <div className="error-box" role="alert">
             {error}
@@ -509,41 +593,229 @@ export function GoogleSettings({
         <div className="form-actions">
           <button
             className="button primary"
+            onClick={() => void save()}
+            disabled={busy || !clientId.trim() || !appURL.trim()}
+          >
+            {busy ? <LoaderCircle size={15} className="spin" /> : <KeyRound size={15} />} Save
+            Google app settings
+          </button>
+          {config?.secretSaved && (
+            <button className="button" onClick={() => void removeConfig()} disabled={busy}>
+              Remove app settings
+            </button>
+          )}
+        </div>
+        {status.googleEmail && (
+          <div className="connected-account">
+            <Check size={14} /> Connected as {status.googleEmail}
+          </div>
+        )}
+        <div className="form-actions">
+          <button
+            className="button"
             onClick={() => void connect()}
             disabled={busy || !status.googleConfigured}
           >
-            {busy ? <LoaderCircle size={15} className="spin" /> : <ArrowUpRight size={15} />}
-            {status.googleEmail ? 'Reconnect with Google' : 'Sign in with Google'}
+            <ArrowUpRight size={15} />{' '}
+            {status.googleEmail ? 'Reconnect Google account' : 'Sign in with Google'}
           </button>
           {status.googleEmail && (
             <button className="button" onClick={() => void disconnect()} disabled={busy}>
-              <Unplug size={15} /> Disconnect
+              <Unplug size={15} /> Disconnect account
             </button>
           )}
         </div>
         <div className="subtle-note">
           <ShieldCheck size={14} />
           {status.databaseConfigured
-            ? `Google access tokens are encrypted in ${databaseLabel(status)} and never returned to your browser.`
-            : 'Google access tokens are stored in a secure, encrypted, HTTP-only session cookie.'}
+            ? `OAuth app details and Google access tokens are encrypted in ${databaseLabel(status)}.`
+            : 'OAuth app details and tokens use encrypted, HTTP-only cookies in this browser. Connect Neon to share them across browsers.'}
         </div>
-      </section>
-      {!status.googleConfigured && (
-        <div className="info-callout">
-          <ShieldCheck size={19} />
-          <div>
-            <strong>One-time setup for the Relay deployment owner</strong>
-            <p>
-              The app owner must configure a Google OAuth client and enable Gmail and Google Sheets
-              APIs once. After that, users only sign in and grant access here—no client ID or secret
-              entry is needed in Relay.
-            </p>
-            {redirect && (
-              <code className="oauth-redirect-uri">Authorized redirect URI: {redirect}</code>
-            )}
+      </div>
+    </section>
+  );
+}
+
+type GitHubAppConfig = {
+  appId: string;
+  slug: string;
+  appURL: string;
+  keySaved: boolean;
+  configured: boolean;
+  setupURL: string;
+};
+export function GitHubAppSettings({
+  status,
+  refresh,
+  notify,
+}: {
+  status: Status;
+  refresh: () => Promise<void>;
+  notify: (text: string) => void;
+}) {
+  const [config, setConfig] = useState<GitHubAppConfig | null>(null);
+  const [appId, setAppId] = useState('');
+  const [slug, setSlug] = useState('');
+  const [privateKey, setPrivateKey] = useState('');
+  const [appURL, setAppURL] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const load = async () => {
+    const result = await api<GitHubAppConfig>('/api/github/config', undefined, 'GET');
+    setConfig(result);
+    setAppId(result.appId || '');
+    setSlug(result.slug || '');
+    setAppURL(result.appURL || window.location.origin);
+  };
+  useEffect(() => {
+    let cancelled = false;
+    api<GitHubAppConfig>('/api/github/config', undefined, 'GET')
+      .then((result) => {
+        if (cancelled) return;
+        setConfig(result);
+        setAppId(result.appId || '');
+        setSlug(result.slug || '');
+        setAppURL(result.appURL || window.location.origin);
+      })
+      .catch((e) => {
+        if (!cancelled) setError((e as Error).message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  async function save() {
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/github/config', {
+        appId,
+        slug,
+        privateKey: privateKey || undefined,
+        appURL,
+      });
+      setPrivateKey('');
+      await load();
+      await refresh();
+      notify('GitHub App settings saved securely.');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeConfig() {
+    if (!window.confirm('Remove the GitHub App credentials and disconnect its installation?'))
+      return;
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/github/config', {}, 'DELETE');
+      setPrivateKey('');
+      await load();
+      await refresh();
+      notify('GitHub App settings removed.');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="settings-panel integration-settings-panel">
+      <div className="panel-title">
+        <Github size={18} />
+        <h3>GitHub App</h3>
+        <span className={`small-badge ${status.githubConfigured ? 'green' : ''}`}>
+          {status.githubConfigured ? 'Ready' : 'Setup needed'}
+        </span>
+      </div>
+      <div className="settings-form">
+        <p className="settings-help">
+          Enter your GitHub App credentials once. The private key is write-only and encrypted at
+          rest; it is never returned to the browser.
+        </p>
+        <label>
+          GitHub App ID
+          <input
+            value={appId}
+            onChange={(event) => setAppId(event.target.value)}
+            inputMode="numeric"
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          GitHub App URL slug
+          <input
+            value={slug}
+            onChange={(event) => setSlug(event.target.value)}
+            placeholder="the-name-in-github.com/apps/…"
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          GitHub App private key (PEM)
+          <textarea
+            value={privateKey}
+            onChange={(event) => setPrivateKey(event.target.value)}
+            placeholder={
+              config?.keySaved
+                ? 'Saved — leave blank to keep the current private key'
+                : '-----BEGIN RSA PRIVATE KEY-----'
+            }
+            autoComplete="new-password"
+            rows={5}
+            spellCheck={false}
+          />
+          {config?.keySaved && <span>Key saved. It is not displayed here.</span>}
+        </label>
+        <label>
+          Relay site URL
+          <input
+            value={appURL}
+            onChange={(event) => setAppURL(event.target.value)}
+            placeholder="https://relay.example.com"
+          />
+          <span>Use the public site origin, with no trailing path.</span>
+        </label>
+        {(appURL || config?.setupURL) && (
+          <div className="oauth-redirect-uri">
+            GitHub App Setup URL:{' '}
+            {config?.setupURL || `${appURL.replace(/\/$/, '')}/api/github/callback`}
           </div>
+        )}
+        <div className="integration-setup-help">
+          In GitHub Developer Settings, create a GitHub App with Setup URL shown above and
+          repository permissions Contents: Read and write, Metadata: Read. Save the App ID, URL
+          slug, and generated private key here.
         </div>
-      )}
-    </>
+        {error && (
+          <div className="error-box" role="alert">
+            {error}
+          </div>
+        )}
+        <div className="form-actions">
+          <button
+            className="button primary"
+            onClick={() => void save()}
+            disabled={busy || !appId.trim() || !slug.trim() || !appURL.trim()}
+          >
+            {busy ? <LoaderCircle size={15} className="spin" /> : <KeyRound size={15} />} Save
+            GitHub App settings
+          </button>
+          {config?.keySaved && (
+            <button className="button" onClick={() => void removeConfig()} disabled={busy}>
+              Remove app settings
+            </button>
+          )}
+        </div>
+        <div className="subtle-note">
+          <ShieldCheck size={14} />
+          {status.databaseConfigured
+            ? `GitHub App credentials are encrypted in ${databaseLabel(status)}.`
+            : 'GitHub App credentials use an encrypted, HTTP-only cookie in this browser. Connect Neon to share them across browsers.'}
+        </div>
+      </div>
+    </section>
   );
 }

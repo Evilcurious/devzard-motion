@@ -18,12 +18,23 @@ export type GitHubPushAction = {
   args: { commitMessage: string; files: GitHubFile[] };
 };
 
-export function githubAppConfig() {
+export type GitHubAppSettings = {
+  appId: string;
+  slug: string;
+  privateKey: string;
+  appURL?: string;
+};
+
+export async function githubAppConfig() {
+  const saved = await readConnection<GitHubAppSettings>('github_app');
   return {
-    appId: process.env.GITHUB_APP_ID || '',
-    slug: process.env.GITHUB_APP_SLUG || '',
-    privateKey: (process.env.GITHUB_APP_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-    appURL: (process.env.APP_URL || '').replace(/\/$/, ''),
+    appId: saved?.appId || process.env.GITHUB_APP_ID || '',
+    slug: saved?.slug || process.env.GITHUB_APP_SLUG || '',
+    privateKey: (saved?.privateKey || process.env.GITHUB_APP_PRIVATE_KEY || '').replace(
+      /\\n/g,
+      '\n',
+    ),
+    appURL: (saved?.appURL || process.env.APP_URL || '').replace(/\/$/, ''),
   };
 }
 
@@ -72,8 +83,8 @@ export function validateGitHubCommitMessage(value: unknown) {
   return message;
 }
 
-function appJwt() {
-  const { appId, privateKey } = githubAppConfig();
+async function appJwt() {
+  const { appId, privateKey } = await githubAppConfig();
   if (!appId || !privateKey || !privateKey.includes('PRIVATE KEY'))
     throw new Error('GitHub App credentials are not configured on this Relay server.');
   const now = Math.floor(Date.now() / 1000);
@@ -116,7 +127,7 @@ export async function getGitHubInstallation() {
 }
 
 export async function getGitHubInstallationDetails(id: number) {
-  const data = await githubApi(`/app/installations/${id}`, appJwt());
+  const data = await githubApi(`/app/installations/${id}`, await appJwt());
   const account = data?.account?.login;
   if (typeof account !== 'string' || !account)
     throw new Error('The GitHub App installation could not be verified.');
@@ -126,7 +137,7 @@ export async function getGitHubInstallationDetails(id: number) {
 export async function getGitHubInstallationToken(installation?: GitHubInstallation) {
   const activeInstallation = installation || (await getGitHubInstallation());
   if (!activeInstallation) throw new Error('Connect a GitHub repository in Connections first.');
-  const jwt = appJwt();
+  const jwt = await appJwt();
   const response = await fetch(
     `https://api.github.com/app/installations/${activeInstallation.installationId}/access_tokens`,
     {

@@ -66,6 +66,7 @@ import type {
 import { initialWorkflows } from '@/lib/client-types';
 import { AppIcon, EmptyState, Mark, Modal, Steps, WorkflowCard } from './ui';
 import { api, Settings } from './settings';
+import { GoogleSettings, GitHubAppSettings } from './settings-extras';
 import { useWorkspaceStorage, type WorkspaceData } from './use-workspace-storage';
 import { type Theme } from '@/lib/themes';
 import { ModelHub } from './model-hub';
@@ -86,14 +87,19 @@ const titles: Record<Page, string> = {
   analytics: 'Analytics',
   settings: 'Settings',
 };
-const navigation = [
-  { id: 'chat', icon: MessageSquare, label: 'Agent chat' },
-  { id: 'workflows', icon: WorkflowIcon, label: 'Workflows' },
+const navigation = [{ id: 'chat', icon: MessageSquare, label: 'Chat' }] as const;
+const settingsSections: Array<{
+  id: Exclude<Page, 'chat'>;
+  icon: typeof Settings2;
+  label: string;
+}> = [
+  { id: 'settings', icon: Settings2, label: 'General' },
   { id: 'models', icon: Cpu, label: 'Models & providers' },
   { id: 'connections', icon: LayoutGrid, label: 'Connections' },
+  { id: 'workflows', icon: WorkflowIcon, label: 'Workflows' },
   { id: 'activity', icon: ActivityIcon, label: 'Activity' },
   { id: 'analytics', icon: BarChart3, label: 'Analytics' },
-] as const;
+];
 const uid = () => crypto.randomUUID();
 const friendlyDate = (date: string) =>
   new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -702,15 +708,6 @@ export default function Workspace() {
       ),
     );
   }
-  async function connect() {
-    try {
-      const data = await api<{ url: string }>('/api/google/connect');
-      window.location.assign(data.url);
-    } catch (error) {
-      notify((error as Error).message);
-    }
-  }
-  const setupCount = 1 + (status?.aiConfigured ? 1 : 0) + (status?.googleEmail ? 1 : 0);
   const composer = (
     <div className={`composer-wrap ${messages.length ? 'in-chat' : ''}`}>
       <div
@@ -930,18 +927,6 @@ export default function Workspace() {
             relay<span className="brand-period">.</span>
           </span>
         </a>
-        <button
-          className="workspace-picker"
-          onClick={() => {
-            go('settings');
-          }}
-        >
-          <span className="workspace-avatar">P</span>
-          <span>
-            Personal workspace<small>Just you. Supercharged.</small>
-          </span>
-          <ChevronDown size={14} />
-        </button>
         <button className="new-chat" onClick={() => newChat()}>
           <Plus size={17} />
           New conversation
@@ -956,9 +941,6 @@ export default function Workspace() {
             >
               <item.icon size={18} />
               <span>{item.label}</span>
-              {item.id === 'connections' && status?.googleEmail && (
-                <span className="nav-count">2</span>
-              )}
               {item.id === 'chat' && page === 'chat' && <span className="active-nav-dot" />}
             </button>
           ))}
@@ -998,33 +980,11 @@ export default function Workspace() {
         </div>
         <div className="sidebar-bottom">
           <button
-            className="setup-card"
-            onClick={() => go(status?.aiConfigured ? 'connections' : 'models')}
-          >
-            <span className="setup-title">
-              <span>
-                <Sparkles size={15} />
-                Make yourself at home
-              </span>
-              <ChevronRight size={14} />
-            </span>
-            <span className="setup-description">A few steps to your everyday sidekick.</span>
-            <span className="setup-progress">
-              <span style={{ width: `${(setupCount / 3) * 100}%` }} />
-            </span>
-            <span className="setup-count">{setupCount} of 3 steps complete</span>
-          </button>
-          <button
-            className={`nav-item ${page === 'settings' ? 'active' : ''}`}
+            className={`nav-item ${page !== 'chat' ? 'active' : ''}`}
             onClick={() => go('settings')}
           >
             <Settings2 size={18} />
             Settings
-          </button>
-          <button className="nav-item" onClick={() => setModal('help')}>
-            <CircleHelp size={18} />
-            Help & getting started
-            <ArrowUpRight size={14} className="nav-end" />
           </button>
           <div className="profile">
             <span className="profile-avatar">Y</span>
@@ -1072,7 +1032,11 @@ export default function Workspace() {
             </button>
             <span className="breadcrumb-home">Workspace</span>
             <span className="breadcrumb-slash">/</span>
-            <span>{titles[page]}</span>
+            <span>
+              {page === 'chat'
+                ? 'Chat'
+                : `Settings · ${page === 'settings' ? 'General' : titles[page]}`}
+            </span>
             {page === 'chat' && <span className="beta-label">BETA</span>}
           </div>
           <div className="topbar-actions">
@@ -1091,9 +1055,6 @@ export default function Workspace() {
             >
               <Search size={18} />
               <kbd>⌘ K</kbd>
-            </button>
-            <button className="icon-button" aria-label="Help" onClick={() => setModal('help')}>
-              <CircleHelp size={18} />
             </button>
           </div>
         </header>
@@ -1142,6 +1103,22 @@ export default function Workspace() {
         <main
           className={`main-content ${page === 'chat' && messages.length ? 'conversation-page' : ''} ${page === 'chat' ? 'legacy-chat' : ''}`}
         >
+          {page !== 'chat' && (
+            <nav className="settings-hub-nav" aria-label="Settings sections">
+              {settingsSections.map((item) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  className={`settings-hub-item ${page === item.id ? 'active' : ''}`}
+                  aria-current={page === item.id ? 'page' : undefined}
+                  onClick={() => go(item.id)}
+                >
+                  <item.icon size={16} />
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          )}
           {page === 'chat' &&
             (messages.length === 0 ? (
               <div className="welcome">
@@ -1536,113 +1513,14 @@ export default function Workspace() {
                   You choose what your agent can do
                 </span>
               </div>
+              <div className="integration-settings-grid">
+                {status && <GoogleSettings status={status} refresh={refresh} notify={notify} />}
+                {status && <GitHubAppSettings status={status} refresh={refresh} notify={notify} />}
+              </div>
               <div className="integration-grid">
-                {[
-                  {
-                    icon: 'email',
-                    name: 'Gmail',
-                    label: 'A little peace for your inbox.',
-                    description:
-                      'Find messages, summarize conversations, and draft emails that sound like you.',
-                    abilities: ['Search and read messages', 'Compose emails for your approval'],
-                  },
-                  {
-                    icon: 'sheet',
-                    name: 'Google Sheets',
-                    label: 'Give your data a place to land.',
-                    description:
-                      'Turn document details and chat instructions into neatly organized spreadsheet rows.',
-                    abilities: [
-                      'Extract details from your documents',
-                      'Append rows after your approval',
-                    ],
-                  },
-                ].map((item) => (
-                  <section className="integration-card" key={item.name}>
-                    <div className="card-top">
-                      <AppIcon type={item.icon as 'email' | 'sheet'} large />
-                      <span className={`small-badge ${status?.googleEmail ? 'green' : ''}`}>
-                        {status?.googleEmail ? (
-                          <>
-                            <Check size={12} />
-                            Connected
-                          </>
-                        ) : (
-                          'Not connected'
-                        )}
-                      </span>
-                    </div>
-                    <h2>{item.name}</h2>
-                    <h3>{item.label}</h3>
-                    <p>{item.description}</p>
-                    <ul>
-                      {item.abilities.map((ability) => (
-                        <li key={ability}>
-                          <CheckCircle2 size={14} />
-                          {ability}
-                        </li>
-                      ))}
-                    </ul>
-                    {status?.googleEmail ? (
-                      <div className="connected-account">
-                        <span className="status-dot" />
-                        {status.googleEmail}
-                      </div>
-                    ) : (
-                      <button className="button" onClick={connect}>
-                        Sign in with Google
-                        <ArrowUpRight size={15} />
-                      </button>
-                    )}
-                  </section>
-                ))}
                 <GitHubConnectionCard status={status} refresh={refresh} notify={notify} />
                 <VercelConnectionCard status={status} refresh={refresh} notify={notify} />
               </div>
-              {status?.googleEmail ? (
-                <div className="info-callout">
-                  <ShieldCheck size={19} />
-                  <div>
-                    <strong>One Google account, two helpful connections</strong>
-                    <p>
-                      Your OAuth tokens are encrypted{' '}
-                      {status?.databaseConfigured
-                        ? `in ${databaseLabel(status)}`
-                        : 'in a secure HTTP-only cookie'}
-                      . Disconnecting removes both app connections from this workspace. You can
-                      revoke access entirely in your Google account.
-                    </p>
-                    <button
-                      className="text-button danger-text"
-                      onClick={async () => {
-                        try {
-                          await api('/api/google/disconnect');
-                          await refresh();
-                          notify('Google disconnected from this workspace.');
-                        } catch (e) {
-                          notify((e as Error).message);
-                        }
-                      }}
-                    >
-                      Disconnect Google
-                      <Unplug size={13} />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="info-callout">
-                  <LockKeyhole size={19} />
-                  <div>
-                    <strong>Private by design. Connected by choice.</strong>
-                    <p>
-                      {status?.googleConfigured
-                        ? 'One Google sign-in authorizes Gmail and Sheets together. You choose the account in Google’s permission screen; writes still wait for your approval.'
-                        : 'Google sign-in needs one-time deployment-owner setup. In Vercel → relay → Settings → Environment Variables, configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, APP_URL, and a stable SESSION_SECRET; enable Gmail and Google Sheets APIs in Google Cloud, add the authorized redirect URI shown below, then redeploy. Never paste client secrets into chat.'}
-                    </p>
-                    {!status?.googleConfigured && <GoogleOAuthSetupHint />}
-                  </div>
-                </div>
-              )}
               <div className="more-integrations">
                 <span className="empty-icon">
                   <Plus size={22} />
@@ -2396,27 +2274,13 @@ function GitHubConnectionCard({
       )}
       {!status?.githubConfigured && (
         <div className="github-setup-hint">
-          GitHub needs a one-time GitHub App setup. The deployment owner configures{' '}
-          <code>GITHUB_APP_ID</code>, <code>GITHUB_APP_SLUG</code>,{' '}
-          <code>GITHUB_APP_PRIVATE_KEY</code>, <code>APP_URL</code>, and a stable{' '}
-          <code>SESSION_SECRET</code> on the server, then installs the app with{' '}
-          <code>Contents: read/write</code> and <code>Metadata: read</code>. Users then connect
-          here; no personal access token is needed.
+          First save the GitHub App ID, URL slug, and private key in Settings → Connections above.
+          Then install the app and select only the repository Relay should use. No personal access
+          token is needed.
         </div>
       )}
     </section>
   );
-}
-function GoogleOAuthSetupHint() {
-  const [redirectURI, setRedirectURI] = useState('');
-  useEffect(() => {
-    api<{ redirectURI: string }>('/api/google/config', undefined, 'GET')
-      .then((result) => setRedirectURI(result.redirectURI))
-      .catch(() => {});
-  }, []);
-  return redirectURI ? (
-    <code className="oauth-redirect-uri">Authorized redirect URI: {redirectURI}</code>
-  ) : null;
 }
 type VercelProjectOption = { id: string; name: string; framework: string | null };
 type VercelDeploymentItem = {

@@ -33,7 +33,9 @@ export function Settings({
       <div className="page-heading">
         <div className="eyebrow">A QUIETER, CLEARER WORKSPACE</div>
         <h1>Settings</h1>
-        <p>Personalize how Relay looks or check where your workspace is saved.</p>
+        <p>
+          Manage your workspace preferences, data, providers, integrations, and tools in one place.
+        </p>
       </div>
       <div className="tabs settings-tabs" role="tablist" aria-label="Workspace settings">
         <button

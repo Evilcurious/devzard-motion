@@ -5,6 +5,21 @@ import { googleClientConfig, type GoogleClientSettings } from '@/lib/google-conf
 const schema = z.object({
   clientId: z.string().trim().min(1).max(300),
   clientSecret: z.string().trim().max(500).optional(),
+  appURL: z
+    .string()
+    .trim()
+    .url()
+    .max(500)
+    .optional()
+    .refine(
+      (value) =>
+        !value ||
+        ((new URL(value).protocol === 'https:' || new URL(value).hostname === 'localhost') &&
+          new URL(value).pathname === '/' &&
+          !new URL(value).search &&
+          !new URL(value).hash),
+      'Enter the site origin only, such as https://relay.example.com.',
+    ),
 });
 export async function GET() {
   try {
@@ -12,6 +27,7 @@ export async function GET() {
     const config = await googleClientConfig();
     return Response.json({
       clientId: config.clientId,
+      appURL: config.appURL,
       secretSaved: !!config.clientSecret,
       redirectURI: config.appURL ? `${config.appURL}/api/google/callback` : '',
       configured: !!(config.clientId && config.clientSecret && config.appURL),
@@ -30,7 +46,10 @@ export async function POST(request: Request) {
       input.clientSecret ||
       (input.clientId === config.clientId ? previous?.clientSecret || config.clientSecret : '');
     if (!clientSecret) throw new Error('Enter the OAuth client secret for this client ID.');
-    await saveConnection('google_client', { clientId: input.clientId, clientSecret });
+    const appURL = (input.appURL || config.appURL || '').replace(/\/$/, '');
+    if (!appURL)
+      throw new Error('Enter the public Relay site URL so Google can return to the right page.');
+    await saveConnection('google_client', { clientId: input.clientId, clientSecret, appURL });
     // A changed client invalidates the existing grant; never refresh a grant with another client.
     if (input.clientId !== config.clientId) await removeConnection('google');
     return Response.json({ ok: true });

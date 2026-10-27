@@ -8,9 +8,10 @@ import {
 import { equal, guard } from '@/lib/security';
 
 export async function GET(request: Request) {
-  const config = githubAppConfig();
-  const base = config.appURL || new URL(request.url).origin;
+  let base = new URL(request.url).origin;
   try {
+    const config = await githubAppConfig();
+    base = config.appURL || base;
     await guard();
     const params = new URL(request.url).searchParams;
     const jar = await cookies();

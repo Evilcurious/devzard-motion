@@ -6214,3 +6214,89 @@ body {
     height: 64vh;
   }
 }
+
+/* Secondary workspace areas live under the single Settings destination. */
+.settings-hub-nav {
+  display: flex;
+  gap: 7px;
+  padding: 14px clamp(18px, 4vw, 54px);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.settings-hub-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 9px 12px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.settings-hub-item:hover,
+.settings-hub-item.active {
+  color: var(--green);
+  border-color: var(--line);
+  background: var(--sidebar);
+}
+.settings-hub-item.active {
+  font-weight: 600;
+}
+.integration-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 0 0 24px;
+}
+.integration-settings-panel {
+  min-width: 0;
+  margin-bottom: 0;
+}
+.settings-form label > textarea {
+  display: block;
+  width: 100%;
+  min-height: 125px;
+  resize: vertical;
+  margin-top: 9px;
+  padding: 11px 12px;
+  border: 1px solid var(--tone-dfe6d5, #dfe6d5);
+  border-radius: 6px;
+  background: var(--tone-fcfdfb, #fcfdfb);
+  color: var(--tone-5b704d, #5b704d);
+  font:
+    11px/1.6 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+.settings-form label > textarea::placeholder {
+  color: var(--tone-acb39f, #acb39f);
+}
+.integration-setup-help {
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--body);
+  background: var(--sidebar);
+  font-size: 11px;
+  line-height: 1.8;
+}
+@media (max-width: 920px) {
+  .integration-settings-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .settings-hub-nav {
+    padding: 10px 14px;
+  }
+  .settings-hub-item {
+    padding: 8px 10px;
+  }
+}

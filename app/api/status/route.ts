@@ -32,7 +32,7 @@ export async function GET() {
       const google = await googleSession();
       const client = await googleClientConfig();
       const github = await getGitHubInstallation();
-      const githubApp = githubAppConfig();
+      const githubApp = await githubAppConfig();
       const vercel = await getVercelConnection();
       const vercelProject = vercel ? await getVercelProjectSelection() : null;
       return Response.json({

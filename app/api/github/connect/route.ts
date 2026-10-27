@@ -6,7 +6,7 @@ import { githubAppConfig } from '@/lib/github';
 export async function POST(request: Request) {
   try {
     await guard(request);
-    const config = githubAppConfig();
+    const config = await githubAppConfig();
     if (!config.appId || !config.slug || !config.privateKey || !config.appURL)
       throw new Error(
         'GitHub is not configured on this Relay server yet. The owner must finish the one-time GitHub App setup; no access token is needed from you.',
