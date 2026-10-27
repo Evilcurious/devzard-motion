@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 const config: NextConfig = {
   devIndicators: false,
   allowedDevOrigins: ['*.e2b.app'],
-  serverExternalPackages: ['pdf-parse'],
+  serverExternalPackages: ['pdf-parse', 'esbuild'],
   async headers() {
     return [
       {

@@ -61,6 +61,7 @@ import type {
 } from '@/lib/model-router';
 import { isImageGenerationPrompt } from '@/lib/media-intent';
 import { findHtmlPreviewFile, type GeneratedArtifact } from '@/lib/generated-files';
+import { buildSandboxedPreviewDocument } from '@/lib/html-preview';
 import { createZip } from '@/lib/zip';
 import type {
   Activity,
@@ -115,7 +116,6 @@ const settingsSections: Array<{
 const uid = () => crypto.randomUUID();
 const friendlyDate = (date: string) =>
   new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-const previewCsp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">`;
 function accentInk(color: string) {
   const channels = color.match(/[0-9a-f]{2}/gi)?.map((value) => parseInt(value, 16) / 255) || [];
   if (channels.length !== 3) return '#ffffff';
@@ -124,19 +124,6 @@ function accentInk(color: string) {
     .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
   return luminance > 0.36 ? '#18251d' : '#ffffff';
 }
-function sandboxedPreviewDocument(html: string) {
-  const head = html.match(/<head\b[^>]*>/i);
-  if (head?.index !== undefined)
-    return `${html.slice(0, head.index + head[0].length)}${previewCsp}${html.slice(head.index + head[0].length)}`;
-  const root = html.match(/<html\b[^>]*>/i);
-  if (root?.index !== undefined)
-    return `${html.slice(0, root.index + root[0].length)}<head>${previewCsp}</head>${html.slice(root.index + root[0].length)}`;
-  const doctype = html.match(/^\s*<!doctype\s+html[^>]*>/i);
-  if (doctype)
-    return `${doctype[0]}<html><head>${previewCsp}</head><body>${html.slice(doctype[0].length)}</body></html>`;
-  return `<!doctype html><html><head>${previewCsp}</head><body>${html}</body></html>`;
-}
-
 export default function Workspace() {
   const [page, setPage] = useState<Page>('chat');
   const [settingsTab, setSettingsTab] = useState('appearance');
@@ -176,6 +163,9 @@ export default function Workspace() {
     expiresAt: number;
   } | null>(null);
   const [previewSeconds, setPreviewSeconds] = useState(0);
+  const [previewDocument, setPreviewDocument] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const [modal, setModal] = useState<'search' | 'workflow' | 'help' | 'clear' | null>(null);
   const [sidebar, setSidebar] = useState(false);
   const [query, setQuery] = useState('');
@@ -212,13 +202,31 @@ export default function Workspace() {
     [notify],
   );
   const startPreview = useCallback(
-    (artifact: GeneratedArtifact) => {
-      if (!findHtmlPreviewFile(artifact.files)) {
+    async (artifact: GeneratedArtifact) => {
+      const htmlFile = findHtmlPreviewFile(artifact.files);
+      if (!htmlFile) {
         notify('This bundle does not contain an HTML file to preview.');
         return;
       }
       setPreviewSeconds(300);
       setPreviewSession({ artifact, expiresAt: Date.now() + 5 * 60 * 1000 });
+      setPreviewDocument('');
+      setPreviewError('');
+      setPreviewLoading(true);
+      try {
+        const compiled = await api<{ javascript: string; css: string }>('/api/preview', {
+          htmlPath: htmlFile.path,
+          artifact,
+        });
+        setPreviewDocument(
+          buildSandboxedPreviewDocument(htmlFile.content, compiled.css, compiled.javascript),
+        );
+      } catch (error) {
+        setPreviewError((error as Error).message || 'Could not compile project files.');
+        setPreviewDocument(buildSandboxedPreviewDocument(htmlFile.content));
+      } finally {
+        setPreviewLoading(false);
+      }
     },
     [notify],
   );
@@ -2207,19 +2215,35 @@ export default function Workspace() {
         <Modal
           wide
           title={previewSession.artifact.name}
-          subtitle={`Sandboxed HTML preview · expires in ${Math.floor(previewSeconds / 60)}:${String(previewSeconds % 60).padStart(2, '0')}`}
+          subtitle={`Sandboxed browser preview · expires in ${Math.floor(previewSeconds / 60)}:${String(previewSeconds % 60).padStart(2, '0')}`}
           onClose={() => setPreviewSession(null)}
         >
-          <iframe
-            className="website-preview-frame"
-            title={`${previewSession.artifact.name} HTML preview`}
-            srcDoc={sandboxedPreviewDocument(previewHtml)}
-            sandbox="allow-scripts"
-            referrerPolicy="no-referrer"
-          />
+          {previewLoading && (
+            <div className="subtle-note" role="status">
+              <LoaderCircle size={14} className="spin" /> Preparing browser-compatible HTML, CSS and
+              JavaScript/TypeScript…
+            </div>
+          )}
+          {previewError && (
+            <div className="error-box" role="status">
+              Project compilation failed; showing the HTML file without compiled assets.{' '}
+              {previewError}
+            </div>
+          )}
+          {previewDocument && (
+            <iframe
+              className="website-preview-frame"
+              title={`${previewSession.artifact.name} HTML preview`}
+              srcDoc={previewDocument}
+              sandbox="allow-scripts"
+              referrerPolicy="no-referrer"
+            />
+          )}
           <div className="website-preview-footnote">
-            <Clock3 size={14} /> Preview expires after five minutes. Scripts run in a browser
-            sandbox with network access disabled.
+            <Clock3 size={14} /> Preview expires after five minutes. Browser-compatible HTML, CSS
+            and JavaScript/TypeScript/React run in an isolated iframe with network access disabled.
+            Node.js and Python backend source is preserved in the ZIP for deployment, but is not
+            executed in this browser preview.
           </div>
         </Modal>
       )}

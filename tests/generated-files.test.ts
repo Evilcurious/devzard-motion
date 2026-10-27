@@ -14,6 +14,24 @@ test('generated bundles accept safe source files and website previews', () => {
   assert.equal(parsed.files.length, 2);
 });
 
+test('Node.js and Python project sources are preserved in the downloadable ZIP', () => {
+  const projectFiles = [
+    { path: 'package.json', content: '{"scripts":{"start":"node server.js"}}' },
+    { path: 'server.js', content: "import express from 'express';" },
+    { path: 'requirements.txt', content: 'flask==3.0.0' },
+    { path: 'app.py', content: 'from flask import Flask\\napp = Flask(__name__)' },
+    { path: 'README.md', content: 'Install dependencies, then run the app.' },
+  ];
+  const parsed = generatedFileBundleSchema.parse({ name: 'full-stack-app', files: projectFiles });
+  const archive = createZip(parsed.files);
+  const archiveText = new TextDecoder().decode(archive);
+
+  for (const file of projectFiles) {
+    assert.ok(archiveText.includes(file.path), `${file.path} should be included in the ZIP`);
+    assert.ok(archiveText.includes(file.content), `${file.path} source should be preserved`);
+  }
+});
+
 test('generated bundles reject traversal, secret paths, duplicates, and oversized content', () => {
   for (const path of [
     '../escape.txt',
