@@ -51,6 +51,7 @@ import {
   Zap,
   Users,
 } from 'lucide-react';
+import { filterRouterModels } from '@/lib/model-router';
 import type {
   AIDensity,
   RouterModel,
@@ -145,6 +146,8 @@ export default function Workspace() {
   const [densityReady, setDensityReady] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [modelChoices, setModelChoices] = useState<RouterModel[]>([]);
+  const [modelSearch, setModelSearch] = useState('');
+  const [modelProviderErrors, setModelProviderErrors] = useState<string[]>([]);
   const [routerSelection, setRouterSelection] = useState<RouterTarget | null>(null);
   const [routerStrategy, setRouterStrategy] = useState<RouterStrategy>('auto');
   const [fallbackChain, setFallbackChain] = useState<RouterTarget[]>([]);
@@ -179,6 +182,10 @@ export default function Workspace() {
   const fileRequest = useRef(0);
   const active = conversations.find((c) => c.id === currentId);
   const messages = active?.messages || [];
+  const visibleChatModels = useMemo(
+    () => filterRouterModels(modelChoices, modelSearch),
+    [modelChoices, modelSearch],
+  );
   const previewHtml = previewSession
     ? findHtmlPreviewFile(previewSession.artifact.files)?.content
     : undefined;
@@ -489,12 +496,22 @@ export default function Workspace() {
     setModelPickerOpen(true);
     setModelPickerBusy(true);
     setModelPickerError('');
+    setModelProviderErrors([]);
+    setModelSearch('');
     try {
       const [catalog, saved] = await Promise.all([
-        api<{ models: RouterModel[] }>('/api/router/models', undefined, 'GET'),
+        api<{
+          models: RouterModel[];
+          providers?: Array<{ providerId: string; error: string | null }>;
+        }>('/api/router/models', undefined, 'GET'),
         api<{ selection: RouterSelection | null }>('/api/router/selection', undefined, 'GET'),
       ]);
       setModelChoices(catalog.models);
+      setModelProviderErrors(
+        (catalog.providers || [])
+          .filter((provider) => provider.error)
+          .map((provider) => provider.providerId),
+      );
       setRouterSelection(saved.selection);
       setRouterStrategy(saved.selection?.strategy || 'auto');
       setFallbackChain(saved.selection?.fallbackChain || []);
@@ -2003,13 +2020,30 @@ export default function Workspace() {
               </button>
             ))}
           </div>
+          <label className="model-search chat-model-search">
+            <Search size={16} />
+            <input
+              type="search"
+              value={modelSearch}
+              onChange={(event) => setModelSearch(event.target.value)}
+              placeholder="Search model, ID, or provider"
+              aria-label="Search available chat models"
+            />
+            <span>{visibleChatModels.length}</span>
+          </label>
+          {!!modelProviderErrors.length && (
+            <div className="model-hub-warning" role="status">
+              Some model lists could not be refreshed: {modelProviderErrors.join(', ')}. Other
+              provider models are still shown; check Models &amp; providers for connection details.
+            </div>
+          )}
           {routerStrategy === 'fallback' && (
             <div className="chat-route-choices">
               <strong>Fallback models, in order (up to 3)</strong>
               <small>
                 Choose the primary from the model list below, then mark backup models here.
               </small>
-              {modelChoices.flatMap((model) =>
+              {visibleChatModels.flatMap((model) =>
                 model.providers.map((provider) => {
                   const target: RouterTarget = {
                     providerId: provider.id,
@@ -2058,7 +2092,7 @@ export default function Workspace() {
               <small>
                 Select the primary in the model list below. Fusion runs without action tools.
               </small>
-              {modelChoices.flatMap((model) =>
+              {visibleChatModels.flatMap((model) =>
                 model.providers.map((provider) => {
                   const target: RouterTarget = {
                     providerId: provider.id,
@@ -2111,23 +2145,24 @@ export default function Workspace() {
             </span>
             {routerAutoPick && routerStrategy === 'auto' && <Check size={16} />}
           </button>
-          {routerStrategy === 'auto-fusion' ? (
+          {routerStrategy === 'auto-fusion' && (
             <div className="model-picker-empty">
               <Sparkles size={20} />
               <strong>Auto Fusion is prompt-driven</strong>
               <span>
-                When you send a prompt, Relay ranks eligible models by task fit, context, quota and
-                provider diversity, then runs up to four in parallel. No tools or account actions
-                are allowed in the ensemble.
+                Relay chooses up to four eligible models for each prompt, then synthesizes their
+                replies. The list below shows models available to your connected providers; no tools
+                or account actions run inside the ensemble.
               </span>
             </div>
-          ) : modelPickerBusy && !modelChoices.length ? (
+          )}
+          {modelPickerBusy && !modelChoices.length ? (
             <div className="model-picker-loading">
               <LoaderCircle className="spin" size={18} /> Checking your API model access…
             </div>
-          ) : modelChoices.length ? (
+          ) : visibleChatModels.length ? (
             <div className="chat-model-picker-list">
-              {modelChoices.flatMap((model) =>
+              {visibleChatModels.flatMap((model) =>
                 model.providers.map((provider) => {
                   const isSelected =
                     routerSelection?.providerId === provider.id &&
@@ -2136,7 +2171,9 @@ export default function Workspace() {
                     ? 'Free on this API'
                     : provider.availableTokens !== null
                       ? `${provider.availableTokens.toLocaleString()} tokens reported`
-                      : 'Account credits available';
+                      : provider.accountCreditsAvailable
+                        ? 'Account credits reported'
+                        : 'Quota not reported; provider billing may apply';
                   return (
                     <button
                       key={`${provider.id}::${provider.modelId}`}
@@ -2157,13 +2194,20 @@ export default function Workspace() {
                 }),
               )}
             </div>
+          ) : modelSearch.trim() ? (
+            <div className="model-picker-empty">
+              <Search size={20} />
+              <strong>No models match “{modelSearch.trim()}”</strong>
+              <span>Try a provider name, display name, or model ID.</span>
+            </div>
           ) : (
             <div className="model-picker-empty">
               <CircleHelp size={20} />
               <strong>No eligible models are listed</strong>
               <span>
-                Refresh your provider keys or check the provider’s quota and model access. Quota can
-                change after this catalog check.
+                Refresh your provider keys or check Models &amp; providers for access and provider
+                connection errors. Providers may omit quota data; in that case, provider billing
+                rules still apply.
               </span>
             </div>
           )}

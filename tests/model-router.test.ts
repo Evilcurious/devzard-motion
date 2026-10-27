@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   canonicalModelKey,
+  filterRouterModels,
   getRouterProvider,
   hasPositiveAccountCredits,
   rankRouterTargets,
@@ -277,6 +278,37 @@ test('an explicitly selected model is pinned while Auto-pick may use the ranked 
     selectRouterCandidates(ranked, { providerId: 'ovh', modelId: 'gone' }, false),
     [],
   );
+});
+
+test('model search matches model IDs and provider routes while narrowing provider matches', () => {
+  const models = [
+    {
+      key: 'vendor-model',
+      id: 'vendor/model-a',
+      name: 'Model Alpha',
+      providers: [
+        { id: 'openrouter', name: 'OpenRouter', modelId: 'vendor/model-a' },
+        { id: 'kilo', name: 'Kilo', modelId: 'vendor/model-a' },
+      ],
+    },
+    {
+      key: 'other',
+      id: 'other/model',
+      name: 'Other Model',
+      providers: [{ id: 'gemini', name: 'Google Gemini', modelId: 'other/model' }],
+    },
+  ];
+
+  assert.equal(filterRouterModels(models, '').length, 2);
+  assert.deepEqual(
+    filterRouterModels(models, 'google gemini').map((model) => model.id),
+    ['other/model'],
+  );
+  assert.deepEqual(
+    filterRouterModels(models, 'kilo').map((model) => model.providers.map((p) => p.id)),
+    [['kilo']],
+  );
+  assert.equal(filterRouterModels(models, 'missing').length, 0);
 });
 
 test('fallback chains keep the user order, skip unavailable models and deduplicate entries', () => {

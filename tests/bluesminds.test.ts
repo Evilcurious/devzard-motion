@@ -22,7 +22,17 @@ test('BluesMinds account-listed model IDs can be selected even when its catalog 
   assert.equal(
     isEligibleProviderModel('openrouter', listed[0]),
     false,
-    'models without a provider eligibility signal stay unavailable elsewhere',
+    'models without quota or an authenticated provider listing stay unavailable',
+  );
+  assert.equal(
+    isEligibleProviderModel('openrouter', { ...listed[0], authenticatedListing: true }),
+    true,
+    'models returned for a connected API key stay visible when quota metadata is absent',
+  );
+  assert.equal(
+    isEligibleProviderModel('ollama-cloud', { ...listed[0], authenticatedListing: true }),
+    false,
+    'Ollama Cloud still requires its documented free-usage or account-credit eligibility',
   );
 });
 

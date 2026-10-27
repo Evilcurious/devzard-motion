@@ -4272,6 +4272,15 @@ kbd {
   border-radius: 8px;
   color: var(--muted);
 }
+.chat-model-search {
+  width: 100%;
+  max-width: none;
+  margin: 10px 0;
+}
+.chat-model-search span {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
 .model-search input {
   width: 100%;
   border: 0;

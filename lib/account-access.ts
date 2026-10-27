@@ -86,12 +86,16 @@ export async function filterCatalogForPrincipal(
   return {
     ...catalog,
     models,
-    providers: catalog.providers.map((provider) => ({
-      ...provider,
-      modelCount: providersWithOwnKeys.has(provider.providerId) ? provider.modelCount : 0,
-      error: providersWithOwnKeys.has(provider.providerId) ? provider.error : null,
-      listedCount: providersWithOwnKeys.has(provider.providerId) ? provider.listedCount : 0,
-    })),
+    providers: catalog.providers.map((provider) => {
+      const canInspect =
+        providersWithOwnKeys.has(provider.providerId) || adminProviders.has(provider.providerId);
+      return {
+        ...provider,
+        modelCount: canInspect ? provider.modelCount : 0,
+        error: canInspect ? provider.error : null,
+        listedCount: canInspect ? provider.listedCount : 0,
+      };
+    }),
   };
 }
 export async function getUsageBlockedTargets(): Promise<Set<string>> {

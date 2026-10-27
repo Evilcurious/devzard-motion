@@ -61,7 +61,7 @@ export const routerProviders: RouterProvider[] = [
     modelsPath: '/v1beta/models?pageSize=1000',
     keyRequired: true,
     docsURL: 'https://aistudio.google.com/app/apikey',
-    note: 'Only models with API-reported free access or positive remaining quota are selectable.',
+    note: 'Gemini lists models available to the connected API key; Google applies its own quota, paid-access, and regional limits.',
   },
   {
     id: 'groq',
@@ -330,6 +330,24 @@ export type RouterSelection = RouterTarget & {
   fallbackChain?: RouterTarget[];
   fusionModels: RouterTarget[];
 };
+
+export function filterRouterModels<
+  T extends {
+    name: string;
+    id: string;
+    providers: Array<{ id: string; name: string; modelId: string }>;
+  },
+>(models: T[], query: string): T[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return models;
+  return models.flatMap((model) => {
+    if (`${model.name} ${model.id}`.toLowerCase().includes(normalized)) return [model];
+    const providers = model.providers.filter((provider) =>
+      `${provider.id} ${provider.name} ${provider.modelId}`.toLowerCase().includes(normalized),
+    );
+    return providers.length ? [{ ...model, providers } as T] : [];
+  });
+}
 
 export function selectRouterCandidates<T extends RouterTarget>(
   ranked: T[],

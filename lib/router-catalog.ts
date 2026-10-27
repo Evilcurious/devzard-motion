@@ -15,6 +15,7 @@ type ProviderModel = ReturnType<typeof routerModelIds>[number] & {
   providerId: RouterProviderId;
   providerName: string;
   accountCreditsAvailable?: boolean;
+  authenticatedListing?: boolean;
 };
 export type RouterCatalog = {
   models: RouterModel[];
@@ -37,6 +38,7 @@ type ProviderEligibility = {
   isFree: boolean;
   availableTokens: number | null;
   accountCreditsAvailable?: boolean;
+  authenticatedListing?: boolean;
 };
 
 export function isEligibleProviderModel(
@@ -48,6 +50,7 @@ export function isEligibleProviderModel(
     model.isFree ||
     (model.availableTokens !== null && model.availableTokens > 0) ||
     (model.accountCreditsAvailable === true && providerId !== 'openrouter') ||
+    (model.authenticatedListing === true && providerId !== 'ollama-cloud') ||
     (providerId === 'openrouter' && options.openRouterPaid === true) ||
     options.personalOpenAI === true ||
     // BluesMinds returns the models available to the authenticated API key but may
@@ -364,7 +367,9 @@ async function discoverProvider(
   if (provider.id === 'gemini') {
     const results = await Promise.all(keys.map((key) => discoverGeminiProvider(key)));
     const models = new Map<string, ProviderModel>();
-    for (const result of results) for (const model of result.models) models.set(model.id, model);
+    for (const result of results)
+      for (const model of result.models)
+        models.set(model.id, { ...model, authenticatedListing: true });
     return {
       providerId,
       error: models.size ? null : results.find((result) => result.error)?.error || null,
@@ -401,6 +406,7 @@ async function discoverProvider(
         providerId: provider.id,
         providerName: provider.name,
         accountCreditsAvailable,
+        authenticatedListing: keys.length > 0,
       }));
       return { providerId, error: null, models };
     } catch (error) {
@@ -507,9 +513,9 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
 
   for (const result of settled) {
     for (const model of result.models) {
-      // Only keep models the authenticated catalog marks available. BluesMinds
-      // account-listed models are selectable even when quota fields are omitted;
-      // Free account usage is still verified and billed/limited by the provider.
+      // Account-authenticated model listings are selectable even when a provider
+      // omits quota metadata; the provider remains the source of truth for billing/access.
+      // Ollama Cloud keeps its stricter free-usage/purchased-credit eligibility rules.
       if (isRouterTargetDepleted({ providerId: model.providerId, modelId: model.id }, accountId))
         continue;
       const personalOpenAI = principal?.role === 'user' && result.providerId === 'openai';
@@ -606,7 +612,7 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
     })),
     refreshedAt: new Date().toISOString(),
     metricsNote:
-      'Only authenticated model listings explicitly marked free, reporting positive per-model quota, documenting Ollama free-usage-credit eligibility, carrying a positive account-credit signal, or listed for the connected BluesMinds key are shown. Account credit signals are read from common explicit remaining/balance fields in provider responses; OpenRouter and Ollama also use their official balance endpoints. Ollama included credits apply only to its documented free-usage models, while purchased credits apply to account-listed models. Provider quota errors temporarily remove a model.',
+      'Models returned by a connected provider API key are listed even when quota metadata is omitted; paid access, billing and request limits remain controlled by that provider. Unauthenticated catalogs require explicit free access or positive quota/credit signals. Ollama Cloud uses its documented free-usage or positive-credit eligibility rules. Provider-reported quota errors can temporarily mark a model unavailable.',
   };
   catalogs.set(accountId, { at: Date.now(), result });
   return withoutDepletedModels(result, accountId);

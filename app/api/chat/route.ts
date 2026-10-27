@@ -497,11 +497,7 @@ export async function POST(request: Request) {
     }
     let activeTarget = primary;
     let selectionAutoPick = 'autoPick' in config ? config.autoPick : false;
-    if (
-      (config.strategy === 'fusion' || config.strategy === 'auto-fusion') &&
-      !fileBundleRequest &&
-      inferredRouterProviderId
-    ) {
+    if ((config.strategy === 'fusion' || config.strategy === 'auto-fusion') && !fileBundleRequest) {
       const available = await getEligibleTargets();
       const targets =
         config.strategy === 'auto-fusion'
@@ -522,7 +518,7 @@ export async function POST(request: Request) {
             );
       if (targets.length < 2)
         throw new Error(
-          'Fusion needs at least two eligible models. Check your provider access and try again.',
+          `${config.strategy === 'auto-fusion' ? 'Auto Fusion' : 'Fusion'} needs at least two eligible models. Connect or enable more provider models, or choose a single-model routing mode.`,
         );
       const responses = await Promise.allSettled(
         targets.map(async (target) => {
@@ -548,10 +544,24 @@ export async function POST(request: Request) {
           markRouterTargetDepleted(target, principal.id);
         return [];
       });
-      if (results.length < 2)
+      if (results.length < 2) {
+        const failures = responses.flatMap((result, index) => {
+          if (result.status === 'fulfilled') return [];
+          const target = targets[index];
+          const cause = result.reason;
+          const detail =
+            cause instanceof ProviderHttpError
+              ? `HTTP ${cause.statusCode}`
+              : cause instanceof Error
+                ? cause.name
+                : 'request failed';
+          return [`${target?.providerId || 'provider'}:${target?.modelId || 'model'} (${detail})`];
+        });
+        const failureDetails = failures.length ? ` Failed: ${failures.join('; ')}.` : '';
         throw new Error(
-          'Fusion needs at least two model responses. Check the selected providers and try again.',
+          `${config.strategy === 'auto-fusion' ? 'Auto Fusion' : 'Fusion'} received ${results.length} successful model response${results.length === 1 ? '' : 's'}; at least two are required.${failureDetails} Check provider keys, model availability, and quota, then retry.`,
         );
+      }
       const synthesisMessages: ModelMessage[] = [
         ...messages,
         {
