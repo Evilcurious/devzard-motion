@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { isEligibleProviderModel } from '../lib/router-catalog';
 
 import { getRouterProvider, routerModelIds } from '../lib/model-router';
-import { normalizeProviderTokenUsage } from '../lib/provider-usage';
+import {
+  normalizeProviderResponseUsage,
+  normalizeProviderTokenUsage,
+  providerRetryAfterMs,
+} from '../lib/provider-usage';
 
 test('BluesMinds account-listed model IDs can be selected even when its catalog omits quota metadata', () => {
   const provider = getRouterProvider('bluesminds');
@@ -34,6 +38,30 @@ test('BluesMinds account-listed model IDs can be selected even when its catalog 
     isEligibleProviderModel('ollama-cloud', { ...listed[0], authenticatedListing: true }),
     false,
     'Ollama Cloud still requires its documented free-usage or account-credit eligibility',
+  );
+});
+
+test('provider rate-limit retry-after values normalize seconds and HTTP dates safely', () => {
+  const now = Date.UTC(2026, 0, 1);
+  assert.equal(providerRetryAfterMs(new Headers({ 'retry-after': '12' }), now), 12_000);
+  assert.equal(
+    providerRetryAfterMs(new Headers({ 'retry-after': new Date(now + 30_000).toUTCString() }), now),
+    30_000,
+  );
+  assert.equal(providerRetryAfterMs(new Headers({ 'retry-after': 'invalid' }), now), null);
+  assert.equal(providerRetryAfterMs(new Headers({ 'retry-after': '99999' }), now), 60 * 60_000);
+});
+
+test('provider usage adapters normalize Ollama and Gemini token counters', () => {
+  assert.deepEqual(normalizeProviderResponseUsage({ prompt_eval_count: 31, eval_count: 8 }), {
+    inputTokens: 31,
+    outputTokens: 8,
+  });
+  assert.deepEqual(
+    normalizeProviderResponseUsage({
+      usageMetadata: { promptTokenCount: 40, candidatesTokenCount: 10, totalTokenCount: 50 },
+    }),
+    { inputTokens: 40, outputTokens: 10 },
   );
 });
 

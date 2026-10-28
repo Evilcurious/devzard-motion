@@ -1,5 +1,6 @@
 'use client';
 import { databaseLabel } from '@/lib/database-label';
+import { readChatEventStream } from '@/lib/chat-sse-client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity as ActivityIcon,
@@ -684,14 +685,21 @@ export default function Workspace() {
     setBusy(true);
     busyRef.current = true;
     abortRef.current = new AbortController();
+    const streamedAssistantId = uid();
+    let streamedContent = '';
+    let streamStarted = false;
     try {
       const response = await fetch(mode === 'chat' ? '/api/chat' : '/api/router/media', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(mode === 'chat' ? { Accept: 'text/event-stream' } : {}),
+        },
         signal: abortRef.current.signal,
         body: JSON.stringify(
           mode === 'chat'
             ? {
+                stream: true,
                 density,
                 routingStrategy,
                 webSearch,
@@ -713,7 +721,31 @@ export default function Workspace() {
             : { action: 'generate', type: mode, prompt: content },
         ),
       });
-      let result = await response.json();
+      let result =
+        mode === 'chat' && response.headers.get('content-type')?.includes('text/event-stream')
+          ? await readChatEventStream<Record<string, any>>(
+              response,
+              (part) => {
+                streamedContent += part;
+                streamStarted = true;
+                updateMessages(id, (old) => {
+                  const streamedMessage = {
+                    id: streamedAssistantId,
+                    role: 'assistant' as const,
+                    content: streamedContent,
+                  };
+                  return old.some((item) => item.id === streamedAssistantId)
+                    ? old.map((item) => (item.id === streamedAssistantId ? streamedMessage : item))
+                    : [...old, streamedMessage];
+                });
+              },
+              () => {
+                streamedContent = '';
+                updateMessages(id, (old) => old.filter((item) => item.id !== streamedAssistantId));
+                streamStarted = false;
+              },
+            )
+          : await response.json();
       if (!response.ok) {
         if (response.status === 401) refresh();
         throw new Error(result.error || 'Could not complete this request.');
@@ -758,7 +790,16 @@ export default function Workspace() {
         });
         if (typeof result.autoPick === 'boolean') setRouterAutoPick(result.autoPick);
       }
-      updateMessages(id, (old) => [...old, { id: uid(), role: 'assistant', ...assistantResult }]);
+      updateMessages(id, (old) => {
+        const completedMessage = {
+          id: streamedAssistantId,
+          role: 'assistant' as const,
+          ...assistantResult,
+        };
+        return streamStarted
+          ? old.map((item) => (item.id === streamedAssistantId ? completedMessage : item))
+          : [...old, completedMessage];
+      });
       if (mode === 'chat' && Array.isArray(result.artifacts)) {
         const htmlArtifact = (result.artifacts as GeneratedArtifact[]).find((artifact) =>
           findHtmlPreviewFile(artifact.files),
@@ -768,7 +809,7 @@ export default function Workspace() {
     } catch (error) {
       const aborted = error instanceof Error && error.name === 'AbortError';
       updateMessages(id, (old) => [
-        ...old,
+        ...old.filter((item) => item.id !== streamedAssistantId),
         {
           id: uid(),
           role: 'assistant',

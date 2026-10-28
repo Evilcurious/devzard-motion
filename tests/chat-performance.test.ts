@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  attemptTargetsHedged,
   attemptTargetsSequentially,
   fallbackAttemptTimeout,
   isFileBundleRequest,
   needsDynamicModelRouting,
+  shouldHedgeFreeRequest,
   shouldLoadRepositoryContext,
   shouldPersistAutoSelectedTarget,
   shouldRouteTurnThroughCandidates,
@@ -33,6 +35,60 @@ test('a timed-out primary advances through configured fallback candidates in ord
     index: 1,
     attemptsMade: 2,
   });
+});
+
+test('hedged free requests launch a backup after a delay and abort the slower loser', async () => {
+  let primaryAborted = false;
+  const result = await attemptTargetsHedged(
+    ['slow-free', 'fast-free'] as const,
+    async (target, _index, signal) => {
+      if (target === 'slow-free') {
+        signal.addEventListener('abort', () => (primaryAborted = true), { once: true });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+      }
+      return target;
+    },
+    5,
+  );
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.target, 'fast-free');
+    assert.equal(result.index, 1);
+  }
+  assert.equal(primaryAborted, true);
+});
+
+test('hedged requests skip the backup when the primary finishes before the delay', async () => {
+  const attempted: string[] = [];
+  const result = await attemptTargetsHedged(
+    ['primary', 'backup'] as const,
+    async (target) => {
+      attempted.push(target);
+      return target;
+    },
+    100,
+  );
+  assert.deepEqual(attempted, ['primary']);
+  assert.equal(result.ok && result.target, 'primary');
+});
+
+test('free request hedge guard excludes tool-like requests and untrusted attachments', () => {
+  assert.equal(
+    shouldHedgeFreeRequest([{ role: 'user', content: 'Explain black holes simply.' }]),
+    true,
+  );
+  assert.equal(
+    shouldHedgeFreeRequest([{ role: 'user', content: 'Please send an email to Alex.' }]),
+    false,
+  );
+  assert.equal(
+    shouldHedgeFreeRequest([
+      { role: 'user', content: '<untrusted_document>What is this?</untrusted_document>' },
+    ]),
+    false,
+  );
 });
 
 test('fallback candidates are available for every follow-up after a tool round trip', () => {

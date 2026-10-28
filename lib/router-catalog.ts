@@ -146,9 +146,13 @@ export function applyOllamaCloudBalance(
 export function markRouterTargetDepleted(
   target: { providerId: RouterProviderId; modelId: string },
   accountId = 'owner',
+  cooldownMs = 5 * 60_000,
 ) {
   const cooldowns = (cooldownCache.relayRouterCooldowns ||= new Map());
-  cooldowns.set(`${accountId}::${target.providerId}::${target.modelId}`, Date.now() + 5 * 60_000);
+  cooldowns.set(
+    `${accountId}::${target.providerId}::${target.modelId}`,
+    Date.now() + Math.max(1000, Math.min(60 * 60_000, cooldownMs)),
+  );
 }
 
 export function isRouterTargetDepleted(
