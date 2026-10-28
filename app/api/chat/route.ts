@@ -47,7 +47,7 @@ import {
   markUsageBlockedTarget,
 } from '@/lib/account-access';
 import { generatedFileBundleSchema, type GeneratedArtifact } from '@/lib/generated-files';
-import { normalizeProviderTokenUsage, providerRetryAfterMs } from '@/lib/provider-usage';
+import { normalizeProviderResponseUsage, providerRetryAfterMs } from '@/lib/provider-usage';
 import { fitChatMessagesToContext } from '@/lib/chat-context';
 import {
   attemptTargetsHedged,
@@ -340,7 +340,7 @@ async function completion(
       responseUsage = data;
     }
     if (!answer) throw new Error('The model returned an empty response. Try another model.');
-    const usage = normalizeProviderTokenUsage(responseUsage);
+    const usage = normalizeProviderResponseUsage(responseUsage);
     inputTokens = usage.inputTokens;
     outputTokens = usage.outputTokens;
     if (quota) {

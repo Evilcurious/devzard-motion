@@ -52,7 +52,13 @@ test('provider rate-limit retry-after values normalize seconds and HTTP dates sa
   assert.equal(providerRetryAfterMs(new Headers({ 'retry-after': '99999' }), now), 60 * 60_000);
 });
 
-test('provider usage adapters normalize Ollama and Gemini token counters', () => {
+test('provider usage adapters normalize OpenAI, Ollama and Gemini token counters', () => {
+  assert.deepEqual(
+    normalizeProviderResponseUsage({
+      usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17 },
+    }),
+    { inputTokens: 12, outputTokens: 5 },
+  );
   assert.deepEqual(normalizeProviderResponseUsage({ prompt_eval_count: 31, eval_count: 8 }), {
     inputTokens: 31,
     outputTokens: 8,
