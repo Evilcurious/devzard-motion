@@ -25,6 +25,7 @@ import { isRelayIdentityQuestion } from '@/lib/identity';
 import { observedModelMetricsByTarget, recordAnalyticsEvent } from '@/lib/analytics';
 import {
   getRouterProvider,
+  rankCodeTargets,
   rankRouterTargets,
   selectAutoFusionTargets,
   selectFallbackCandidates,
@@ -46,7 +47,13 @@ import {
   getUsageBlockedTargets,
   markUsageBlockedTarget,
 } from '@/lib/account-access';
-import { generatedFileBundleSchema, type GeneratedArtifact } from '@/lib/generated-files';
+import {
+  generatedFileBundleSchema,
+  MAX_GENERATED_FILE_BYTES,
+  MAX_GENERATED_FILE_CHARACTERS,
+  MAX_GENERATED_FILES,
+  type GeneratedArtifact,
+} from '@/lib/generated-files';
 import { normalizeProviderResponseUsage, providerRetryAfterMs } from '@/lib/provider-usage';
 import { fitChatMessagesToContext } from '@/lib/chat-context';
 import {
@@ -73,6 +80,7 @@ const schema = z.object({
     .default('balanced'),
   webSearch: z.boolean().default(false),
   stream: z.boolean().default(false),
+  taskMode: z.enum(['chat', 'code']).default('chat'),
 });
 type ChatStreamEvent =
   | { type: 'delta'; text: string }
@@ -416,8 +424,9 @@ async function handleChatPost(request: Request) {
       throw new Error(
         'Your monthly token allowance is used up. Ask your administrator to increase it.',
       );
-    const input = schema.parse(await readJson(request));
+    const input = schema.parse(await readJson(request, 3_500_000));
     const fileBundleRequest = isFileBundleRequest(input.messages);
+    const codeMode = input.taskMode === 'code';
     const streamContext = chatStreamContext.getStore();
     if (streamContext && fileBundleRequest) streamContext.allowDeltas = false;
     const latestUserMessage = [...input.messages]
@@ -426,7 +435,11 @@ async function handleChatPost(request: Request) {
     if (latestUserMessage && isRelayIdentityQuestion(latestUserMessage.content))
       return Response.json({ content: 'Faizan made me.', proposals: [], steps: [] });
     const config = await aiConfig();
-    if (streamContext && (config.strategy === 'fusion' || config.strategy === 'auto-fusion'))
+    if (
+      streamContext &&
+      !codeMode &&
+      (config.strategy === 'fusion' || config.strategy === 'auto-fusion')
+    )
       streamContext.allowDeltas = false;
     if (!config.configured)
       return Response.json(
@@ -439,6 +452,7 @@ async function handleChatPost(request: Request) {
     if (
       fileBundleRequest &&
       !needsDynamicModelRouting(config) &&
+      !codeMode &&
       'supportsTools' in config &&
       config.supportsTools === false
     )
@@ -494,7 +508,7 @@ async function handleChatPost(request: Request) {
     const messages: ModelMessage[] = [
       {
         role: 'system',
-        content: `${system}\nGoogle account ${google ? `connected as ${google.email}` : 'is NOT connected; ask the user to connect it in Connections before using Google tools.'}. GitHub ${github && githubRepository ? `is connected as ${github.account}; the selected repository is ${githubRepository.fullName} (default branch ${githubRepository.defaultBranch}). You may prepare a complete structured set of files for this repository with github_push_files, but it is only a proposal: never say code was pushed until the user approves the review card. Changes are staged on a new relay/* branch; do not claim the default branch was changed.` : 'is not connected to a selected repository; ask the user to connect GitHub and choose a repository in Connections before proposing repository changes.'}. Vercel ${vercel ? `is connected as ${vercel.username}${vercelProject ? ` with project ${vercelProject.name} selected` : ' but no project is selected'}. You can use the Vercel tools to list projects and recent deployments. Vercel tools are read-only: never claim to deploy, edit settings, or change project files through Vercel.` : 'is not connected; ask the user to connect Vercel and select a project in Connections before using Vercel tools.'}.${searchContext}${githubRepositoryContext}`,
+        content: `${system}${codeMode ? '\nCoding mode: produce correct, runnable code and explain key implementation choices. For automatic model selection, Relay ranks eligible models with larger advertised parameter sizes (for example, 130B ahead of 9B) first, then code-specialist model names and context. Parameter count is a routing heuristic, not a guarantee of code quality. Relay automatically falls back to the next eligible model if one fails.' : ''}\nGoogle account ${google ? `connected as ${google.email}` : 'is NOT connected; ask the user to connect it in Connections before using Google tools.'}. GitHub ${github && githubRepository ? `is connected as ${github.account}; the selected repository is ${githubRepository.fullName} (default branch ${githubRepository.defaultBranch}). You may prepare a complete structured set of files for this repository with github_push_files, but it is only a proposal: never say code was pushed until the user approves the review card. Changes are staged on a new relay/* branch; do not claim the default branch was changed.` : 'is not connected to a selected repository; ask the user to connect GitHub and choose a repository in Connections before proposing repository changes.'}. Vercel ${vercel ? `is connected as ${vercel.username}${vercelProject ? ` with project ${vercelProject.name} selected` : ' but no project is selected'}. You can use the Vercel tools to list projects and recent deployments. Vercel tools are read-only: never claim to deploy, edit settings, or change project files through Vercel.` : 'is not connected; ask the user to connect Vercel and select a project in Connections before using Vercel tools.'}.${searchContext}${githubRepositoryContext}`,
       },
       ...input.messages,
     ];
@@ -516,8 +530,12 @@ async function handleChatPost(request: Request) {
                 : 'compatible';
     const inferredRouterProviderId = (('routerProviderId' in config
       ? config.routerProviderId
-      : undefined) || (isOpenRouterEndpoint(config.baseURL) ? 'openrouter' : undefined)) as
-      RouterProviderId | undefined;
+      : undefined) ||
+      (isOpenRouterEndpoint(config.baseURL)
+        ? 'openrouter'
+        : config.provider === 'openai'
+          ? 'openai'
+          : undefined)) as RouterProviderId | undefined;
     const primary: ResolvedTarget = {
       providerId: inferredRouterProviderId || 'ollama-cloud',
       analyticsProviderId:
@@ -559,7 +577,7 @@ async function handleChatPost(request: Request) {
       observedMetrics ??= await observedModelMetricsByTarget();
       return observedMetrics;
     }
-    const dynamicModelRouting = needsDynamicModelRouting(config);
+    const dynamicModelRouting = needsDynamicModelRouting(config) || codeMode;
     if (
       !dynamicModelRouting &&
       quota &&
@@ -600,8 +618,12 @@ async function handleChatPost(request: Request) {
       return eligibleTargets;
     }
     let activeTarget = primary;
-    let selectionAutoPick = 'autoPick' in config ? config.autoPick : false;
-    if ((config.strategy === 'fusion' || config.strategy === 'auto-fusion') && !fileBundleRequest) {
+    let selectionAutoPick = codeMode || ('autoPick' in config && config.autoPick === true);
+    if (
+      !codeMode &&
+      (config.strategy === 'fusion' || config.strategy === 'auto-fusion') &&
+      !fileBundleRequest
+    ) {
       const available = await getEligibleTargets();
       const targets =
         config.strategy === 'auto-fusion'
@@ -702,11 +724,11 @@ async function handleChatPost(request: Request) {
       if (timeLeft < 1500) throw new Error('The model took too long. Try a shorter request.');
       let answer: ModelMessage | undefined;
       if (
-        shouldRouteTurnThroughCandidates(turn, config.strategy, fileBundleRequest) &&
+        (codeMode || shouldRouteTurnThroughCandidates(turn, config.strategy, fileBundleRequest)) &&
         dynamicModelRouting &&
         (inferredRouterProviderId || config.strategy === 'fallback')
       ) {
-        const fallbackMode = config.strategy === 'fallback';
+        const fallbackMode = config.strategy === 'fallback' && !codeMode;
         let available: RouterTarget[];
         if (fallbackMode) {
           // A configured chain is already validated when saved. Don't block its failover
@@ -736,14 +758,16 @@ async function handleChatPost(request: Request) {
               routingStrategy,
               await getObservedMetrics(),
             );
+        const taskRanked = codeMode ? rankCodeTargets(allRanked) : allRanked;
         const ranked = fileBundleRequest
-          ? allRanked.filter((target) => target.supportsTools !== false)
-          : allRanked;
+          ? taskRanked.filter((target) => target.supportsTools !== false)
+          : taskRanked;
         const selectedKey = `${primaryTarget.providerId}::${primaryTarget.modelId}`;
         const selected = ranked.find(
           (target) => `${target.providerId}::${target.modelId}` === selectedKey,
         );
-        const autoPick = fileBundleRequest || !('autoPick' in config) || config.autoPick === true;
+        const autoPick =
+          codeMode || fileBundleRequest || !('autoPick' in config) || config.autoPick === true;
         const candidates = fallbackMode
           ? selectFallbackCandidates(
               ranked,
@@ -988,10 +1012,20 @@ async function handleChatPost(request: Request) {
             );
           }
         } catch (error) {
-          if (call.function.name === 'create_file_bundle')
+          if (call.function.name === 'create_file_bundle') {
+            const detail =
+              error instanceof z.ZodError
+                ? error.issues
+                    .slice(0, 4)
+                    .map((issue) => `${issue.path.join('.') || 'bundle'}: ${issue.message}`)
+                    .join('; ')
+                : error instanceof Error
+                  ? error.message
+                  : 'Invalid project files.';
             throw new Error(
-              'The agent could not package those files. The bundle may be too large or contain an invalid file path; ask for a smaller project and try again.',
+              `Could not package the project (${detail}). Limits: ${MAX_GENERATED_FILES} files, ${MAX_GENERATED_FILE_CHARACTERS.toLocaleString()} characters per file, and ${MAX_GENERATED_FILE_BYTES.toLocaleString()} total UTF-8 bytes. Use safe relative paths and do not include secrets, dependencies, or build output.`,
             );
+          }
           result = { error: error instanceof Error ? error.message : 'Tool failed' };
         }
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });

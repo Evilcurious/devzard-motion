@@ -18,11 +18,15 @@ test('image generation sends an explicit image model, separate from chat model s
 
 test('image provider fallback covers unavailable models, quota, and transient service errors', () => {
   for (const message of [
+    'Septor Labs returned HTTP 400.',
+    'Septor Labs returned HTTP 422.',
     'xKiro returned HTTP 404.',
     'Image model is not available for this key.',
     'Provider quota exceeded.',
     'Image generation timed out.',
     'Provider returned HTTP 503.',
+    'xKiro image job failed.',
+    'Septor Labs did not return a secure image URL.',
   ]) {
     assert.equal(canTryAnotherImageProvider(new Error(message)), true, message);
   }
@@ -33,7 +37,8 @@ test('image provider fallback does not retry safety refusals or unrelated errors
   assert.equal(canTryAnotherImageProvider(new Error('HTTP 403: prompt blocked by policy.')), false);
   assert.equal(
     canTryAnotherImageProvider(new Error('Image response did not include a URL.')),
-    false,
+    true,
   );
+  assert.equal(canTryAnotherImageProvider(new Error('Unexpected programming exception.')), false);
   assert.equal(canTryAnotherImageProvider('HTTP 503'), false);
 });

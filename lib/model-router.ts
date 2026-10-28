@@ -725,6 +725,33 @@ export function filterRouterModels<
   });
 }
 
+export function modelParameterBillions(modelId: string): number | null {
+  const matches = [...modelId.matchAll(/(?:^|[^a-z0-9])(\d+(?:\.\d+)?)b(?:[^a-z0-9]|$)/gi)];
+  const sizes = matches
+    .map((match) => Number(match[1]))
+    .filter((size) => Number.isFinite(size) && size > 0 && size <= 2000);
+  return sizes.length ? Math.max(...sizes) : null;
+}
+
+export function rankCodeTargets<T extends RouterTarget>(targets: T[]): T[] {
+  return targets
+    .filter((target) => target.availableTokens !== 0)
+    .map((target, index) => ({ target, index, size: modelParameterBillions(target.modelId) }))
+    .sort((a, b) => {
+      if (a.size !== null && b.size === null) return -1;
+      if (a.size === null && b.size !== null) return 1;
+      if (a.size !== null && b.size !== null && a.size !== b.size) return b.size - a.size;
+      const codeName =
+        /coder|codestral|codegemma|starcoder|devstral|code[-_ ]?qwen|deepseek[-_ ]?coder/i;
+      const aCode = codeName.test(a.target.modelId);
+      const bCode = codeName.test(b.target.modelId);
+      if (aCode !== bCode) return aCode ? -1 : 1;
+      const contextDifference = (b.target.contextTokens ?? -1) - (a.target.contextTokens ?? -1);
+      return contextDifference || a.index - b.index;
+    })
+    .map(({ target }) => target);
+}
+
 export function selectRouterCandidates<T extends RouterTarget>(
   ranked: T[],
   selected: RouterTarget | null,

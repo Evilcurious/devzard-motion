@@ -10,7 +10,7 @@ export function xkiroImageGenerationRequest(prompt: string) {
 }
 
 const RETRYABLE_IMAGE_PROVIDER_ERROR =
-  /(401|402|403|404|408|429|500|502|503|504|quota|credit|rate.?limit|timed? ?out|network|model.{0,30}(?:not found|unknown|unsupported|unavailable|not available)|(?:not found|unsupported).{0,30}model|image.{0,30}(?:unsupported|unavailable|not enabled))/i;
+  /(400|401|402|403|404|408|422|429|500|502|503|504|quota|credit|rate.?limit|timed? ?out|network|fetch failed|failed|failure|invalid|insecure|did not return|did not include|model.{0,30}(?:not found|unknown|unsupported|unavailable|not available)|(?:not found|unsupported).{0,30}model|image.{0,30}(?:unsupported|unavailable|not enabled))/i;
 
 export function canTryAnotherImageProvider(error: unknown) {
   if (!(error instanceof Error)) return false;

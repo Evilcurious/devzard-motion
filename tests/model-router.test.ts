@@ -5,6 +5,8 @@ import {
   filterRouterModels,
   getRouterProvider,
   hasPositiveAccountCredits,
+  modelParameterBillions,
+  rankCodeTargets,
   rankRouterTargets,
   selectRouterCandidates,
   selectFallbackCandidates,
@@ -313,6 +315,22 @@ test('model search matches model IDs and provider routes while narrowing provide
     [['kilo']],
   );
   assert.equal(filterRouterModels(models, 'missing').length, 0);
+});
+
+test('Code mode ranks known parameter sizes largest-first and skips quota-exhausted models', () => {
+  assert.equal(modelParameterBillions('meta-llama/Llama-3.1-8B-Instruct'), 8);
+  assert.equal(modelParameterBillions('openai/gpt-oss:120b'), 120);
+  assert.equal(modelParameterBillions('provider/model-without-size'), null);
+  const targets = rankCodeTargets([
+    { providerId: 'openrouter', modelId: 'coder-9b', availableTokens: 100 },
+    { providerId: 'groq', modelId: 'general-130B', availableTokens: 100 },
+    { providerId: 'cerebras', modelId: 'starcoder', availableTokens: 100 },
+    { providerId: 'ovh', modelId: 'coder-70b', availableTokens: 0 },
+  ]);
+  assert.deepEqual(
+    targets.map((target) => target.modelId),
+    ['general-130B', 'coder-9b', 'starcoder'],
+  );
 });
 
 test('fallback chains keep the user order, skip unavailable models and deduplicate entries', () => {

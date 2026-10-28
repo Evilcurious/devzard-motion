@@ -16,7 +16,7 @@ const previewRequestSchema = z
 export async function POST(request: Request) {
   try {
     await guard(request);
-    const { artifact, htmlPath } = previewRequestSchema.parse(await readJson(request, 700_000));
+    const { artifact, htmlPath } = previewRequestSchema.parse(await readJson(request, 3_500_000));
     const preview = await compilePreviewProject(artifact.files, htmlPath);
     return Response.json(preview, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {

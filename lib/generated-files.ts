@@ -2,18 +2,20 @@ import { z } from 'zod';
 import {
   isSafeGeneratedPath,
   MAX_GENERATED_FILE_BYTES,
+  MAX_GENERATED_FILE_CHARACTERS,
   MAX_GENERATED_FILES,
 } from './generated-file-policy';
 export {
   isSafeGeneratedPath,
   MAX_GENERATED_FILE_BYTES,
+  MAX_GENERATED_FILE_CHARACTERS,
   MAX_GENERATED_FILES,
 } from './generated-file-policy';
 
 const generatedFileSchema = z
   .object({
     path: z.string().min(1).max(240).refine(isSafeGeneratedPath, 'File path is not safe.'),
-    content: z.string().max(100_000),
+    content: z.string().max(MAX_GENERATED_FILE_CHARACTERS),
   })
   .strict();
 

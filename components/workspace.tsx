@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleHelp,
+  Code2,
   Cpu,
   Clock3,
   Database,
@@ -143,6 +144,7 @@ export default function Workspace() {
   const [brandingSaving, setBrandingSaving] = useState(false);
   const [text, setText] = useState('');
   const [mediaMode, setMediaMode] = useState<'chat' | 'image' | 'video'>('chat');
+  const [taskMode, setTaskMode] = useState<'chat' | 'code'>('chat');
   const [webSearch, setWebSearch] = useState(false);
   const [density, setDensity] = useState<AIDensity>('auto');
   const [routingStrategy, setRoutingStrategy] = useState<RoutingStrategy>('balanced');
@@ -657,7 +659,11 @@ export default function Workspace() {
     }
     const content = text.trim() || 'Please summarize the attached document.';
     const inferredImageRequest =
-      mediaMode === 'chat' && !webSearch && !attachment && isImageGenerationPrompt(content);
+      mediaMode === 'chat' &&
+      taskMode === 'chat' &&
+      !webSearch &&
+      !attachment &&
+      isImageGenerationPrompt(content);
     const mode = inferredImageRequest ? 'image' : mediaMode;
     if (inferredImageRequest) setMediaMode('image');
     const message: Message = {
@@ -700,6 +706,7 @@ export default function Workspace() {
           mode === 'chat'
             ? {
                 stream: true,
+                taskMode,
                 density,
                 routingStrategy,
                 webSearch,
@@ -751,6 +758,9 @@ export default function Workspace() {
         throw new Error(result.error || 'Could not complete this request.');
       }
       if (mode === 'image' && result.status === 'processing') {
+        const imageJobToken = result.token;
+        if (typeof imageJobToken !== 'string')
+          throw new Error('The image provider did not return a valid job token.');
         const deadline = Date.now() + 240_000;
         while (result.status === 'processing' && Date.now() < deadline) {
           await new Promise((resolve) => setTimeout(resolve, 4000));
@@ -758,7 +768,7 @@ export default function Workspace() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             signal: abortRef.current?.signal,
-            body: JSON.stringify({ action: 'poll', token: result.token }),
+            body: JSON.stringify({ action: 'poll', token: imageJobToken }),
           });
           const next = await poll.json();
           if (!poll.ok) throw new Error(next.error || 'Could not check image generation status.');
@@ -773,10 +783,10 @@ export default function Workspace() {
         mode === 'chat'
           ? result
           : {
-              content: `Image generated with ${result.providerName || 'your connected provider'} (${result.modelId}).`,
+              content: `Image generated with ${result.providerName || 'your connected provider'} (${result.modelId}).${result.partial ? ' One or more image providers did not complete successfully.' : ''}`,
               media: {
                 type: 'image' as const,
-                urls: [result.url],
+                urls: Array.isArray(result.urls) ? result.urls : [result.url].filter(Boolean),
                 providerName: result.providerName,
                 modelId: result.modelId,
               },
@@ -990,9 +1000,12 @@ export default function Workspace() {
           <div className="composer-tools">
             <div className="composer-mode-tools" role="group" aria-label="Message mode">
               <button
-                className={mediaMode === 'chat' && !webSearch ? 'active' : ''}
+                className={
+                  mediaMode === 'chat' && !webSearch && taskMode === 'chat' ? 'active' : ''
+                }
                 onClick={() => {
                   setMediaMode('chat');
+                  setTaskMode('chat');
                   setWebSearch(false);
                 }}
                 title="Chat with your selected or automatic model"
@@ -1000,9 +1013,23 @@ export default function Workspace() {
                 <MessageSquare size={14} /> Chat
               </button>
               <button
+                className={
+                  mediaMode === 'chat' && !webSearch && taskMode === 'code' ? 'active' : ''
+                }
+                onClick={() => {
+                  setMediaMode('chat');
+                  setTaskMode('code');
+                  setWebSearch(false);
+                }}
+                title="Use code-capable models, ranked by advertised parameter size, with automatic fallback"
+              >
+                <Code2 size={14} /> Code
+              </button>
+              <button
                 className={mediaMode === 'image' ? 'active' : ''}
                 onClick={() => {
                   setMediaMode('image');
+                  setTaskMode('chat');
                   setWebSearch(false);
                 }}
                 title="Generate an image with a dedicated image model from xKiro or Septor Labs"
@@ -1019,6 +1046,7 @@ export default function Workspace() {
                 className={webSearch ? 'active' : ''}
                 onClick={() => {
                   setMediaMode('chat');
+                  setTaskMode('chat');
                   setWebSearch((value) => !value);
                 }}
                 title="Search the web and include sources with your answer"

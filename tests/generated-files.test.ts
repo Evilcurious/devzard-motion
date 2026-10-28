@@ -72,7 +72,32 @@ test('generated bundles reject traversal, secret paths, duplicates, and oversize
   assert.equal(
     generatedFileBundleSchema.safeParse({
       name: 'large',
-      files: [{ path: 'big.txt', content: 'x'.repeat(300_001) }],
+      files: [{ path: 'big.txt', content: 'x'.repeat(500_001) }],
+    }).success,
+    false,
+  );
+});
+
+test('larger projects support 100 source files and totals above the former 300 KB limit', () => {
+  const files = Array.from({ length: 40 }, (_, index) => ({
+    path: `src/module-${index}.txt`,
+    content: 'x'.repeat(10_000),
+  }));
+  assert.equal(
+    generatedFileBundleSchema.safeParse({ name: 'larger-project', files }).success,
+    true,
+  );
+  assert.equal(
+    generatedFileBundleSchema.safeParse({
+      name: 'too-many-files',
+      files: Array.from({ length: 101 }, (_, index) => ({ path: `f-${index}.txt`, content: '' })),
+    }).success,
+    false,
+  );
+  assert.equal(
+    generatedFileBundleSchema.safeParse({
+      name: 'too-large',
+      files: [{ path: 'big.txt', content: 'x'.repeat(1_500_001) }],
     }).success,
     false,
   );
