@@ -714,6 +714,39 @@ kbd {
 .model-select:hover {
   color: var(--green);
 }
+.agent-profile-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+.agent-profile-control select {
+  max-width: 88px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 17px 5px 7px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.agent-profile-control select:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.context-fit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+.context-fit-badge svg {
+  color: var(--green);
+}
 .density-control {
   display: flex;
   align-items: center;
@@ -3612,6 +3645,7 @@ kbd {
     gap: 8px;
   }
   .density-control > span,
+  .agent-profile-control > span,
   .routing-strategy-control > span {
     display: none;
   }
@@ -4196,6 +4230,14 @@ kbd {
 }
 .provider-note {
   margin-top: 7px;
+}
+.provider-balance-label {
+  display: block;
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
 }
 .provider-docs-link {
   display: inline-flex;

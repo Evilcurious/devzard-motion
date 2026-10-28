@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import {
+  normalizeOpenRouterAccountBalance,
+  normalizeSiliconFlowAccountBalance,
+} from './router-account-balance';
 import { fetchFreeLlmCatalog, type FreeLlmCatalogModel } from './freellmapi-catalog';
 import { getAdminProviderKeys, getProviderKeys, getOwnProviderKeys } from './provider-credentials';
 import { getPrincipal } from './security';
@@ -27,6 +31,7 @@ export type RouterCatalog = {
     modelCount: number;
     listedCount: number;
     error: string | null;
+    accountBalanceLabel?: string | null;
   }>;
   refreshedAt: string;
   sourceCatalog?: { version: string; generatedAt: string; tier: 'live' | 'monthly' } | null;
@@ -427,33 +432,27 @@ async function discoverProvider(
   };
 }
 
-async function openRouterPaidAccess(apiKey: string): Promise<boolean> {
-  if (!apiKey) return false;
+async function openRouterAccountBalance(apiKey: string) {
+  if (!apiKey) return { eligible: false, label: null };
   try {
     const [creditsBody, keyBody] = await Promise.all([
       requestJSON('https://openrouter.ai/api/v1/credits', apiKey),
       requestJSON('https://openrouter.ai/api/v1/key', apiKey),
     ]);
-    const credits =
-      creditsBody && typeof creditsBody === 'object' && 'data' in creditsBody
-        ? (creditsBody as { data?: Record<string, unknown> }).data
-        : undefined;
-    const key =
-      keyBody && typeof keyBody === 'object' && 'data' in keyBody
-        ? (keyBody as { data?: Record<string, unknown> }).data
-        : undefined;
-    const total = Number(credits?.total_credits);
-    const used = Number(credits?.total_usage);
-    const keyRemaining = key?.limit_remaining;
-    const balanceKnown = Number.isFinite(total) && Number.isFinite(used);
-    const balanceRemaining = balanceKnown ? total - used : null;
-    const keyRemainingNumber =
-      keyRemaining === null || keyRemaining === undefined ? null : Number(keyRemaining);
-    const keyLimitEmpty =
-      keyRemainingNumber !== null && Number.isFinite(keyRemainingNumber) && keyRemainingNumber <= 0;
-    return !keyLimitEmpty && balanceRemaining !== null && balanceRemaining > 0;
+    return normalizeOpenRouterAccountBalance(creditsBody, keyBody);
   } catch {
-    return false;
+    return { eligible: false, label: null };
+  }
+}
+
+async function siliconFlowAccountBalance(apiKey: string): Promise<string | null> {
+  if (!apiKey) return null;
+  try {
+    return normalizeSiliconFlowAccountBalance(
+      await requestJSON('https://api.siliconflow.com/v1/user/info', apiKey),
+    );
+  } catch {
+    return null;
   }
 }
 
@@ -520,13 +519,20 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
     const providerId = sourceProviderAliases[model.platform] || model.platform;
     sourceModels.set(`${providerId}::${canonicalModelKey(model.modelId)}`, model);
   }
-  const openRouterKeys =
-    principal?.role === 'user'
-      ? (await discoveryKeys('openrouter')) || []
-      : await getProviderKeys('openrouter');
-  const openRouterPaid = (await Promise.all(openRouterKeys.map(openRouterPaidAccess))).some(
-    Boolean,
-  );
+  const [openRouterKeys, siliconFlowKeys] = await Promise.all([
+    principal?.role === 'user' ? getOwnProviderKeys('openrouter') : getProviderKeys('openrouter'),
+    principal?.role === 'user' ? getOwnProviderKeys('siliconflow') : getProviderKeys('siliconflow'),
+  ]);
+  const [openRouterBalances, siliconFlowBalances] = await Promise.all([
+    Promise.all(openRouterKeys.map(openRouterAccountBalance)),
+    Promise.all(siliconFlowKeys.map(siliconFlowAccountBalance)),
+  ]);
+  const openRouterPaid = openRouterBalances.some((balance) => balance.eligible);
+  const openRouterBalanceLabel =
+    [...new Set(openRouterBalances.map((balance) => balance.label).filter(Boolean))].join(' · ') ||
+    null;
+  const siliconFlowBalanceLabel =
+    [...new Set(siliconFlowBalances.filter(Boolean))].join(' · ') || null;
   const grouped = new Map<string, RouterModel>();
   const eligibleCounts = new Map<RouterProviderId, number>();
 
@@ -633,6 +639,12 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
       modelCount: eligibleCounts.get(providerId) || 0,
       listedCount: models.length,
       error,
+      accountBalanceLabel:
+        providerId === 'openrouter'
+          ? openRouterBalanceLabel
+          : providerId === 'siliconflow'
+            ? siliconFlowBalanceLabel
+            : null,
     })),
     refreshedAt: new Date().toISOString(),
     sourceCatalog: sourceCatalog

@@ -71,6 +71,7 @@ type Catalog = {
     modelCount: number;
     listedCount?: number;
     error: string | null;
+    accountBalanceLabel?: string | null;
   }>;
   refreshedAt: string;
   sourceCatalog?: { version: string; generatedAt: string; tier: 'live' | 'monthly' } | null;
@@ -80,6 +81,7 @@ type Catalog = {
 
 const providerNames: Record<string, string> = {
   openrouter: 'OpenRouter',
+  siliconflow: 'SiliconFlow',
   'ollama-cloud': 'Ollama Cloud',
   kilo: 'Kilo Gateway',
   ovh: 'OVH AI Endpoints',
@@ -522,6 +524,14 @@ export function ModelHub({
     [catalog, filter, filterTools, filterVision, providerFilter],
   );
   const providerErrors = catalog?.providers.filter((provider) => provider.error) || [];
+  const connectedModelProviders = providers.filter(
+    (provider) => provider.category === 'models' && provider.connected,
+  );
+  const connectedProviderIds = new Set(connectedModelProviders.map((provider) => provider.id));
+  const providersResponding =
+    catalog?.providers.filter(
+      (provider) => connectedProviderIds.has(provider.providerId) && !provider.error,
+    ).length || 0;
   const allModelRoutes = (catalog?.models || []).flatMap((model) => model.providers);
   const totalModelRoutes = allModelRoutes.length;
   const totalReportedTokens = allModelRoutes.reduce(
@@ -667,6 +677,9 @@ export function ModelHub({
                 <p>
                   {provider.category === 'models' ? 'Chat model provider' : 'Search integration'}
                 </p>
+                {state?.accountBalanceLabel && (
+                  <small className="provider-balance-label">{state.accountBalanceLabel}</small>
+                )}
                 <a
                   className="provider-docs-link"
                   href={provider.docsURL}
@@ -777,9 +790,20 @@ export function ModelHub({
           <span>
             <strong>{totalReportedTokens.toLocaleString()}</strong> reported remaining tokens
           </span>
+          <span>
+            <strong>
+              {providersResponding}/{connectedModelProviders.length}
+            </strong>{' '}
+            connected providers responding
+          </span>
           <small>
             Token total sums only provider-reported per-model remaining quotas; unknown quotas and
             account-wide credits are omitted, and shared account limits may make totals overlap.
+          </small>
+          <small>
+            {catalog?.refreshedAt
+              ? `Provider model lists and live quota fields last checked ${new Date(catalog.refreshedAt).toLocaleTimeString()}. Refresh to check again.`
+              : 'Provider model and quota data has not been checked yet.'}
           </small>
           <small>
             {catalog?.sourceCatalog

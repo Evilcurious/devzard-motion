@@ -62,6 +62,7 @@ export type RouterProviderId =
   | 'volcengine'
   | 'longcat'
   | 'xfyun'
+  | 'siliconflow'
   | 'managed';
 export type RouterProviderCategory = 'models' | 'search';
 export type RouterProvider = {
@@ -188,6 +189,15 @@ export const routerProviders: RouterProvider[] = [
     modelsPath: '/api/v1/models/user?limit=500',
     keyRequired: true,
     docsURL: 'https://openrouter.ai/settings/keys',
+  },
+  {
+    id: 'siliconflow',
+    name: 'SiliconFlow',
+    category: 'models',
+    baseURL: 'https://api.siliconflow.com/v1',
+    keyRequired: true,
+    docsURL: 'https://cloud.siliconflow.cn/account/ak',
+    note: 'Uses the OpenAI-compatible chat API and reads the account credit balance when the provider exposes it.',
   },
   {
     id: 'ollama-cloud',

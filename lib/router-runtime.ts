@@ -10,6 +10,7 @@ export type ResolvedTarget = {
   key: string;
   apiKeys?: string[];
   supportsTools?: boolean;
+  contextTokens?: number | null;
 };
 
 export async function resolveRouterTarget(target: RouterTarget): Promise<ResolvedTarget> {
@@ -43,6 +44,7 @@ export async function resolveRouterTarget(target: RouterTarget): Promise<Resolve
     baseURL: provider.baseURL.replace(/\/$/, ''),
     key: apiKey || (provider.id === 'aihorde' ? '0000000000' : ''),
     apiKeys,
+    contextTokens: target.contextTokens ?? null,
     ...(provider.id === 'aihorde' ? { supportsTools: false } : {}),
   };
 }

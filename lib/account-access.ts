@@ -94,6 +94,9 @@ export async function filterCatalogForPrincipal(
         modelCount: canInspect ? provider.modelCount : 0,
         error: canInspect ? provider.error : null,
         listedCount: canInspect ? provider.listedCount : 0,
+        accountBalanceLabel: providersWithOwnKeys.has(provider.providerId)
+          ? provider.accountBalanceLabel
+          : null,
       };
     }),
   };

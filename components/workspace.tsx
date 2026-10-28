@@ -117,6 +117,8 @@ const settingsSections: Array<{
 const uid = () => crypto.randomUUID();
 const friendlyDate = (date: string) =>
   new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+type AgentProfile = 'fast' | 'balanced' | 'deep' | 'custom';
+
 function accentInk(color: string) {
   const channels = color.match(/[0-9a-f]{2}/gi)?.map((value) => parseInt(value, 16) / 255) || [];
   if (channels.length !== 3) return '#ffffff';
@@ -144,6 +146,14 @@ export default function Workspace() {
   const [density, setDensity] = useState<AIDensity>('auto');
   const [routingStrategy, setRoutingStrategy] = useState<RoutingStrategy>('balanced');
   const [densityReady, setDensityReady] = useState(false);
+  const agentProfile: AgentProfile =
+    density === 'faster' && routingStrategy === 'fastest'
+      ? 'fast'
+      : density === 'auto' && routingStrategy === 'balanced'
+        ? 'balanced'
+        : density === 'high' && routingStrategy === 'largest-context'
+          ? 'deep'
+          : 'custom';
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [modelChoices, setModelChoices] = useState<RouterModel[]>([]);
   const [modelSearch, setModelSearch] = useState('');
@@ -1006,22 +1016,39 @@ export default function Workspace() {
                 notify={notify}
               />
             )}
-            <label className="density-control">
-              <span>AI density</span>
+            <label className="agent-profile-control">
+              <span>Agent mode</span>
               <select
-                aria-label="AI density"
-                title="Eligibility is checked before ranking. This density setting influences completion budget and tie-breaks; choose the separate Route strategy for the main ranking priority."
-                value={density}
-                onChange={(event) => setDensity(event.target.value as AIDensity)}
+                aria-label="Agent mode"
+                title="Fast prioritizes observed speed; Balanced uses Relay's default budget; Deep favors higher output and larger context. These modes do not guarantee a model's reasoning quality."
+                value={agentProfile}
+                onChange={(event) => {
+                  const profile = event.target.value as AgentProfile;
+                  if (profile === 'fast') {
+                    setDensity('faster');
+                    setRoutingStrategy('fastest');
+                  } else if (profile === 'balanced') {
+                    setDensity('auto');
+                    setRoutingStrategy('balanced');
+                  } else if (profile === 'deep') {
+                    setDensity('high');
+                    setRoutingStrategy('largest-context');
+                  }
+                }}
                 disabled={busy}
               >
-                <option value="slow">Slow</option>
                 <option value="fast">Fast</option>
-                <option value="faster">Faster</option>
-                <option value="high">High</option>
-                <option value="auto">Auto</option>
+                <option value="balanced">Balanced</option>
+                <option value="deep">Deep</option>
+                <option value="custom">Custom</option>
               </select>
             </label>
+            <span
+              className="context-fit-badge"
+              title="Relay trims older conversation context to fit the selected model's known context window."
+            >
+              <CheckCircle2 size={12} /> Context fit
+            </span>
             <label className="routing-strategy-control">
               <span>Route</span>
               <select

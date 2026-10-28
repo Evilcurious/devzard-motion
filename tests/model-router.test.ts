@@ -26,6 +26,8 @@ test('model provider registry uses fixed HTTPS hosts and separates search servic
   );
   assert.equal(getRouterProvider('gemini')?.keyRequired, true);
   assert.equal(getRouterProvider('openrouter')?.baseURL, 'https://openrouter.ai/api/v1');
+  assert.equal(getRouterProvider('siliconflow')?.baseURL, 'https://api.siliconflow.com/v1');
+  assert.equal(getRouterProvider('siliconflow')?.keyRequired, true);
   assert.equal(getRouterProvider('kilo')?.baseURL, 'https://api.kilo.ai/api/gateway/v1');
   assert.equal(getRouterProvider('aihorde')?.keyRequired, false);
   assert.equal(getRouterProvider('electronhub')?.baseURL, 'https://api.electronhub.ai/v1');

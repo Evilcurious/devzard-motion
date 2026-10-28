@@ -46,6 +46,7 @@ import {
 } from '@/lib/account-access';
 import { generatedFileBundleSchema, type GeneratedArtifact } from '@/lib/generated-files';
 import { normalizeProviderTokenUsage } from '@/lib/provider-usage';
+import { fitChatMessagesToContext } from '@/lib/chat-context';
 import {
   attemptTargetsSequentially,
   fallbackAttemptTimeout,
@@ -141,6 +142,8 @@ type ModelMessage = {
   content: string | null;
   tool_calls?: { id: string; type: string; function: { name: string; arguments: string } }[];
   tool_call_id?: string;
+  contextOmittedTokens?: number;
+  contextOmittedMessages?: number;
 };
 class ProviderHttpError extends Error {
   constructor(
@@ -212,11 +215,17 @@ async function completion(
       (enabledTools && enabledTools.some((tool) => tool.function.name === 'github_push_files'))
         ? 10000
         : 3000;
-    let maxOutputTokens = defaultMaxTokens;
+    const contextCappedOutputTokens =
+      typeof config.contextTokens === 'number' && config.contextTokens > 0
+        ? Math.max(256, Math.floor(config.contextTokens * 0.4))
+        : defaultMaxTokens;
+    let maxOutputTokens = Math.min(defaultMaxTokens, contextCappedOutputTokens);
+    const contextFit = fitChatMessagesToContext(messages, config.contextTokens, maxOutputTokens);
+    const requestMessages = contextFit.messages;
     if (quota) {
       const used = await monthlyTokenUsage(quota.accountId);
       const remaining = quota.monthlyLimit - used;
-      const inputAllowance = Math.ceil(JSON.stringify(messages).length / 3) + 1200;
+      const inputAllowance = Math.ceil(JSON.stringify(requestMessages).length / 3) + 1200;
       if (remaining <= inputAllowance)
         throw new Error(
           'Your monthly token allowance is used up. Ask your administrator to increase it.',
@@ -232,7 +241,7 @@ async function completion(
       },
       body: JSON.stringify({
         model: config.model,
-        messages,
+        messages: requestMessages,
         ...(enabledTools && enabledTools.length && config.supportsTools !== false
           ? {
               tools: enabledTools,
@@ -288,7 +297,15 @@ async function completion(
         );
     }
     success = true;
-    return answer;
+    return {
+      ...answer,
+      ...(contextFit.originalTokens > contextFit.sentTokens
+        ? {
+            contextOmittedTokens: contextFit.originalTokens - contextFit.sentTokens,
+            contextOmittedMessages: contextFit.omittedMessages,
+          }
+        : {}),
+    };
   } finally {
     if (!analyticsRecorded)
       await recordAnalyticsEvent({
@@ -426,6 +443,10 @@ export async function POST(request: Request) {
       model: config.model,
       baseURL: config.baseURL,
       key: config.key,
+      contextTokens:
+        'contextTokens' in config && typeof config.contextTokens === 'number'
+          ? config.contextTokens
+          : null,
       apiKeys: 'apiKeys' in config ? config.apiKeys : [config.key],
       ...('supportsTools' in config && config.supportsTools === false
         ? { supportsTools: false }
@@ -723,6 +744,13 @@ export async function POST(request: Request) {
         );
       }
       if (!answer) throw new Error('No available model returned a response.');
+      if (answer.contextOmittedTokens) {
+        steps.push(
+          `Context fit reduced about ${answer.contextOmittedTokens.toLocaleString()} tokens across ${answer.contextOmittedMessages || 0} message(s) to fit this model's context window.`,
+        );
+        delete answer.contextOmittedTokens;
+        delete answer.contextOmittedMessages;
+      }
       if (
         fileBundleRequest &&
         !answer.tool_calls?.some((call) => call.function.name === 'create_file_bundle')
