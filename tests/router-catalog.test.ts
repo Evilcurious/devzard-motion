@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isEligibleProviderModel } from '../lib/router-catalog';
+import { randomUUID } from 'node:crypto';
+import {
+  isEligibleProviderModel,
+  isRouterProviderDepleted,
+  isRouterTargetDepleted,
+  markRouterProviderDepleted,
+  markRouterTargetDepleted,
+} from '../lib/router-catalog';
 import {
   normalizeOpenRouterAccountBalance,
   normalizeSiliconFlowAccountBalance,
@@ -52,4 +59,20 @@ test('authenticated provider model listings remain eligible when quota metadata 
     monthlyTokenBudget: '1M tokens/month',
   };
   assert.equal(isEligibleProviderModel('groq', model), true);
+});
+
+test('account-balance exhaustion cools down every model route for only that account', () => {
+  const accountId = `test-${randomUUID()}`;
+  markRouterTargetDepleted({ providerId: 'codecraftapi', modelId: 'one' }, accountId, 60_000);
+  assert.equal(
+    isRouterTargetDepleted({ providerId: 'codecraftapi', modelId: 'one' }, accountId),
+    true,
+  );
+  assert.equal(
+    isRouterTargetDepleted({ providerId: 'codecraftapi', modelId: 'two' }, accountId),
+    false,
+  );
+  markRouterProviderDepleted('codecraftapi', accountId, 60_000);
+  assert.equal(isRouterProviderDepleted('codecraftapi', accountId), true);
+  assert.equal(isRouterProviderDepleted('codecraftapi', `${accountId}-other`), false);
 });

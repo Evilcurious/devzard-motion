@@ -2387,6 +2387,79 @@ kbd {
   font-size: 12px;
   line-height: 1.55;
 }
+.model-picker-tabs {
+  display: flex;
+  gap: 7px;
+  padding: 4px;
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.model-picker-tabs button {
+  flex: 1;
+  min-height: 38px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.model-picker-tabs button.active {
+  background: color-mix(in srgb, var(--green) 12%, var(--surface));
+  color: var(--text);
+}
+.model-picker-filter-row {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  margin: 4px 0 10px;
+}
+.model-picker-filter-row label,
+.code-model-filters label {
+  display: grid;
+  flex: 1;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+.model-picker-filter-row select,
+.code-model-filters select,
+.code-model-filters input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.model-picker-filter-row > small {
+  max-width: 265px;
+  padding-bottom: 8px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.code-model-mode-summary,
+.code-model-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 10px;
+}
+.code-model-mode-summary > span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
 .chat-routing-mode-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4583,6 +4656,21 @@ kbd {
   font-size: 10px;
   line-height: 1.6;
 }
+.code-model-settings .code-model-filters {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0;
+}
+.code-model-options > label {
+  grid-template-rows: auto auto auto;
+}
+.code-model-options input {
+  grid-row: span 3;
+}
+.code-model-actions {
+  justify-content: flex-end;
+  margin-top: 14px;
+}
 .route-model-options > label.quota-empty {
   opacity: 0.65;
 }
@@ -4658,6 +4746,17 @@ kbd {
   }
 }
 @media (max-width: 900px) {
+  .model-picker-filter-row,
+  .code-model-settings .code-model-filters,
+  .code-model-mode-summary,
+  .code-model-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .model-picker-filter-row > small {
+    max-width: none;
+    padding-bottom: 0;
+  }
   .provider-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

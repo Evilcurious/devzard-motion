@@ -4,6 +4,7 @@ import { readConnection, saveConnection, removeConnection } from '@/lib/connecti
 import {
   getRouterProvider,
   routerProviders,
+  type CodeRouterSelection,
   type RouterProviderId,
   type RouterSelection,
 } from '@/lib/model-router';
@@ -134,6 +135,21 @@ export async function DELETE(request: Request) {
             fusionModels: strategy === 'fusion' ? fusionModels : [],
           });
         }
+      }
+      const codeSelection = await readConnection<CodeRouterSelection>('code-router-selection');
+      if (codeSelection) {
+        const sharedAdminKey =
+          principal.role === 'user' &&
+          principal.plan === 'premium' &&
+          (await getAdminProviderKeys(provider.id)).length > 0;
+        const targets = codeSelection.targets.filter(
+          (target) =>
+            target.providerId !== provider.id ||
+            sharedAdminKey ||
+            (principal.role === 'user' && hasAdminModelAssignment(principal.allowedModels, target)),
+        );
+        if (targets.length !== codeSelection.targets.length)
+          await saveConnection('code-router-selection', { targets });
       }
     }
     return Response.json({ ok: true, keyCount });

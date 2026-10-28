@@ -11,6 +11,8 @@ import {
   selectRouterCandidates,
   selectFallbackCandidates,
   selectAutoFusionTargets,
+  preferRouterProvider,
+  selectCodeRouterTargets,
   routerModelIds,
   routerProviders,
 } from '../lib/model-router';
@@ -30,6 +32,10 @@ test('model provider registry uses fixed HTTPS hosts and separates search servic
   assert.equal(getRouterProvider('openrouter')?.baseURL, 'https://openrouter.ai/api/v1');
   assert.equal(getRouterProvider('siliconflow')?.baseURL, 'https://api.siliconflow.com/v1');
   assert.equal(getRouterProvider('siliconflow')?.keyRequired, true);
+  assert.equal(getRouterProvider('codecraftapi')?.baseURL, 'https://codecraftapi.com/v1');
+  assert.equal(getRouterProvider('codecraftapi')?.keyRequired, true);
+  assert.equal(getRouterProvider('radoxai')?.baseURL, 'https://radoxai.com/v1');
+  assert.equal(getRouterProvider('radoxai')?.keyRequired, true);
   assert.equal(getRouterProvider('kilo')?.baseURL, 'https://api.kilo.ai/api/gateway/v1');
   assert.equal(getRouterProvider('aihorde')?.keyRequired, false);
   assert.equal(getRouterProvider('electronhub')?.baseURL, 'https://api.electronhub.ai/v1');
@@ -369,6 +375,53 @@ test('Auto Fusion chooses prompt-relevant, eligible models and diversifies provi
   assert.ok(selected.some((target) => target.modelId === 'qwen-coder'));
   assert.ok(selected.every((target) => target.modelId !== 'depleted-coder'));
   assert.equal(new Set(selected.map((target) => target.providerId)).size, 4);
+});
+
+test('provider preference uses the selected provider while eligible, then falls back', () => {
+  const targets = [
+    { providerId: 'openrouter' as const, modelId: 'first', availableTokens: 900 },
+    { providerId: 'codecraftapi' as const, modelId: 'preferred', availableTokens: 50 },
+    { providerId: 'radoxai' as const, modelId: 'backup', availableTokens: 800 },
+  ];
+  assert.deepEqual(
+    preferRouterProvider(targets, 'codecraftapi').map((target) => target.modelId),
+    ['preferred', 'first', 'backup'],
+  );
+  assert.deepEqual(
+    preferRouterProvider(
+      targets.filter((target) => target.providerId !== 'codecraftapi'),
+      'codecraftapi',
+    ).map((target) => target.modelId),
+    ['first', 'backup'],
+  );
+  assert.deepEqual(preferRouterProvider(targets, 'all'), targets);
+});
+
+test('dedicated code model selection does not leak into chat targets', () => {
+  const available = [
+    { providerId: 'openrouter' as const, modelId: 'chat-model', availableTokens: 900 },
+    { providerId: 'codecraftapi' as const, modelId: 'code-model', availableTokens: 300 },
+    { providerId: 'radoxai' as const, modelId: 'backup-code', availableTokens: 100 },
+  ];
+  assert.deepEqual(
+    selectCodeRouterTargets(available, [available[1], available[2]]).map(
+      (target) => target.modelId,
+    ),
+    ['code-model', 'backup-code'],
+  );
+  assert.deepEqual(
+    selectCodeRouterTargets(available, []).map((target) => target.modelId),
+    ['chat-model', 'code-model', 'backup-code'],
+  );
+});
+
+test('CodeCraft model capabilities are normalized for tool routing', () => {
+  assert.equal(
+    routerModelIds({
+      data: [{ id: 'claude-opus-4.8', context_window: 128000, capabilities: ['tools'] }],
+    })[0]?.supportsTools,
+    true,
+  );
 });
 
 test('identical model ids merge case-insensitively without stripping vendor namespaces', () => {

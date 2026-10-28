@@ -27,6 +27,14 @@ const schema = z
     ...targetSchema.shape,
     strategy: z.enum(['auto', 'fallback', 'fusion', 'auto-fusion']),
     autoPick: z.boolean().default(false),
+    providerFilter: z
+      .custom<RouterSelection['providerFilter']>(
+        (value): value is NonNullable<RouterSelection['providerFilter']> =>
+          value === 'all' ||
+          (typeof value === 'string' &&
+            getRouterProvider(value as RouterTarget['providerId'])?.category === 'models'),
+      )
+      .default('all'),
     fallbackChain: z.array(targetSchema).max(3).default([]),
     fusionModels: z.array(targetSchema).max(3).default([]),
   })
@@ -79,6 +87,7 @@ export async function GET() {
       ...raw,
       strategy: raw.strategy || 'auto',
       autoPick: raw.autoPick ?? (raw.strategy === 'auto' || raw.strategy === 'auto-fusion'),
+      providerFilter: raw.providerFilter || 'all',
       fallbackChain: (raw.fallbackChain || []).slice(0, 3),
       fusionModels: (raw.fusionModels || []).slice(0, 3),
     } as RouterSelection;

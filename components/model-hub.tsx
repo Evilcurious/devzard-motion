@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/client-api';
 import { Modal } from './ui';
-import { rankRouterTargets, type RouterProviderId, type RouterTarget } from '@/lib/model-router';
+import {
+  rankRouterTargets,
+  type CodeRouterSelection,
+  type RouterProviderId,
+  type RouterTarget,
+} from '@/lib/model-router';
 import {
   Check,
   CircleHelp,
@@ -82,6 +87,8 @@ type Catalog = {
 const providerNames: Record<string, string> = {
   openrouter: 'OpenRouter',
   siliconflow: 'SiliconFlow',
+  codecraftapi: 'CodeCraft API',
+  radoxai: 'Radox AI',
   'ollama-cloud': 'Ollama Cloud',
   kilo: 'Kilo Gateway',
   ovh: 'OVH AI Endpoints',
@@ -240,6 +247,10 @@ export function ModelHub({
   const [strategy, setStrategy] = useState<Strategy>('auto');
   const [autoPick, setAutoPick] = useState(true);
   const [fusionModels, setFusionModels] = useState<Target[]>([]);
+  const [codeTargets, setCodeTargets] = useState<Target[]>([]);
+  const [codeTargetsDirty, setCodeTargetsDirty] = useState(false);
+  const [codeProviderFilter, setCodeProviderFilter] = useState('all');
+  const [codeSearch, setCodeSearch] = useState('');
   const [connectId, setConnectId] = useState('');
   const [key, setKey] = useState('');
   const [quickProviderId, setQuickProviderId] = useState('openrouter');
@@ -300,6 +311,16 @@ export function ModelHub({
     }
     return response.selection;
   }
+  async function loadCodeSelection() {
+    const response = await api<{ selection: CodeRouterSelection }>(
+      '/api/router/code-selection',
+      undefined,
+      'GET',
+    );
+    setCodeTargets(response.selection?.targets || []);
+    setCodeTargetsDirty(false);
+    return response.selection;
+  }
   async function loadObservedModelStats() {
     try {
       const response = await api<{
@@ -330,6 +351,7 @@ export function ModelHub({
         current && result.models.length ? enrichTarget(current, result.models) : current,
       );
       setFusionModels((current) => current.map((target) => enrichTarget(target, result.models)));
+      setCodeTargets((current) => current.map((target) => enrichTarget(target, result.models)));
       if (autoSelect && !selection) {
         const first = rankRouterTargets(catalogTargets(result.models), 'auto')[0];
         if (first) {
@@ -349,7 +371,7 @@ export function ModelHub({
     }
   }
   useEffect(() => {
-    Promise.all([loadProviders(), loadSelection()])
+    Promise.all([loadProviders(), loadSelection(), loadCodeSelection()])
       .then(([, savedSelection]) => discover(!savedSelection))
       .catch((e) => setError((e as Error).message));
   }, []);
@@ -467,6 +489,38 @@ export function ModelHub({
       setList([...list, enrichTarget(target, catalog?.models || [])]);
   }
 
+  function toggleCodeModel(target: Target) {
+    const key = targetKey(target);
+    setCodeTargets((current) =>
+      current.some((item) => targetKey(item) === key)
+        ? current.filter((item) => targetKey(item) !== key)
+        : target.availableTokens === 0 || current.length >= 8
+          ? current
+          : [...current, enrichTarget(target, catalog?.models || [])],
+    );
+    setCodeTargetsDirty(true);
+  }
+  async function saveCodeModels() {
+    setBusy('code-targets');
+    setError('');
+    try {
+      const result = await api<{ selection: CodeRouterSelection }>('/api/router/code-selection', {
+        targets: codeTargets,
+      });
+      setCodeTargets(result.selection.targets);
+      setCodeTargetsDirty(false);
+      notify(
+        result.selection.targets.length
+          ? `Saved ${result.selection.targets.length} code model${result.selection.targets.length === 1 ? '' : 's'}. They are used only in Code mode.`
+          : 'Automatic code-model selection restored.',
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy('');
+    }
+  }
+
   function autoPickPrimary() {
     const best = rankRouterTargets(catalogTargets(catalog?.models || []), 'auto')[0];
     if (!best) {
@@ -522,6 +576,20 @@ export function ModelHub({
         ];
       }),
     [catalog, filter, filterTools, filterVision, providerFilter],
+  );
+  const visibleCodeRoutes = useMemo(
+    () =>
+      (catalog?.models || []).flatMap((model) =>
+        model.providers
+          .filter((provider) => codeProviderFilter === 'all' || provider.id === codeProviderFilter)
+          .filter((provider) =>
+            `${model.name} ${model.id} ${provider.id} ${provider.name} ${provider.modelId}`
+              .toLowerCase()
+              .includes(codeSearch.trim().toLowerCase()),
+          )
+          .map((provider) => ({ model, provider })),
+      ),
+    [catalog, codeProviderFilter, codeSearch],
   );
   const providerErrors = catalog?.providers.filter((provider) => provider.error) || [];
   const connectedModelProviders = providers.filter(
@@ -1019,6 +1087,123 @@ export function ModelHub({
             Intelligence and guardrail ratings are not measured here, and provider-wide ratings are
             not inferred from Relay traffic.
           </span>
+        </div>
+      </section>
+
+      <section className="model-hub-section code-model-settings">
+        <div className="section-heading">
+          <div>
+            <span className="small-section-label">CODE MODE</span>
+            <h2>Dedicated code models</h2>
+          </div>
+          <span className="model-count">{codeTargets.length}/8 selected</span>
+        </div>
+        <p className="model-hub-copy">
+          Select up to eight models for Code mode only. Relay ranks selected models toward larger
+          advertised parameter counts and tries another selected model after provider errors or
+          exhausted quota. Chat mode will never use this list. With no models selected, Code mode
+          uses automatic code-model ranking across your eligible providers.
+        </p>
+        <div className="code-model-filters">
+          <label>
+            Provider filter
+            <select
+              value={codeProviderFilter}
+              onChange={(event) => setCodeProviderFilter(event.target.value)}
+            >
+              <option value="all">All connected providers</option>
+              {providers
+                .filter((provider) => provider.category === 'models' && provider.connected)
+                .map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Search models
+            <input
+              type="search"
+              value={codeSearch}
+              onChange={(event) => setCodeSearch(event.target.value)}
+              placeholder="Model ID or provider"
+            />
+          </label>
+        </div>
+        <div className="route-model-options code-model-options">
+          {visibleCodeRoutes.slice(0, 80).map(({ model, provider }) => {
+            const target: Target = {
+              providerId: provider.id,
+              modelId: provider.modelId,
+              availableTokens: provider.availableTokens,
+              contextTokens: provider.contextTokens,
+              supportsTools: provider.supportsTools,
+              isFree: provider.isFree,
+              accountCreditsAvailable: provider.accountCreditsAvailable,
+            };
+            const checked = codeTargets.some((item) => targetKey(item) === targetKey(target));
+            return (
+              <label key={targetKey(target)}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={busy === 'code-targets' || (!checked && codeTargets.length >= 8)}
+                  onChange={() => toggleCodeModel(target)}
+                />
+                <span>{model.name}</span>
+                <small>
+                  {provider.name} · {provider.modelId}
+                </small>
+                <small>
+                  {provider.availableTokens === null
+                    ? 'Remaining tokens not reported'
+                    : `${provider.availableTokens.toLocaleString()} remaining tokens`}
+                  {provider.contextTokens
+                    ? ` · ${provider.contextTokens.toLocaleString()} context`
+                    : ''}
+                </small>
+              </label>
+            );
+          })}
+        </div>
+        {visibleCodeRoutes.length > 80 && (
+          <p className="route-quota-note">
+            Showing the first 80 matches. Narrow the provider or search filter to find a model.
+          </p>
+        )}
+        {!visibleCodeRoutes.length && (
+          <div className="model-empty">
+            <KeyRound size={18} />
+            <strong>No code models match this filter</strong>
+            <span>Connect a provider key and refresh models above.</span>
+          </div>
+        )}
+        <div className="code-model-actions">
+          <button
+            className="button small"
+            type="button"
+            disabled={!codeTargets.length || busy === 'code-targets'}
+            onClick={() => {
+              setCodeTargets([]);
+              setCodeTargetsDirty(true);
+            }}
+          >
+            Use automatic code models
+          </button>
+          <button
+            className="button primary"
+            type="button"
+            disabled={!codeTargetsDirty || busy === 'code-targets'}
+            onClick={() => void saveCodeModels()}
+          >
+            {busy === 'code-targets' ? (
+              <LoaderCircle className="spin" size={15} />
+            ) : (
+              <Check size={15} />
+            )}
+            Save code models
+          </button>
         </div>
       </section>
 

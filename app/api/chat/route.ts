@@ -25,18 +25,23 @@ import { isRelayIdentityQuestion } from '@/lib/identity';
 import { observedModelMetricsByTarget, recordAnalyticsEvent } from '@/lib/analytics';
 import {
   getRouterProvider,
+  preferRouterProvider,
   rankCodeTargets,
   rankRouterTargets,
+  selectCodeRouterTargets,
   selectAutoFusionTargets,
   selectFallbackCandidates,
   selectRouterCandidates,
   type AIDensity,
+  type CodeRouterSelection,
   type RouterProviderId,
   type RoutingStrategy,
 } from '@/lib/model-router';
 import {
   discoverRouterCatalog,
+  isRouterProviderDepleted,
   isRouterTargetDepleted,
+  markRouterProviderDepleted,
   markRouterTargetDepleted,
 } from '@/lib/router-catalog';
 import { getProviderKeys } from '@/lib/provider-credentials';
@@ -403,6 +408,16 @@ async function completion(
           }
         : {}),
     };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      const providerName = getRouterProvider(config.providerId)?.name || config.providerId;
+      const timeout = new Error(
+        `${providerName} model “${config.model}” did not respond within ${Math.ceil(timeoutMs / 1000)} seconds. Retry or choose another model; automatic routing will fall back when another eligible model is available.`,
+      );
+      timeout.name = 'TimeoutError';
+      throw timeout;
+    }
+    throw error;
   } finally {
     if (!analyticsRecorded)
       await recordAnalyticsEvent({
@@ -450,6 +465,13 @@ async function handleChatPost(request: Request) {
     if (latestUserMessage && isRelayIdentityQuestion(latestUserMessage.content))
       return Response.json({ content: 'Faizan made me.', proposals: [], steps: [] });
     const config = await aiConfig();
+    const [savedChatSelection, codeSelection] = await Promise.all([
+      readConnection<RouterSelection>('router-selection'),
+      codeMode
+        ? readConnection<CodeRouterSelection>('code-router-selection')
+        : Promise.resolve(null),
+    ]);
+    const providerPreference = savedChatSelection?.providerFilter || 'all';
     if (
       streamContext &&
       !codeMode &&
@@ -478,7 +500,6 @@ async function handleChatPost(request: Request) {
         },
         { status: 422 },
       );
-    const requestDeadline = Date.now() + 52_000;
     const [google, github, githubRepository, vercel] = await Promise.all([
       googleSession(),
       getGitHubInstallation(),
@@ -530,7 +551,9 @@ async function handleChatPost(request: Request) {
     const proposals: unknown[] = [];
     const artifacts: GeneratedArtifact[] = [];
     const steps: string[] = [];
-    const deadline = requestDeadline;
+    // Start the model budget after provider-independent context preparation; web/repository
+    // lookups must not consume the time reserved for the actual completion.
+    const deadline = Date.now() + 50_000;
     const legacyAnalyticsProvider =
       config.provider === 'openai'
         ? 'openai'
@@ -617,7 +640,7 @@ async function handleChatPost(request: Request) {
         if (principal.role === 'user')
           catalog = await filterCatalogForPrincipal(catalog, principal);
         const blocked = quota ? await getUsageBlockedTargets() : new Set<string>();
-        eligibleTargets = catalog.models.flatMap((model) =>
+        const discoveredTargets = catalog.models.flatMap((model) =>
           model.providers
             .filter((provider) => !blocked.has(`${provider.id}::${provider.modelId}`))
             .map((provider) => ({
@@ -629,6 +652,9 @@ async function handleChatPost(request: Request) {
               isFree: provider.isFree,
             })),
         );
+        eligibleTargets = codeMode
+          ? selectCodeRouterTargets(discoveredTargets, codeSelection?.targets || [])
+          : discoveredTargets;
       }
       return eligibleTargets;
     }
@@ -736,12 +762,16 @@ async function handleChatPost(request: Request) {
     }
     for (let turn = 0; turn < 4; turn++) {
       const timeLeft = deadline - Date.now();
-      if (timeLeft < 1500) throw new Error('The model took too long. Try a shorter request.');
+      if (timeLeft < 1500) {
+        const timeout = new Error('Relay ran out of time while waiting for the model. Try again.');
+        timeout.name = 'TimeoutError';
+        throw timeout;
+      }
       let answer: ModelMessage | undefined;
       if (
         (codeMode || shouldRouteTurnThroughCandidates(turn, config.strategy, fileBundleRequest)) &&
         dynamicModelRouting &&
-        (inferredRouterProviderId || config.strategy === 'fallback')
+        (inferredRouterProviderId || config.strategy === 'fallback' || codeMode)
       ) {
         const fallbackMode = config.strategy === 'fallback' && !codeMode;
         let available: RouterTarget[];
@@ -774,9 +804,19 @@ async function handleChatPost(request: Request) {
               await getObservedMetrics(),
             );
         const taskRanked = codeMode ? rankCodeTargets(allRanked) : allRanked;
+        let providerRanked =
+          !codeMode && config.strategy === 'auto'
+            ? preferRouterProvider(taskRanked, providerPreference)
+            : taskRanked;
+        if (
+          fileBundleRequest &&
+          providerPreference !== 'all' &&
+          !providerRanked.some((target) => target.supportsTools !== false)
+        )
+          providerRanked = taskRanked;
         const ranked = fileBundleRequest
-          ? taskRanked.filter((target) => target.supportsTools !== false)
-          : taskRanked;
+          ? providerRanked.filter((target) => target.supportsTools !== false)
+          : providerRanked;
         const selectedKey = `${primaryTarget.providerId}::${primaryTarget.modelId}`;
         const selected = ranked.find(
           (target) => `${target.providerId}::${target.modelId}` === selectedKey,
@@ -802,12 +842,15 @@ async function handleChatPost(request: Request) {
           );
         const attemptTargets = candidates.slice(0, 8);
         const runTarget = async (target: RouterTarget, index: number, signal?: AbortSignal) => {
+          if (isRouterProviderDepleted(target.providerId, principal.id))
+            throw new Error(
+              `${getRouterProvider(target.providerId)?.name || target.providerId} was skipped because its provider quota was exhausted earlier in this request.`,
+            );
           const resolved =
             target.providerId === primary.providerId && target.modelId === primary.model
               ? primary
               : await resolveRouterTarget(target);
-          const maximumRequestBudget =
-            density === 'faster' ? 9000 : density === 'fast' ? 14000 : 20000;
+          const maximumRequestBudget = 40_000;
           const remainingTime = deadline - Date.now();
           const requestBudget = fallbackMode
             ? fallbackAttemptTimeout(
@@ -827,8 +870,12 @@ async function handleChatPost(request: Request) {
             );
             return { response, resolved };
           } catch (error) {
-            if (error instanceof ProviderHttpError && [402, 429].includes(error.statusCode))
-              markRouterTargetDepleted(target, principal.id, error.retryAfterMs ?? 5 * 60_000);
+            if (error instanceof ProviderHttpError && [402, 429].includes(error.statusCode)) {
+              const cooldown = error.retryAfterMs ?? 5 * 60_000;
+              markRouterTargetDepleted(target, principal.id, cooldown);
+              if (error.statusCode === 402)
+                markRouterProviderDepleted(target.providerId, principal.id, cooldown);
+            }
             throw error;
           }
         };
@@ -889,7 +936,10 @@ async function handleChatPost(request: Request) {
         }
         answer = outcome.value.response;
         activeTarget = outcome.value.resolved;
-        if (shouldPersistAutoSelectedTarget(config.strategy, autoPick, outcome.index, !!selected)) {
+        if (
+          !codeMode &&
+          shouldPersistAutoSelectedTarget(config.strategy, autoPick, outcome.index, !!selected)
+        ) {
           await persistAutoSelectedTarget(outcome.target);
           selectionAutoPick = true;
           if (outcome.index > 0)
@@ -1071,9 +1121,12 @@ async function handleChatPost(request: Request) {
     if (error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name))
       return Response.json(
         {
-          error: error.message.startsWith('Fallback chain exhausted after ')
-            ? error.message
-            : 'The AI model timed out. Check that it is running and try again.',
+          error:
+            error.message.startsWith('Fallback chain exhausted after ') ||
+            error.message.includes(' did not respond within ') ||
+            error.message.startsWith('Relay ran out of time')
+              ? error.message
+              : 'The AI model timed out. Check that it is running and try again.',
         },
         { status: 504 },
       );

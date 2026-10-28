@@ -63,6 +63,8 @@ export type RouterProviderId =
   | 'longcat'
   | 'xfyun'
   | 'siliconflow'
+  | 'codecraftapi'
+  | 'radoxai'
   | 'managed';
 export type RouterProviderCategory = 'models' | 'search';
 export type RouterProvider = {
@@ -198,6 +200,24 @@ export const routerProviders: RouterProvider[] = [
     keyRequired: true,
     docsURL: 'https://cloud.siliconflow.cn/account/ak',
     note: 'Uses the OpenAI-compatible chat API and reads the account credit balance when the provider exposes it.',
+  },
+  {
+    id: 'codecraftapi',
+    name: 'CodeCraft API',
+    category: 'models',
+    baseURL: 'https://codecraftapi.com/v1',
+    keyRequired: true,
+    docsURL: 'https://codecraftapi.com/docs',
+    note: 'OpenAI-compatible API gateway. Model access, rate limits, and balance depend on your CodeCraft API plan.',
+  },
+  {
+    id: 'radoxai',
+    name: 'Radox AI',
+    category: 'models',
+    baseURL: 'https://radoxai.com/v1',
+    keyRequired: true,
+    docsURL: 'https://radoxai.com/docs',
+    note: 'OpenAI-compatible API gateway. Model access, rate limits, and balance depend on your Radox AI plan.',
   },
   {
     id: 'ollama-cloud',
@@ -703,9 +723,12 @@ export type RouterTarget = {
 export type RouterSelection = RouterTarget & {
   strategy: RouterStrategy;
   autoPick?: boolean;
+  /** Prefer this provider while it has eligible quota, then fall back to other providers. */
+  providerFilter?: RouterProviderId | 'all';
   fallbackChain?: RouterTarget[];
   fusionModels: RouterTarget[];
 };
+export type CodeRouterSelection = { targets: RouterTarget[] };
 
 export function filterRouterModels<
   T extends {
@@ -762,6 +785,28 @@ export function selectRouterCandidates<T extends RouterTarget>(
   const key = `${selected.providerId}::${selected.modelId}`;
   const pinned = ranked.find((target) => `${target.providerId}::${target.modelId}` === key);
   return pinned ? [pinned] : [];
+}
+
+export function preferRouterProvider<T extends RouterTarget>(
+  ranked: T[],
+  preferredProviderId: RouterProviderId | 'all' | null | undefined,
+): T[] {
+  if (!preferredProviderId || preferredProviderId === 'all') return ranked;
+  const preferred = ranked.filter((target) => target.providerId === preferredProviderId);
+  // Preserve the provider preference while keeping alternatives behind it for same-request
+  // failover if its balance or endpoint fails.
+  return preferred.length
+    ? [...preferred, ...ranked.filter((target) => target.providerId !== preferredProviderId)]
+    : ranked;
+}
+
+export function selectCodeRouterTargets<T extends RouterTarget>(
+  ranked: T[],
+  selected: readonly RouterTarget[],
+): T[] {
+  if (!selected.length) return ranked;
+  const keys = new Set(selected.map((target) => `${target.providerId}::${target.modelId}`));
+  return ranked.filter((target) => keys.has(`${target.providerId}::${target.modelId}`));
 }
 
 export function selectFallbackCandidates<T extends RouterTarget>(
@@ -1143,7 +1188,15 @@ export function routerModelIds(body: unknown): Array<{
     const availableTokens =
       available !== null && Number.isSafeInteger(available) && available >= 0 ? available : null;
     const rawSupportsTools = findField(['supports_tools', 'supportsTools', 'tool_calling']);
-    const supportsTools = typeof rawSupportsTools === 'boolean' ? rawSupportsTools : null;
+    const capabilities = Array.isArray(itemRecord.capabilities)
+      ? itemRecord.capabilities.filter((value): value is string => typeof value === 'string')
+      : [];
+    const supportsTools =
+      typeof rawSupportsTools === 'boolean'
+        ? rawSupportsTools
+        : capabilities.includes('tools')
+          ? true
+          : null;
     const pricing = findField(['pricing', 'cost']);
     const prices =
       pricing && typeof pricing === 'object'

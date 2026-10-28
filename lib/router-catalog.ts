@@ -75,6 +75,8 @@ type CachedCatalog = typeof globalThis & {
 const catalogCache = globalThis as CachedCatalog;
 type CooldownGlobal = typeof globalThis & { relayRouterCooldowns?: Map<string, number> };
 const cooldownCache = globalThis as CooldownGlobal;
+type ProviderCooldownGlobal = typeof globalThis & { relayProviderCooldowns?: Map<string, number> };
+const providerCooldownCache = globalThis as ProviderCooldownGlobal;
 const CACHE_MS = 45_000;
 const OLLAMA_FREE_USAGE_MODELS = new Set([
   'beam',
@@ -161,6 +163,30 @@ export function isRouterTargetDepleted(
 ) {
   const key = `${accountId}::${target.providerId}::${target.modelId}`;
   const cooldowns = cooldownCache.relayRouterCooldowns;
+  const until = cooldowns?.get(key);
+  if (!until) return false;
+  if (Date.now() >= until) {
+    cooldowns?.delete(key);
+    return false;
+  }
+  return true;
+}
+
+export function markRouterProviderDepleted(
+  providerId: RouterProviderId,
+  accountId = 'owner',
+  cooldownMs = 5 * 60_000,
+) {
+  const cooldowns = (providerCooldownCache.relayProviderCooldowns ||= new Map());
+  cooldowns.set(
+    `${accountId}::${providerId}`,
+    Date.now() + Math.max(1000, Math.min(60 * 60_000, cooldownMs)),
+  );
+}
+
+export function isRouterProviderDepleted(providerId: RouterProviderId, accountId = 'owner') {
+  const key = `${accountId}::${providerId}`;
+  const cooldowns = providerCooldownCache.relayProviderCooldowns;
   const until = cooldowns?.get(key);
   if (!until) return false;
   if (Date.now() >= until) {
@@ -465,6 +491,7 @@ function withoutDepletedModels(result: RouterCatalog, accountId: string): Router
   const models = result.models.flatMap((model) => {
     const providers = model.providers.filter(
       (provider) =>
+        !isRouterProviderDepleted(provider.id, accountId) &&
         !isRouterTargetDepleted({ providerId: provider.id, modelId: provider.modelId }, accountId),
     );
     for (const provider of providers) counts.set(provider.id, (counts.get(provider.id) || 0) + 1);
@@ -541,6 +568,7 @@ export async function discoverRouterCatalog(forceRefresh = false): Promise<Route
   const eligibleCounts = new Map<RouterProviderId, number>();
 
   for (const result of settled) {
+    if (isRouterProviderDepleted(result.providerId, accountId)) continue;
     for (const model of result.models) {
       // Account-authenticated model listings are selectable even when a provider
       // omits quota metadata; the provider remains the source of truth for billing/access.
