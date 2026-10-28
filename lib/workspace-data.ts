@@ -1,5 +1,5 @@
 import { emailSchema, sheetSchema } from './tools';
-import { generatedArtifactSchema } from './generated-files';
+import { generatedArtifactReferenceSchema, generatedArtifactSchema } from './generated-files';
 import { fontOptions } from './appearance';
 import { z } from 'zod';
 const short = z.string().max(200);
@@ -107,7 +107,10 @@ export const workspaceSchema = z.object({
                   truncated: z.boolean().optional(),
                 })
                 .optional(),
-              artifacts: z.array(generatedArtifactSchema).max(2).optional(),
+              artifacts: z
+                .array(z.union([generatedArtifactReferenceSchema, generatedArtifactSchema]))
+                .max(2)
+                .optional(),
               proposals: z.array(proposal).max(10).optional(),
             }),
           )

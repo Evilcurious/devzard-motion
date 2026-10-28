@@ -59,8 +59,38 @@ export const generatedArtifactSchema = z
   .object({ id: z.string().min(1).max(200), name: bundleName, files: generatedFilesSchema })
   .strict();
 
+export const generatedArtifactReferenceSchema = z
+  .object({
+    id: z.string().min(1).max(200),
+    name: bundleName,
+    fileCount: z.number().int().min(1).max(MAX_GENERATED_FILES),
+    totalBytes: z.number().int().min(0).max(MAX_GENERATED_FILE_BYTES),
+    hasPreview: z.boolean(),
+    paths: z
+      .array(z.string().min(1).max(240).refine(isSafeGeneratedPath, 'File path is not safe.'))
+      .max(MAX_GENERATED_FILES),
+  })
+  .strict();
+
 export type GeneratedFile = z.infer<typeof generatedFileSchema>;
 export type GeneratedArtifact = z.infer<typeof generatedArtifactSchema>;
+export type GeneratedArtifactReference = z.infer<typeof generatedArtifactReferenceSchema>;
+
+export function generatedArtifactReference(
+  artifact: GeneratedArtifact,
+): GeneratedArtifactReference {
+  return {
+    id: artifact.id,
+    name: artifact.name,
+    fileCount: artifact.files.length,
+    totalBytes: artifact.files.reduce(
+      (sum, file) => sum + new TextEncoder().encode(file.content).byteLength,
+      0,
+    ),
+    hasPreview: artifact.files.some((file) => /\.html?$/i.test(file.path)),
+    paths: artifact.files.map((file) => file.path),
+  };
+}
 
 export function findHtmlPreviewFile(files: GeneratedFile[]) {
   const htmlFiles = files.filter((file) => /\.html?$/i.test(file.path));

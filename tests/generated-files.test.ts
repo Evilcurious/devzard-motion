@@ -72,13 +72,13 @@ test('generated bundles reject traversal, secret paths, duplicates, and oversize
   assert.equal(
     generatedFileBundleSchema.safeParse({
       name: 'large',
-      files: [{ path: 'big.txt', content: 'x'.repeat(500_001) }],
+      files: [{ path: 'big.txt', content: 'x'.repeat(5_000_001) }],
     }).success,
     false,
   );
 });
 
-test('larger projects support 100 source files and totals above the former 300 KB limit', () => {
+test('larger projects support 1,000 source files and 15 MB totals', () => {
   const files = Array.from({ length: 40 }, (_, index) => ({
     path: `src/module-${index}.txt`,
     content: 'x'.repeat(10_000),
@@ -89,15 +89,31 @@ test('larger projects support 100 source files and totals above the former 300 K
   );
   assert.equal(
     generatedFileBundleSchema.safeParse({
+      name: 'maximum-file-count',
+      files: Array.from({ length: 1_000 }, (_, index) => ({ path: `f-${index}.txt`, content: '' })),
+    }).success,
+    true,
+  );
+  assert.equal(
+    generatedFileBundleSchema.safeParse({
       name: 'too-many-files',
-      files: Array.from({ length: 101 }, (_, index) => ({ path: `f-${index}.txt`, content: '' })),
+      files: Array.from({ length: 1_001 }, (_, index) => ({ path: `f-${index}.txt`, content: '' })),
     }).success,
     false,
+  );
+  const maximumBundle = [
+    { path: 'a.txt', content: 'x'.repeat(5_000_000) },
+    { path: 'b.txt', content: 'x'.repeat(5_000_000) },
+    { path: 'c.txt', content: 'x'.repeat(5_000_000) },
+  ];
+  assert.equal(
+    generatedFileBundleSchema.safeParse({ name: 'maximum-bundle', files: maximumBundle }).success,
+    true,
   );
   assert.equal(
     generatedFileBundleSchema.safeParse({
       name: 'too-large',
-      files: [{ path: 'big.txt', content: 'x'.repeat(1_500_001) }],
+      files: [...maximumBundle, { path: 'd.txt', content: 'x' }],
     }).success,
     false,
   );

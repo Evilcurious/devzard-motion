@@ -1,5 +1,14 @@
 type ChatSseEvent =
   | { type: 'delta'; text: string }
+  | {
+      type: 'artifact_chunk';
+      artifactId: string;
+      name: string;
+      path: string;
+      chunkIndex: number;
+      chunkCount: number;
+      content: string;
+    }
   | { type: 'reset' }
   | { type: 'final'; status: number; result: unknown }
   | { type: 'error'; message: string };
@@ -8,6 +17,7 @@ export async function readChatEventStream<T>(
   response: Response,
   onText: (text: string) => void,
   onReset: () => void,
+  onArtifactChunk?: (event: Extract<ChatSseEvent, { type: 'artifact_chunk' }>) => void,
 ): Promise<T> {
   if (!response.body) throw new Error('The chat stream ended before a response was received.');
   const reader = response.body.getReader();
@@ -24,7 +34,10 @@ export async function readChatEventStream<T>(
       throw new Error('The chat stream contained an invalid event.');
     }
     if (event.type === 'delta') onText(event.text);
-    else if (event.type === 'reset') onReset();
+    else if (event.type === 'artifact_chunk') {
+      if (!onArtifactChunk) throw new Error('The chat stream included an unhandled project file.');
+      onArtifactChunk(event);
+    } else if (event.type === 'reset') onReset();
     else if (event.type === 'error') throw new Error(event.message);
     else if (event.type === 'final') {
       const payload = event.result as { error?: unknown } | null;

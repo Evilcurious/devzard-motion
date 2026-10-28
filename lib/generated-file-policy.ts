@@ -1,6 +1,6 @@
-export const MAX_GENERATED_FILES = 100;
-export const MAX_GENERATED_FILE_BYTES = 1_500_000;
-export const MAX_GENERATED_FILE_CHARACTERS = 500_000;
+export const MAX_GENERATED_FILES = 1_000;
+export const MAX_GENERATED_FILE_BYTES = 15_000_000;
+export const MAX_GENERATED_FILE_CHARACTERS = 5_000_000;
 const forbiddenNames = new Set(['.git', 'node_modules', '.next', '.vercel']);
 
 export function isSafeGeneratedPath(path: string) {

@@ -1,5 +1,5 @@
 import type { WriteAction } from './tools';
-import type { GeneratedArtifact } from './generated-files';
+import type { GeneratedArtifactReference } from './generated-files';
 import type { WorkspaceBranding } from './branding';
 export type Page =
   'chat' | 'workflows' | 'models' | 'connections' | 'activity' | 'analytics' | 'settings' | 'users';
@@ -60,7 +60,7 @@ export type Message = {
   role: 'user' | 'assistant';
   content: string;
   attachment?: Attachment;
-  artifacts?: GeneratedArtifact[];
+  artifacts?: GeneratedArtifactReference[];
   proposals?: Proposal[];
   steps?: string[];
   modelUsed?: { modelId: string; providerId?: string; providerName?: string };

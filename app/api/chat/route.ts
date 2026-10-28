@@ -48,6 +48,7 @@ import {
   markUsageBlockedTarget,
 } from '@/lib/account-access';
 import {
+  generatedArtifactReference,
   generatedFileBundleSchema,
   MAX_GENERATED_FILE_BYTES,
   MAX_GENERATED_FILE_CHARACTERS,
@@ -84,6 +85,15 @@ const schema = z.object({
 });
 type ChatStreamEvent =
   | { type: 'delta'; text: string }
+  | {
+      type: 'artifact_chunk';
+      artifactId: string;
+      name: string;
+      path: string;
+      chunkIndex: number;
+      chunkCount: number;
+      content: string;
+    }
   | { type: 'reset' }
   | { type: 'final'; status: number; result: unknown }
   | { type: 'error'; message: string };
@@ -426,6 +436,11 @@ async function handleChatPost(request: Request) {
       );
     const input = schema.parse(await readJson(request, 3_500_000));
     const fileBundleRequest = isFileBundleRequest(input.messages);
+    if (fileBundleRequest && !input.stream)
+      return Response.json(
+        { error: 'Large project bundles require streaming chat. Enable stream mode and retry.' },
+        { status: 422 },
+      );
     const codeMode = input.taskMode === 'code';
     const streamContext = chatStreamContext.getStore();
     if (streamContext && fileBundleRequest) streamContext.allowDeltas = false;
@@ -1105,6 +1120,29 @@ export async function POST(request: Request) {
         .run({ emit, signal: request.signal, allowDeltas: true }, async () => {
           const response = await handleChatPost(request);
           const result = await response.json().catch(() => ({ error: 'The chat request failed.' }));
+          if (response.ok && Array.isArray(result?.artifacts)) {
+            const artifacts = result.artifacts as GeneratedArtifact[];
+            for (const artifact of artifacts) {
+              for (const file of artifact.files) {
+                const chunkSize = 96_000;
+                const chunkCount = Math.max(1, Math.ceil(file.content.length / chunkSize));
+                for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++)
+                  emit({
+                    type: 'artifact_chunk',
+                    artifactId: artifact.id,
+                    name: artifact.name,
+                    path: file.path,
+                    chunkIndex,
+                    chunkCount,
+                    content: file.content.slice(
+                      chunkIndex * chunkSize,
+                      (chunkIndex + 1) * chunkSize,
+                    ),
+                  });
+              }
+            }
+            result.artifacts = artifacts.map(generatedArtifactReference);
+          }
           emit({ type: 'final', status: response.status, result });
         })
         .catch((error) => {

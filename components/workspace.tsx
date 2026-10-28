@@ -63,7 +63,13 @@ import type {
   RoutingStrategy,
 } from '@/lib/model-router';
 import { isImageGenerationPrompt } from '@/lib/media-intent';
-import { findHtmlPreviewFile, type GeneratedArtifact } from '@/lib/generated-files';
+import {
+  findHtmlPreviewFile,
+  generatedArtifactReference,
+  type GeneratedArtifact,
+  type GeneratedArtifactReference,
+} from '@/lib/generated-files';
+import { loadGeneratedArtifact, saveGeneratedArtifact } from '@/lib/artifact-store';
 import { buildSandboxedPreviewDocument } from '@/lib/html-preview';
 import { createZip } from '@/lib/zip';
 import type {
@@ -117,6 +123,10 @@ const settingsSections: Array<{
   { id: 'users', icon: Users, label: 'Accounts' },
 ];
 const uid = () => crypto.randomUUID();
+type StreamedArtifactAssembly = {
+  name: string;
+  files: Map<string, { chunks: Array<string | undefined>; chunkCount: number }>;
+};
 const friendlyDate = (date: string) =>
   new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 type AgentProfile = 'fast' | 'balanced' | 'deep' | 'custom';
@@ -205,8 +215,10 @@ export default function Workspace() {
   const notify = useCallback((message: string) => setToast(message), []);
   const closeModal = useCallback(() => setModal(null), []);
   const downloadArtifact = useCallback(
-    (artifact: GeneratedArtifact) => {
+    async (reference: GeneratedArtifactReference) => {
       try {
+        const artifact = await loadGeneratedArtifact(status?.accountId || 'owner', reference.id);
+        if (!artifact) throw new Error('This project is not saved in this browser.');
         const archive = createZip(artifact.files);
         const url = URL.createObjectURL(new Blob([archive], { type: 'application/zip' }));
         const link = document.createElement('a');
@@ -219,10 +231,24 @@ export default function Workspace() {
         notify((error as Error).message || 'Could not create the ZIP file.');
       }
     },
-    [notify],
+    [notify, status?.accountId],
   );
   const startPreview = useCallback(
-    async (artifact: GeneratedArtifact) => {
+    async (reference: GeneratedArtifactReference | GeneratedArtifact) => {
+      let artifact: GeneratedArtifact | null;
+      try {
+        artifact =
+          'files' in reference
+            ? reference
+            : await loadGeneratedArtifact(status?.accountId || 'owner', reference.id);
+      } catch (error) {
+        notify((error as Error).message || 'Could not read this browser-local project.');
+        return;
+      }
+      if (!artifact) {
+        notify('This project is not saved in this browser.');
+        return;
+      }
       const htmlFile = findHtmlPreviewFile(artifact.files);
       if (!htmlFile) {
         notify('This bundle does not contain an HTML file to preview.');
@@ -233,6 +259,18 @@ export default function Workspace() {
       setPreviewDocument('');
       setPreviewError('');
       setPreviewLoading(true);
+      const totalBytes = artifact.files.reduce(
+        (sum, file) => sum + new TextEncoder().encode(file.content).byteLength,
+        0,
+      );
+      if (totalBytes > 3_000_000) {
+        setPreviewError(
+          'This project is larger than the browser preview transfer limit; showing its standalone HTML entry file.',
+        );
+        setPreviewDocument(buildSandboxedPreviewDocument(htmlFile.content));
+        setPreviewLoading(false);
+        return;
+      }
       try {
         const compiled = await api<{ javascript: string; css: string }>('/api/preview', {
           htmlPath: htmlFile.path,
@@ -248,7 +286,7 @@ export default function Workspace() {
         setPreviewLoading(false);
       }
     },
-    [notify],
+    [notify, status?.accountId],
   );
   const refresh = useCallback(async () => {
     try {
@@ -694,6 +732,7 @@ export default function Workspace() {
     const streamedAssistantId = uid();
     let streamedContent = '';
     let streamStarted = false;
+    const streamedArtifacts = new Map<string, StreamedArtifactAssembly>();
     try {
       const response = await fetch(mode === 'chat' ? '/api/chat' : '/api/router/media', {
         method: 'POST',
@@ -751,11 +790,87 @@ export default function Workspace() {
                 updateMessages(id, (old) => old.filter((item) => item.id !== streamedAssistantId));
                 streamStarted = false;
               },
+              (chunk) => {
+                if (!streamStarted) {
+                  streamStarted = true;
+                  updateMessages(id, (old) => [
+                    ...old,
+                    {
+                      id: streamedAssistantId,
+                      role: 'assistant' as const,
+                      content: 'Receiving generated project files…',
+                    },
+                  ]);
+                }
+                if (
+                  !chunk.artifactId ||
+                  !chunk.path ||
+                  chunk.path.length > 240 ||
+                  !Number.isInteger(chunk.chunkIndex) ||
+                  !Number.isInteger(chunk.chunkCount) ||
+                  chunk.chunkCount < 1 ||
+                  chunk.chunkCount > 64 ||
+                  chunk.chunkIndex < 0 ||
+                  chunk.chunkIndex >= chunk.chunkCount ||
+                  chunk.content.length > 96_000
+                )
+                  throw new Error('The streamed project contained an invalid file chunk.');
+                let artifact = streamedArtifacts.get(chunk.artifactId);
+                if (!artifact) {
+                  artifact = { name: chunk.name, files: new Map() };
+                  streamedArtifacts.set(chunk.artifactId, artifact);
+                }
+                if (artifact.name !== chunk.name)
+                  throw new Error('The streamed project metadata did not match its file chunks.');
+                let file = artifact.files.get(chunk.path);
+                if (!file) {
+                  file = { chunks: Array(chunk.chunkCount), chunkCount: chunk.chunkCount };
+                  artifact.files.set(chunk.path, file);
+                }
+                if (
+                  file.chunkCount !== chunk.chunkCount ||
+                  file.chunks[chunk.chunkIndex] !== undefined
+                )
+                  throw new Error(
+                    'The streamed project contained duplicate or inconsistent chunks.',
+                  );
+                file.chunks[chunk.chunkIndex] = chunk.content;
+              },
             )
           : await response.json();
       if (!response.ok) {
         if (response.status === 401) refresh();
         throw new Error(result.error || 'Could not complete this request.');
+      }
+      let previewArtifacts: GeneratedArtifact[] = [];
+      if (mode === 'chat' && Array.isArray(result.artifacts)) {
+        const browserArtifacts: GeneratedArtifact[] = [];
+        for (const raw of result.artifacts as Array<Record<string, unknown>>) {
+          let artifact: GeneratedArtifact;
+          if (Array.isArray(raw.files)) {
+            artifact = raw as unknown as GeneratedArtifact;
+          } else {
+            const reference = raw as unknown as GeneratedArtifactReference;
+            const assembly = streamedArtifacts.get(reference.id);
+            if (!assembly || assembly.files.size !== reference.fileCount)
+              throw new Error(
+                'The project download stream was incomplete. Please retry the request.',
+              );
+            const files = reference.paths.map((path) => {
+              const chunks = assembly.files.get(path);
+              if (!chunks || chunks.chunks.some((part) => part === undefined))
+                throw new Error(
+                  'The project download stream was incomplete. Please retry the request.',
+                );
+              return { path, content: chunks.chunks.join('') };
+            });
+            artifact = { id: reference.id, name: reference.name, files };
+          }
+          await saveGeneratedArtifact(status?.accountId || 'owner', artifact);
+          browserArtifacts.push(artifact);
+        }
+        previewArtifacts = browserArtifacts;
+        result.artifacts = browserArtifacts.map(generatedArtifactReference);
       }
       if (mode === 'image' && result.status === 'processing') {
         const imageJobToken = result.token;
@@ -810,12 +925,8 @@ export default function Workspace() {
           ? old.map((item) => (item.id === streamedAssistantId ? completedMessage : item))
           : [...old, completedMessage];
       });
-      if (mode === 'chat' && Array.isArray(result.artifacts)) {
-        const htmlArtifact = (result.artifacts as GeneratedArtifact[]).find((artifact) =>
-          findHtmlPreviewFile(artifact.files),
-        );
-        if (htmlArtifact) startPreview(htmlArtifact);
-      }
+      const htmlArtifact = previewArtifacts.find((artifact) => findHtmlPreviewFile(artifact.files));
+      if (htmlArtifact) startPreview(htmlArtifact);
     } catch (error) {
       const aborted = error instanceof Error && error.name === 'AbortError';
       updateMessages(id, (old) => [
@@ -1656,7 +1767,7 @@ export default function Workspace() {
                           {message.content}
                         </div>
                         {message.artifacts?.map((artifact) => {
-                          const hasPreview = !!findHtmlPreviewFile(artifact.files);
+                          const hasPreview = artifact.hasPreview;
                           return (
                             <section className="generated-artifact" key={artifact.id}>
                               <div className="generated-artifact-heading">
@@ -1665,7 +1776,11 @@ export default function Workspace() {
                                 </span>
                                 <span>
                                   <strong>{artifact.name}.zip</strong>
-                                  <small>{artifact.files.length} files · ready to download</small>
+                                  <small>
+                                    {artifact.fileCount} files ·{' '}
+                                    {Math.ceil(artifact.totalBytes / 1_000_000)} MB · saved in this
+                                    browser
+                                  </small>
                                 </span>
                               </div>
                               <div className="generated-artifact-actions">
@@ -1687,9 +1802,9 @@ export default function Workspace() {
                               <details className="generated-artifact-files">
                                 <summary>Files in this bundle</summary>
                                 <ul>
-                                  {artifact.files.map((file) => (
-                                    <li key={file.path}>
-                                      <code>{file.path}</code>
+                                  {artifact.paths.map((path) => (
+                                    <li key={path}>
+                                      <code>{path}</code>
                                     </li>
                                   ))}
                                 </ul>

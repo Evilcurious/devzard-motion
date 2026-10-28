@@ -123,7 +123,9 @@ test('workspace persistence strips approval tokens and rejects malformed message
     'https://cdn.example.com/generated.png',
   );
   assert.equal(result.conversations[0].messages[0].sources?.[0].title, 'Example source');
-  assert.equal(result.conversations[0].messages[0].artifacts?.[0].files[0].path, 'index.html');
+  const artifact = result.conversations[0].messages[0].artifacts?.[0];
+  assert.ok(artifact && 'files' in artifact);
+  if (artifact && 'files' in artifact) assert.equal(artifact.files[0].path, 'index.html');
   assert.equal(result.theme, 'blue');
   assert.equal(workspaceSchema.parse({ ...data, theme: 'dark' }).theme, 'dark');
   assert.equal(workspaceSchema.safeParse({ ...data, theme: 'unknown' }).success, false);
@@ -136,6 +138,40 @@ test('workspace persistence strips approval tokens and rejects malformed message
     }).success,
     false,
   );
+});
+
+test('workspace persistence accepts browser-local artifact references without project file payloads', () => {
+  const data = workspaceSchema.parse({
+    conversations: [
+      {
+        id: 'conversation',
+        title: 'A chat',
+        updated: new Date().toISOString(),
+        messages: [
+          {
+            id: 'message',
+            role: 'assistant',
+            content: 'Project ready.',
+            artifacts: [
+              {
+                id: 'artifact-1',
+                name: 'large-project',
+                fileCount: 120,
+                totalBytes: 12_000_000,
+                hasPreview: true,
+                paths: ['index.html', 'src/app.tsx'],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    activities: [],
+    workflows: [],
+  });
+  const artifact = data.conversations[0].messages[0].artifacts?.[0];
+  assert.ok(artifact && 'fileCount' in artifact);
+  if (artifact && 'fileCount' in artifact) assert.equal(artifact.fileCount, 120);
 });
 
 test('light, dark and accent themes are supported', () => {

@@ -175,7 +175,7 @@ export const tools = [
     function: {
       name: 'create_file_bundle',
       description:
-        'Create a downloadable ZIP file when the user explicitly asks for a file bundle, code project, or website. Return complete UTF-8 source files (maximum 100 files, 500 KB per file, and 1.5 MB total), preserving the complete project structure in the ZIP. For Node.js projects, include package.json, all app/server source, configuration, and a README with install/run/deploy steps. For Python projects, include requirements.txt or pyproject.toml, all app/source files, configuration, and a README with install/run/deploy steps. Include frontend files and static assets needed by the app. Use safe relative paths; never include secrets, .env files, credentials, private keys, .git, node_modules, virtual environments, or build output; use .env.example with placeholders only. For a website preview, include a standalone root index.html or public/index.html with a frontend that works without external network dependencies. The five-minute preview runs only browser-compatible HTML/CSS/JavaScript/TypeScript/React in an isolated browser sandbox; Node.js and Python backend code remains in the ZIP and is not executed by the preview or on the server. Do not claim code was publicly deployed.',
+        'Create a downloadable ZIP file when the user explicitly asks for a file bundle, code project, or website. Return complete UTF-8 source files (maximum 1,000 files, 5 MB per file, and 15 MB total), preserving the complete project structure in the ZIP. For Node.js projects, include package.json, all app/server source, configuration, and a README with install/run/deploy steps. For Python projects, include requirements.txt or pyproject.toml, all app/source files, configuration, and a README with install/run/deploy steps. Include frontend files and static assets needed by the app. Use safe relative paths; never include secrets, .env files, credentials, private keys, .git, node_modules, virtual environments, or build output; use .env.example with placeholders only. For a website preview, include a standalone root index.html or public/index.html with a frontend that works without external network dependencies. The five-minute preview runs only browser-compatible HTML/CSS/JavaScript/TypeScript/React in an isolated browser sandbox; Node.js and Python backend code remains in the ZIP and is not executed by the preview or on the server. Do not claim code was publicly deployed.',
       parameters: {
         type: 'object',
         properties: {
@@ -183,7 +183,7 @@ export const tools = [
           files: {
             type: 'array',
             minItems: 1,
-            maxItems: 100,
+            maxItems: 1000,
             items: {
               type: 'object',
               properties: {
@@ -194,7 +194,7 @@ export const tools = [
                 },
                 content: {
                   type: 'string',
-                  maxLength: 500000,
+                  maxLength: 5000000,
                   description: 'Complete UTF-8 text file contents.',
                 },
               },

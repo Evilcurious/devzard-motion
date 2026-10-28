@@ -1,6 +1,8 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Activity, Conversation, Status, Workflow } from '@/lib/client-types';
+import { externalizeWorkspaceArtifacts } from '@/lib/artifact-store';
+import { generatedArtifactReference, type GeneratedArtifact } from '@/lib/generated-files';
 import { initialWorkflows } from '@/lib/client-types';
 export type WorkspaceData = {
   conversations: Conversation[];
@@ -27,6 +29,11 @@ function sanitized(value: WorkspaceData): WorkspaceData {
       ...c,
       messages: c.messages.map((m) => ({
         ...m,
+        artifacts: m.artifacts?.map((artifact) => {
+          const inline = artifact as unknown as { files?: unknown[] };
+          if (!Array.isArray(inline.files)) return artifact;
+          return generatedArtifactReference(artifact as unknown as GeneratedArtifact);
+        }),
         proposals: m.proposals?.map((p) => ({ ...p, token: '' })),
       })),
     })),
@@ -73,6 +80,8 @@ export function useWorkspaceStorage(
     (async () => {
       try {
         let data = empty();
+        let serverSnapshot = '';
+        let loadedFromDatabase = false;
         if (database) {
           const response = await fetch('/api/workspace', { cache: 'no-store' });
           const result = await response.json();
@@ -82,12 +91,17 @@ export function useWorkspaceStorage(
           setCanRetry(true);
           if (result.data) {
             data = result.data;
-            saved.current = JSON.stringify(sanitized(data));
+            serverSnapshot = JSON.stringify(data);
+            loadedFromDatabase = true;
           } else {
             data = localData(localStorageKey);
           } // First connection only: import browser history into an empty database.
         } else data = localData(localStorageKey);
+        data = await externalizeWorkspaceArtifacts(data, status?.accountId || 'owner');
         if (disposed) return;
+        if (loadedFromDatabase)
+          saved.current =
+            serverSnapshot === JSON.stringify(data) ? JSON.stringify(sanitized(data)) : '';
         load.current(data);
         setError('');
         setSyncState(database ? 'saved' : 'local');
