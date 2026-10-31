@@ -1,5 +1,6 @@
 import type { NextConfig } from 'next';
 const config: NextConfig = {
+  output: 'standalone',
   devIndicators: false,
   allowedDevOrigins: ['*.e2b.app'],
   serverExternalPackages: ['pdf-parse', 'esbuild'],

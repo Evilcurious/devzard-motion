@@ -85,6 +85,7 @@ type Catalog = {
 };
 
 const providerNames: Record<string, string> = {
+  freellmapi: 'FreeLLMAPI',
   openrouter: 'OpenRouter',
   siliconflow: 'SiliconFlow',
   codecraftapi: 'CodeCraft API',
@@ -667,12 +668,20 @@ export function ModelHub({
           </label>
           {quickProvider?.keyRequired && (
             <label>
-              API key
+              {quickProvider.id === 'freellmapi' ? 'FreeLLMAPI unified key' : 'API key'}
               <input
                 type="password"
                 autoComplete="new-password"
-                placeholder="Paste this provider’s API key"
-                aria-label="API key for selected provider"
+                placeholder={
+                  quickProvider.id === 'freellmapi'
+                    ? 'Paste your freellmapi-… key from the local app'
+                    : 'Paste this provider’s API key'
+                }
+                aria-label={
+                  quickProvider.id === 'freellmapi'
+                    ? 'FreeLLMAPI unified key'
+                    : 'API key for selected provider'
+                }
                 value={quickKey}
                 onChange={(event) => setQuickKey(event.target.value)}
               />
@@ -693,6 +702,13 @@ export function ModelHub({
             {quickProvider?.keyRequired ? 'Save API key' : 'Connect provider'}
           </button>
         </div>
+        {quickProvider?.id === 'freellmapi' && (
+          <p className="provider-note">
+            Install or start the FreeLLMAPI Windows desktop app first, then paste its unified key.
+            This Relay desktop connection stays on your computer; hosted Relay cannot call your
+            local gateway.
+          </p>
+        )}
         {quickProvider?.category === 'search' && quickProvider.note && (
           <p className="provider-note">
             {quickProvider.id === 'firecrawl'
@@ -773,10 +789,18 @@ export function ModelHub({
                         <input
                           type="password"
                           autoComplete="new-password"
-                          placeholder="Paste API key"
+                          placeholder={
+                            provider.id === 'freellmapi'
+                              ? 'Paste freellmapi-… unified key'
+                              : 'Paste API key'
+                          }
                           value={key}
                           onChange={(e) => setKey(e.target.value)}
-                          aria-label={`${provider.name} API key`}
+                          aria-label={
+                            provider.id === 'freellmapi'
+                              ? 'FreeLLMAPI unified key'
+                              : `${provider.name} API key`
+                          }
                         />
                       )}
                       <button

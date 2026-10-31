@@ -2,8 +2,11 @@
   "name": "relay-agent",
   "version": "0.1.0",
   "private": true,
+  "main": "desktop/main.cjs",
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
+    "desktop:dev": "electron .",
+    "desktop:dist:win": "npm run build && electron-builder --win nsis --x64",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
@@ -34,9 +37,50 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
     "prettier": "^3.9.10",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
+  },
+  "build": {
+    "appId": "ai.relay.desktop",
+    "productName": "Relay",
+    "asar": true,
+    "directories": {
+      "output": "desktop/dist"
+    },
+    "files": [
+      "desktop/main.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "relay-server"
+      },
+      {
+        "from": ".next/static",
+        "to": "relay-server/.next/static"
+      },
+      {
+        "from": "public",
+        "to": "relay-server/public"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "Relay-Setup-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "engines": {
     "node": ">=20.9.0"

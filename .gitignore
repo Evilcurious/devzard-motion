@@ -8,3 +8,4 @@ coverage/
 .arena/
 test-results/
 playwright-report/
+desktop/dist/

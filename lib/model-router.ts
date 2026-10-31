@@ -1,4 +1,7 @@
+import { FREELLMAPI_BASE_URL } from './ai-presets';
+
 export type RouterProviderId =
+  | 'freellmapi'
   | 'openrouter'
   | 'ollama-cloud'
   | 'kilo'
@@ -182,6 +185,15 @@ export const routerProviders: RouterProvider[] = [
     keyRequired: true,
     docsURL: 'https://modelscope.cn/my/myaccesstoken',
     note: 'FreeLLMAPI lists some ModelScope endpoints; cloud access may require account/region binding and availability is model-specific. Check current ModelScope terms.',
+  },
+  {
+    id: 'freellmapi',
+    name: 'FreeLLMAPI (local unified key)',
+    category: 'models',
+    baseURL: FREELLMAPI_BASE_URL,
+    keyRequired: true,
+    docsURL: 'https://github.com/tashfeenahmed/freellmapi',
+    note: 'Use the freellmapi-… unified key from the FreeLLMAPI desktop app. Relay Desktop connects to its local OpenAI-compatible gateway at 127.0.0.1:31415; a hosted Relay server cannot reach your computer’s localhost.',
   },
   {
     id: 'openrouter',

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { FREELLMAPI_BASE_URL } from '../lib/ai-presets';
 import {
   canonicalModelKey,
   filterRouterModels,
@@ -29,6 +30,8 @@ test('model provider registry uses fixed HTTPS hosts and separates search servic
     'https://generativelanguage.googleapis.com/v1beta/openai',
   );
   assert.equal(getRouterProvider('gemini')?.keyRequired, true);
+  assert.equal(getRouterProvider('freellmapi')?.baseURL, FREELLMAPI_BASE_URL);
+  assert.equal(getRouterProvider('freellmapi')?.keyRequired, true);
   assert.equal(getRouterProvider('openrouter')?.baseURL, 'https://openrouter.ai/api/v1');
   assert.equal(getRouterProvider('siliconflow')?.baseURL, 'https://api.siliconflow.com/v1');
   assert.equal(getRouterProvider('siliconflow')?.keyRequired, true);
@@ -66,7 +69,12 @@ test('model provider registry uses fixed HTTPS hosts and separates search servic
     assert.match(provider?.note || '', /FreeLLMAPI lists/);
   }
   for (const provider of routerProviders) {
-    if (provider.baseURL) assert.equal(new URL(provider.baseURL).protocol, 'https:');
+    if (!provider.baseURL) continue;
+    if (provider.id === 'freellmapi') {
+      assert.equal(provider.baseURL, 'http://127.0.0.1:31415/v1');
+      continue;
+    }
+    assert.equal(new URL(provider.baseURL).protocol, 'https:');
   }
 });
 

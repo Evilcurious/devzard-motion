@@ -57,6 +57,18 @@ Keep the terminal open. Press Ctrl+C to stop. After changing `.env.local`, resta
 
 Run `npm run setup`, restart Relay, sign in and try saving again. Saving connections requires a stable `SESSION_SECRET` of at least 32 characters. If you already set a shorter secret manually, replace it with a generated strong value **before** using encrypted persistence. Never rotate a working encryption key without backing up/decrypting its saved credentials first.
 
+## Relay Desktop for Windows
+
+Relay can run as a standalone Windows desktop app with its Next.js service hosted on loopback on the same PC. The installer does not require Node.js; it starts and stops the local service with the app and generates a stable machine-local encryption secret so saved provider connections remain usable between launches. No database or Relay account is required for local single-user use. Keep the app on the local machine and do not expose its loopback service to your network.
+
+For development, run `npm ci` and `npm run desktop:dev` on Windows. To build an unsigned Windows installer, run:
+
+```powershell
+npm run desktop:dist:win
+```
+
+The installer is written to `desktop/dist/Relay-Setup-<version>-x64.exe`. Windows may show a SmartScreen warning because locally built installers are not code-signed. The repository’s **Actions → Build Relay Desktop (Windows)** workflow can also produce a downloadable installer artifact.
+
 ## Neon Postgres: save chats and API settings without a local database server
 
 See **[docs/NEON-SETUP.md](docs/NEON-SETUP.md)** for the complete laptop setup. Neon hosts PostgreSQL; Relay and Ollama can continue running on your laptop. Existing standard PostgreSQL installations remain compatible.
@@ -154,13 +166,9 @@ API usage may incur provider charges. A blank key field preserves the saved key 
 
 ### Local FreeLLMAPI server
 
-For a FreeLLMAPI server running on the same computer as Relay, open **Models & providers → Use FreeLLMAPI settings**. The preset uses:
+Install and start [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi) on the same Windows computer as Relay Desktop. In **Models & providers**, choose **FreeLLMAPI (local unified key)** and paste the `freellmapi-…` unified API key from FreeLLMAPI’s Keys page or tray popover. Relay reads its authenticated `GET /v1/models` catalog and sends chat requests to the OpenAI-compatible `/v1/chat/completions` endpoint. The key is stored through Relay’s encrypted connection flow; FreeLLMAPI continues to keep and route its own upstream provider keys.
 
-```text
-http://127.0.0.1:31415/v1
-```
-
-Enter your API key, click **Load FreeLLMAPI models**, and select the exact model ID exposed by the local server. Then choose **Save connection → Test saved connection**. Relay checks `GET /v1/models`, calls the OpenAI-compatible `/chat/completions` route, and stores the key encrypted through its normal settings flow. If the local server does not implement model listing, enter its configured model ID manually. The loopback endpoint is narrowly trusted by default; no `AI_ALLOWED_ORIGINS` entry is needed. This URL points to the computer running Relay, so it will **not** reach your laptop's server when Relay is hosted on Vercel.
+The FreeLLMAPI desktop app binds to `127.0.0.1:31415` by default, which is Relay’s fixed local gateway address. This works when Relay Desktop and FreeLLMAPI are running on the same PC. A Relay deployment hosted on Vercel cannot reach your computer’s localhost; do not expose the single-user FreeLLMAPI gateway to the public internet to work around that limitation.
 
 ### OpenRouter (including free models)
 
